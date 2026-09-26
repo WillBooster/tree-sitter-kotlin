@@ -3,7 +3,7 @@ $(error Windows is not supported)
 endif
 
 LANGUAGE_NAME := tree-sitter-kotlin
-HOMEPAGE_URL := https://github.com/tree-sitter-grammars/tree-sitter-kotlin
+HOMEPAGE_URL := https://github.com/WillBooster/tree-sitter-kotlin
 VERSION := 1.1.0
 
 # repository

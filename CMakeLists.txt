@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 project(tree-sitter-kotlin
         VERSION "1.1.0"
         DESCRIPTION "Kotlin grammar for tree-sitter"
-        HOMEPAGE_URL "https://github.com/tree-sitter-grammars/tree-sitter-kotlin"
+        HOMEPAGE_URL "https://github.com/WillBooster/tree-sitter-kotlin"
         LANGUAGES C)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)

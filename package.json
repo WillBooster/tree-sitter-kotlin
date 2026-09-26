@@ -1,13 +1,16 @@
 {
-  "name": "@tree-sitter-grammars/tree-sitter-kotlin",
+  "name": "@willbooster/tree-sitter-kotlin",
   "version": "1.1.0",
   "description": "Kotlin grammar for tree-sitter",
-  "repository": "https://github.com/tree-sitter-grammars/tree-sitter-kotlin",
+  "repository": "https://github.com/WillBooster/tree-sitter-kotlin",
   "license": "MIT",
-  "author": {
-    "name": "Amaan Qureshi",
-    "email": "amaanq12@gmail.com"
-  },
+  "author": "WillBooster Inc.",
+  "contributors": [
+    {
+      "name": "Amaan Qureshi",
+      "email": "amaanq12@gmail.com"
+    }
+  ],
   "main": "bindings/node",
   "types": "bindings/node",
   "keywords": [

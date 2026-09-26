@@ -1,4 +1,4 @@
-module github.com/tree-sitter-grammars/tree-sitter-kotlin
+module github.com/WillBooster/tree-sitter-kotlin
 
 go 1.22
 

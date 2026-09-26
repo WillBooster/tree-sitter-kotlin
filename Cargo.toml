@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["incremental", "parsing", "tree-sitter", "kotlin"]
 categories = ["parsing", "text-editors"]
-repository = "https://github.com/tree-sitter-grammars/tree-sitter-kotlin"
+repository = "https://github.com/WillBooster/tree-sitter-kotlin"
 edition = "2021"
 autoexamples = false
 
