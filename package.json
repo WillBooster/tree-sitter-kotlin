@@ -2,7 +2,16 @@
   "name": "@willbooster/tree-sitter-kotlin",
   "version": "1.1.0",
   "description": "Kotlin grammar for tree-sitter",
-  "repository": "https://github.com/WillBooster/tree-sitter-kotlin",
+  "keywords": [
+    "incremental",
+    "parsing",
+    "tree-sitter",
+    "kotlin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WillBooster/tree-sitter-kotlin.git"
+  },
   "license": "MIT",
   "author": "WillBooster Inc.",
   "contributors": [
@@ -13,12 +22,6 @@
   ],
   "main": "bindings/node",
   "types": "bindings/node",
-  "keywords": [
-    "incremental",
-    "parsing",
-    "tree-sitter",
-    "kotlin"
-  ],
   "files": [
     "grammar.js",
     "tree-sitter.json",
@@ -29,15 +32,32 @@
     "src/**",
     "*.wasm"
   ],
+  "scripts": {
+    "cleanup": "bun wb lint --fix --format",
+    "format": "bun wb lint --format",
+    "install": "node-gyp-build",
+    "lint": "bun wb lint",
+    "lint-fix": "bun wb lint --fix",
+    "prepare": "(bun lefthook install || true) && (test ! -f .lefthook/normalize-bun-lockfile.sh || bash .lefthook/normalize-bun-lockfile.sh)",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground",
+    "test": "node --test bindings/node/*_test.js",
+    "test/ci": "bun wb test-on-ci",
+    "verify": "bun wb verify",
+    "verify-full": "bun wb verify --full"
+  },
   "dependencies": {
     "node-addon-api": "^8.3.0",
     "node-gyp-build": "^4.8.4",
     "npm-check-updates": "^17.1.13"
   },
   "devDependencies": {
+    "@willbooster/wb": "22.8.0",
     "eslint": "^9.17.0",
     "eslint-config-treesitter": "^1.0.2",
+    "lefthook": "2.1.14",
     "prebuildify": "^6.0.1",
+    "sort-package-json": "4.0.0",
     "tree-sitter-cli": "^0.24.6"
   },
   "peerDependencies": {
@@ -48,11 +68,8 @@
       "optional": true
     }
   },
-  "scripts": {
-    "install": "node-gyp-build",
-    "lint": "eslint grammar.js",
-    "prestart": "tree-sitter build --wasm",
-    "start": "tree-sitter playground",
-    "test": "node --test bindings/node/*_test.js"
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
