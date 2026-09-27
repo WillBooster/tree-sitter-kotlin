@@ -294,7 +294,7 @@ module.exports = grammar({
           'in',
           $.expression,
           ')',
-          optional(choice($.block, $.statement))
+          optional(field('body', choice($.block, $.statement)))
         )
       ),
 
@@ -306,7 +306,7 @@ module.exports = grammar({
           '(',
           field('condition', $.expression),
           ')',
-          optional(choice($.block, $.statement, ';'))
+          optional(choice(field('body', choice($.block, $.statement)), ';'))
         )
       ),
 
@@ -315,7 +315,7 @@ module.exports = grammar({
         seq(
           optional($.label),
           'do',
-          optional(choice($.block, $.statement, ';')),
+          optional(choice(field('body', choice($.block, $.statement)), ';')),
           'while',
           '(',
           field('condition', $.expression),
@@ -592,15 +592,13 @@ module.exports = grammar({
           field('condition', $.expression),
           ')',
           choice(
-            $.block,
-            $.expression,
-            $.assignment,
+            field('consequence', choice($.block, $.expression, $.assignment)),
             ';',
             seq(
-              optional(choice($.block, $.expression, $.assignment)),
+              optional(field('consequence', choice($.block, $.expression, $.assignment))),
               optional(';'),
               'else',
-              choice($.block, $.expression, $.assignment, ';')
+              choice(field('alternative', choice($.block, $.expression, $.assignment)), ';')
             )
           )
         )
@@ -619,7 +617,7 @@ module.exports = grammar({
       seq(
         choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else'),
         '->',
-        choice($.block, $.statement),
+        field('body', choice($.block, $.statement)),
         optional($._semi)
       ),
 

@@ -932,6 +932,20 @@
     "type": "do_while_statement",
     "named": true,
     "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "statement",
+            "named": true
+          }
+        ]
+      },
       "condition": {
         "multiple": false,
         "required": true,
@@ -944,19 +958,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": false,
       "types": [
         {
-          "type": "block",
-          "named": true
-        },
-        {
           "type": "label",
-          "named": true
-        },
-        {
-          "type": "statement",
           "named": true
         }
       ]
@@ -1064,7 +1070,22 @@
   {
     "type": "for_statement",
     "named": true,
-    "fields": {},
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "statement",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -1074,7 +1095,7 @@
           "named": true
         },
         {
-          "type": "block",
+          "type": "expression",
           "named": true
         },
         {
@@ -1083,10 +1104,6 @@
         },
         {
           "type": "multi_variable_declaration",
-          "named": true
-        },
-        {
-          "type": "statement",
           "named": true
         },
         {
@@ -1262,6 +1279,24 @@
     "type": "if_expression",
     "named": true,
     "fields": {
+      "alternative": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "assignment",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
       "condition": {
         "multiple": false,
         "required": true,
@@ -1271,25 +1306,25 @@
             "named": true
           }
         ]
+      },
+      "consequence": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "assignment",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "assignment",
-          "named": true
-        },
-        {
-          "type": "block",
-          "named": true
-        },
-        {
-          "type": "expression",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2482,6 +2517,20 @@
     "type": "when_entry",
     "named": true,
     "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "statement",
+            "named": true
+          }
+        ]
+      },
       "condition": {
         "multiple": true,
         "required": false,
@@ -2500,20 +2549,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "block",
-          "named": true
-        },
-        {
-          "type": "statement",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2562,6 +2597,20 @@
     "type": "while_statement",
     "named": true,
     "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "statement",
+            "named": true
+          }
+        ]
+      },
       "condition": {
         "multiple": false,
         "required": true,
@@ -2574,19 +2623,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": false,
       "types": [
         {
-          "type": "block",
-          "named": true
-        },
-        {
           "type": "label",
-          "named": true
-        },
-        {
-          "type": "statement",
           "named": true
         }
       ]
