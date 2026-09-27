@@ -174,6 +174,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     advance(lexer);
                     lexer->mark_end(lexer);
                     return true;
+                // A class member may end on the line that closes its body (`class A { val x = 1 }`).
+                case '}':
+                    return valid_symbols[CLASS_MEMBER_SEMI] && !valid_symbols[SEMI];
                 default:
                     return false;
             }
