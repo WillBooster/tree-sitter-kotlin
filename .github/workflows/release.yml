@@ -41,7 +41,7 @@ jobs:
       - id: next
         shell: bash
         run: |
-          version=$(bun run release-test 2>&1 | sed -n 's/.*The next release version is \([0-9][^ ]*\).*/\1/p' | tail -n 1)
+          version=$(bun run release-test 2>&1 | sed -n 's/.*[Tt]he next release version is \([0-9][^ ]*\).*/\1/p' | tail -n 1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
