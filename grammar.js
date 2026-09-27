@@ -294,7 +294,7 @@ module.exports = grammar({
           'in',
           $.expression,
           ')',
-          optional(choice($.block, $.statement))
+          optional(field('body', choice($.block, $.statement)))
         )
       ),
 
@@ -306,7 +306,7 @@ module.exports = grammar({
           '(',
           field('condition', $.expression),
           ')',
-          optional(choice($.block, $.statement, ';'))
+          optional(choice(field('body', choice($.block, $.statement)), ';'))
         )
       ),
 
@@ -315,7 +315,7 @@ module.exports = grammar({
         seq(
           optional($.label),
           'do',
-          optional(choice($.block, $.statement, ';')),
+          optional(choice(field('body', choice($.block, $.statement)), ';')),
           'while',
           '(',
           field('condition', $.expression),
@@ -430,7 +430,15 @@ module.exports = grammar({
         field('right', $.expression)
       ),
 
-    expression: ($) => choice($.primary_expression, $.index_expression, $.return_expression, $.throw_expression),
+    expression: ($) =>
+      choice(
+        $.primary_expression,
+        $.index_expression,
+        $.return_expression,
+        $.throw_expression,
+        $.continue_expression,
+        $.break_expression
+      ),
 
     primary_expression: ($) =>
       choice(
@@ -584,15 +592,13 @@ module.exports = grammar({
           field('condition', $.expression),
           ')',
           choice(
-            $.block,
-            $.expression,
-            $.assignment,
+            field('consequence', choice($.block, $.expression, $.assignment)),
             ';',
             seq(
-              optional(choice($.block, $.expression, $.assignment)),
+              optional(field('consequence', choice($.block, $.expression, $.assignment))),
               optional(';'),
               'else',
-              choice($.block, $.expression, $.assignment, ';')
+              choice(field('alternative', choice($.block, $.expression, $.assignment)), ';')
             )
           )
         )
@@ -611,7 +617,7 @@ module.exports = grammar({
       seq(
         choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else'),
         '->',
-        choice($.block, $.statement),
+        field('body', choice($.block, $.statement)),
         optional($._semi)
       ),
 
@@ -640,7 +646,13 @@ module.exports = grammar({
     callable_reference: ($) => seq(optional($._receiver_type), '::', choice($.identifier, 'class')),
 
     navigation_expression: ($) =>
-      prec(PREC.CALL, seq($.expression, choice('.', alias($._q_dot, '?.'), '::'), $.identifier)),
+      prec(
+        PREC.CALL,
+        choice(
+          seq($.expression, choice('.', alias($._q_dot, '?.')), $.identifier),
+          seq($.expression, '::', choice($.identifier, 'class'))
+        )
+      ),
 
     object_literal: ($) => seq('object', optional(seq(':', $.delegation_specifiers)), $.class_body),
 
@@ -667,7 +679,12 @@ module.exports = grammar({
         choice('"""', '""""')
       ),
 
-    interpolation: ($) => choice(seq('$', $._identifier), seq('${', $.expression, '}')),
+    interpolation: ($) =>
+      choice(
+        // Immediate so that it outranks the string content that would otherwise absorb the name.
+        seq('$', alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier)),
+        seq('${', $.expression, '}')
+      ),
 
     character_literal: ($) => seq("'", choice(token.immediate(prec(1, /[^'\\\r\n]/)), $.escape_sequence), "'"),
 

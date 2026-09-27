@@ -25,9 +25,11 @@
   "bindings": {
     "c": true,
     "go": true,
+    "java": false,
     "node": true,
     "python": true,
-    "rust": false,
-    "swift": true
+    "rust": true,
+    "swift": true,
+    "zig": false
   }
 }

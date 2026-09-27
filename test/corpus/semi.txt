@@ -306,3 +306,46 @@ fun test() {
               (identifier)
               (identifier))
             (identifier)))))))
+
+=========================================
+Class member closed on the same line
+=========================================
+
+class A { companion object { fun f() = 1 } }
+class B { object C { val x = 1 } }
+enum class E { X; val x = 1 }
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (companion_object
+        (class_body
+          (function_declaration
+            (identifier)
+            (function_value_parameters)
+            (function_body
+              (number_literal)))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (object_declaration
+        (identifier)
+        (class_body
+          (property_declaration
+            (variable_declaration
+              (identifier))
+            (number_literal))))))
+  (class_declaration
+    (modifiers
+      (class_modifier))
+    (identifier)
+    (enum_class_body
+      (enum_entry
+        (identifier))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)))))

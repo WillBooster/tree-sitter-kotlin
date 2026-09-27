@@ -547,3 +547,113 @@ x as Baz.Quux
     (user_type
       (identifier)
       (identifier))))
+
+=========================================
+Jump expressions
+=========================================
+
+fun f() {
+    outer@ for (i in xs) {
+        while (i) {
+            if (a) continue@outer else break@outer
+            if (b) continue
+            break
+        }
+    }
+}
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (for_statement
+          (label)
+          (variable_declaration
+            (identifier))
+          (identifier)
+          body: (block
+            (while_statement
+              condition: (identifier)
+              body: (block
+                (if_expression
+                  condition: (identifier)
+                  consequence: (continue_expression
+                    label: (identifier))
+                  alternative: (break_expression
+                    label: (identifier)))
+                (if_expression
+                  condition: (identifier)
+                  consequence: (continue_expression))
+                (break_expression)))))))))
+
+=========================================
+String interpolation
+=========================================
+
+val s = "a$value ${x} $ $1 \$x"
+val m = """$value ${x} $"""
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (string_content)
+      (string_content)
+      (string_content)
+      (string_content)
+      (escape_sequence)
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content))))
+
+=========================================
+Callable references
+=========================================
+
+val a = xs::size
+val b = ::foo
+val c = T::class.java
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (navigation_expression
+      (identifier)
+      (identifier)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (callable_reference
+      (identifier)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (navigation_expression
+      (navigation_expression
+        (identifier))
+      (identifier))))
