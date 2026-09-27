@@ -1,0 +1,17 @@
+examples/LibreTube/app/src/main/java/com/github/libretube/util/DefaultTrackSelectorWithAudioQualitySupport.kt
+examples/ktlint/build-logic/src/main/kotlin/KtlintCliTask.kt
+examples/ktlint/build-logic/src/main/kotlin/ShadowJarExecutableTask.kt
+examples/ktlint/ktlint-cli/src/main/kotlin/io/github/ktlint/core/cli/internal/KtlintCommandLine.kt
+examples/ktlint/ktlint-ruleset-standard/src/test/kotlin/io/github/ktlint/core/ruleset/standard/rules/LambdaReturnRuleTest.kt
+examples/mockk/modules/mockk-context-parameters/src/commonMain/kotlin/io/mockk/context/ContextParameters.kt
+examples/mockk/modules/mockk-dsl/src/commonMain/kotlin/io/mockk/API.kt
+examples/ort/clients/clearly-defined/src/main/kotlin/ClearlyDefinedService.kt
+examples/ort/model/src/main/kotlin/config/AnalyzerConfiguration.kt
+examples/ort/model/src/main/kotlin/config/PackageManagerConfiguration.kt
+examples/ort/plugins/api/src/main/kotlin/OrtPluginEnumEntry.kt
+examples/ort/plugins/api/src/main/kotlin/OrtPluginOption.kt
+examples/ort/plugins/package-managers/node/src/main/kotlin/NodeVersionManagerCommand.kt
+examples/ort/plugins/scanners/scanoss/src/test/resources/exclusionTest/random-data-05-04-43.kt
+examples/ort/plugins/scanners/scanoss/src/test/resources/exclusionTest/random-data-05-05-29.kt
+examples/ort/plugins/scanners/scanoss/src/test/resources/filesToScan/random-data-05-06-11.kt
+examples/ort/plugins/scanners/scanoss/src/test/resources/filesToScan/random-data-05-07-04.kt
