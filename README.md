@@ -35,7 +35,10 @@ script/parse-examples
 
 `bun run test` runs:
 
-- the corpus in `test/corpus`;
+- the corpus in `test/corpus`, with the native build and with the Wasm build (the first run downloads the WASI SDK);
+- an incremental-parsing check (`test/unit/incremental.test.ts`): `tree-sitter fuzz` edits each corpus case at random,
+  reparses it, undoes the edits, and reparses again. `TREE_SITTER_SEED`, `TREE_SITTER_ITERATIONS`, and
+  `TREE_SITTER_EDITS` run other or more edits;
 - the Node.js binding test;
 - a check that real-world Kotlin files cloned into `examples/` fail to parse exactly as listed in
   `script/known-failures.txt`. The first run clones them. The example repositories are pinned to commits in
@@ -44,6 +47,9 @@ script/parse-examples
 - a performance check (`test/unit/performance.test.ts`) that recovering from an error on each of 10,000 lines takes
   linear time, since consumers parse files while they are being edited. It loads the Node.js addon, which
   `bun run build/ci` rebuilds after regenerating the parser.
+
+CI also runs these tests on every platform that gets a prebuild, and fuzzes the parser with libFuzzer and sanitizers
+(`.github/workflows/robustness.yml`).
 
 ### References
 
