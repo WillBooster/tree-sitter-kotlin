@@ -309,11 +309,10 @@ val a
 ---
 
 ==============================
-Unfinished annotation at the end of a class body
+Unfinished annotation after a typed property at the end of input
 :error
 ==============================
 
-class A {
-  val a
-  @B
+val a: Int
+@B
 ---
