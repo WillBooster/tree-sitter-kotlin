@@ -9,7 +9,7 @@ const KillMargin = 10_000;
 // a loop keeps busy the native binary that `bun run tree-sitter` starts through Node.js, not the direct child.
 export function testCommand(
   name: string,
-  command: string[],
+  command: [string, ...string[]],
   timeout: number,
   options: { env?: Record<string, string>; check?: (output: string) => void } = {}
 ): void {

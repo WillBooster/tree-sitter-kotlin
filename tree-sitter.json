@@ -5,10 +5,7 @@
       "name": "kotlin",
       "camelcase": "Kotlin",
       "scope": "source.kotlin",
-      "file-types": [
-        "kt",
-        "kts"
-      ],
+      "file-types": ["kt", "kts"],
       "injection-regex": "^(kotlin|kt)$"
     }
   ],
