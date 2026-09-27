@@ -627,3 +627,33 @@ val m = """$value ${x} $"""
       (interpolation
         (identifier))
       (string_content))))
+
+=========================================
+Callable references
+=========================================
+
+val a = xs::size
+val b = ::foo
+val c = T::class.java
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (navigation_expression
+      (identifier)
+      (identifier)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (callable_reference
+      (identifier)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (navigation_expression
+      (navigation_expression
+        (identifier))
+      (identifier))))

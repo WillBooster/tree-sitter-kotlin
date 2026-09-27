@@ -646,7 +646,13 @@ module.exports = grammar({
     callable_reference: ($) => seq(optional($._receiver_type), '::', choice($.identifier, 'class')),
 
     navigation_expression: ($) =>
-      prec(PREC.CALL, seq($.expression, choice('.', alias($._q_dot, '?.'), '::'), $.identifier)),
+      prec(
+        PREC.CALL,
+        choice(
+          seq($.expression, choice('.', alias($._q_dot, '?.')), $.identifier),
+          seq($.expression, '::', choice($.identifier, 'class'))
+        )
+      ),
 
     object_literal: ($) => seq('object', optional(seq(':', $.delegation_specifiers)), $.class_body),
 
