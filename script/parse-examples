@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+# Parses real-world scripts cloned into examples/ and rewrites script/known-failures.txt, the list of
+# files that fail to parse. With --check, fails instead when that list would change.
+
+set -euo pipefail
+
+check=false
+if [[ ${1-} == --check ]]; then
+  check=true
+fi
+
+# Each example repository is pinned to a commit so that the list of failures changes only with the grammar.
+# Moving a pin requires running this script without --check to update the list. The checkouts under
+# examples/ belong to this script: local changes there are discarded so that the pinned files are parsed.
+# The hosts occasionally answer with a server error, so each fetch is retried in place.
+clone() {
+  local dir=examples/$1
+  if [[ $(git -C "$dir" rev-parse HEAD 2> /dev/null) != "$3" ]]; then
+    if [[ ! -d $dir/.git ]]; then
+      rm -rf "$dir"
+      git init -q "$dir"
+    fi
+    local attempt
+    for attempt in 1 2 3 4; do
+      if git -C "$dir" fetch -q --depth=1 "$2" "$3"; then
+        break
+      fi
+      if [[ $attempt == 4 ]]; then
+        return 1
+      fi
+      sleep $((attempt * 15))
+    done
+    git -C "$dir" checkout -q -f --detach "$3"
+  fi
+  git -C "$dir" reset -q --hard
+  git -C "$dir" clean -q -ffdx
+}
+
+cd "$(dirname "$0")/.."
+
+clone intellij-rust https://github.com/intellij-rust/intellij-rust c6657c02bb62075bf7b7ceb84d000f93dda34dc1
+clone ktlint https://github.com/pinterest/ktlint 9dbe17d9e1b3b18f07d76bdd34bee0020ab05d02
+clone LibreTube https://github.com/libre-tube/LibreTube b51f20e3e3ef3f4f57a6e1b37983b35050ebaa59
+clone mockk https://github.com/mockk/mockk 6fa9a2dacb79caff913a5121598da5baa0f8be51
+clone ort https://github.com/oss-review-toolkit/ort e8ff5f36d7daef693b9c07040b40ac01f2741559
+clone sentry-java https://github.com/getsentry/sentry-java b59e639f5ae48357f55171f8f5ac69f008c6f505
+
+files=$(mktemp)
+output=$(mktemp)
+failures=$(mktemp)
+trap 'rm -f "$files" "$output" "$failures"' EXIT
+
+find examples -type f -name '*.kt' -print | LC_ALL=C sort > "$files"
+
+# The CLI exits non-zero whenever a file fails, so the output decides success. `--time` makes it print
+# a line for each file, including files that exceed `--timeout` (2 s), which bounds a runaway parse.
+bun run tree-sitter parse --grammar-path . -q -s --time --timeout 2000000 \
+  --paths "$files" > "$output" || true
+if ! grep -q '^Total parses' "$output"; then
+  cat "$output" >&2
+  exit 1
+fi
+grep '^Total parses' "$output"
+# A timeout depends on the machine, so it is no expected failure.
+if grep -q 'timed out' "$output"; then
+  echo 'These files exceeded the parse timeout; known-failures.txt is left unchanged:' >&2
+  awk '/timed out/{print $1}' "$output" >&2
+  exit 1
+fi
+awk '/ERROR|MISSING/{print $1}' "$output" | LC_ALL=C sort > "$failures"
+if [[ $check == true ]]; then
+  if ! diff -u script/known-failures.txt "$failures" >&2; then
+    echo 'The files failing to parse differ from script/known-failures.txt (- fixed, + broken).' >&2
+    echo 'Run script/parse-examples to update the list after checking the diff.' >&2
+    exit 1
+  fi
+else
+  cp "$failures" script/known-failures.txt
+fi
