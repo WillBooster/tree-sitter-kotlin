@@ -298,3 +298,21 @@ enum class Color2(val rgb: Int) {
         (function_value_parameters)
         (function_body
           (identifier))))))
+
+==============================
+Unfinished annotation at the end of input
+:error
+==============================
+
+val a
+@B(x
+---
+
+==============================
+Unfinished annotation after a typed property at the end of input
+:error
+==============================
+
+val a: Int
+@B
+---

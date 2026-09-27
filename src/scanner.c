@@ -70,7 +70,11 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
 void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {}
 
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
-    if (valid_symbols[MULTILINE_STRING_CONTENT]) {
+    // During error recovery every token is valid, including string content and a semicolon, which never are
+    // together otherwise. Scanning string content there would consume the rest of the input on each
+    // recovery attempt, making recovery quadratic in the input length.
+    bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    if (valid_symbols[MULTILINE_STRING_CONTENT] && !error_recovery) {
         bool did_advance = false;
         lexer->result_symbol = MULTILINE_STRING_CONTENT;
         while (!lexer->eof(lexer)) {
@@ -314,7 +318,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return true;
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
-                    while (!iswspace(lexer->lookahead)) {
+                    while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
                         skip(lexer);
                     }
                     while (iswspace(lexer->lookahead)) {
@@ -331,7 +335,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 if (valid_symbols[GET] || valid_symbols[SET]) {
                     bool saw_paren = false;
-                    while ((saw_paren ? lexer->lookahead != '\n' : !iswspace(lexer->lookahead))) {
+                    while (!lexer->eof(lexer) && (saw_paren ? lexer->lookahead != '\n' : !iswspace(lexer->lookahead))) {
                         skip(lexer);
                         if (lexer->lookahead == '(') {
                             saw_paren = true;
