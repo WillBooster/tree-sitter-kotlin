@@ -587,3 +587,6 @@ zig-out/
 *.zip
 
 .tmp/
+
+# Rust artifacts
+/target/

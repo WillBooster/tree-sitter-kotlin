@@ -23,6 +23,19 @@ parser.setLanguage(Kotlin);
 const tree = parser.parse('fun main() = println("Hello")\n');
 ```
 
+In Rust, depend on the Git repository; the crate is not published to crates.io:
+
+```toml
+[dependencies]
+tree-sitter = "0.27"
+tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", git = "https://github.com/WillBooster/tree-sitter-kotlin", tag = "v1.1.0" }
+```
+
+```rust
+let mut parser = tree_sitter::Parser::new();
+parser.set_language(&tree_sitter_kotlin::LANGUAGE.into())?;
+```
+
 ## Development
 
 ```sh
@@ -31,6 +44,7 @@ bun install --frozen-lockfile
 bun run build/ci
 bun run test
 script/parse-examples
+cargo test
 ```
 
 `bun run test` runs:
