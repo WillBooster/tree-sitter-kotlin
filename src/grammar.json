@@ -3285,6 +3285,14 @@
         {
           "type": "SYMBOL",
           "name": "throw_expression"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "continue_expression"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "break_expression"
         }
       ]
     },
@@ -5587,8 +5595,21 @@
               "value": "$"
             },
             {
-              "type": "SYMBOL",
-              "name": "_identifier"
+              "type": "ALIAS",
+              "content": {
+                "type": "IMMEDIATE_TOKEN",
+                "content": {
+                  "type": "PREC",
+                  "value": 2,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "[\\p{L}_][\\p{L}_\\p{Nd}]*",
+                    "flags": "u"
+                  }
+                }
+              },
+              "named": true,
+              "value": "identifier"
             }
           ]
         },
