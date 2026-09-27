@@ -1,8 +1,8 @@
 [package]
-name = "tree-sitter-kotlin-ng"
+name = "willbooster-tree-sitter-kotlin"
 description = "Kotlin grammar for tree-sitter"
 version = "1.1.0"
-authors = ["Amaan Qureshi <amaanq12@gmail.com>"]
+authors = ["WillBooster Inc."]
 license = "MIT"
 readme = "README.md"
 keywords = ["incremental", "parsing", "tree-sitter", "kotlin"]

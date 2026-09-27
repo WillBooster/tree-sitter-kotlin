@@ -11,7 +11,7 @@
 //! }
 //! "#;
 //! let mut parser = tree_sitter::Parser::new();
-//! let language = tree_sitter_kotlin_ng::LANGUAGE;
+//! let language = willbooster_tree_sitter_kotlin::LANGUAGE;
 //! parser
 //!     .set_language(&language.into())
 //!     .expect("Error loading Kotlin parser");

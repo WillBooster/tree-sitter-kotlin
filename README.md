@@ -1,10 +1,10 @@
 # @willbooster/tree-sitter-kotlin
 
-Kotlin grammar for [tree-sitter](https://github.com/tree-sitter/tree-sitter), maintained by WillBooster Inc. as a fork of
-[tree-sitter-grammars/tree-sitter-kotlin](https://github.com/tree-sitter-grammars/tree-sitter-kotlin), written by
-[Amaan Qureshi](https://github.com/amaanq). We thank the upstream authors and contributors; this repository exists to
-keep releasing fixes for the grammar, and fixes that also apply upstream are credited to the upstream issues and pull
-requests they resolve.
+Kotlin grammar for [tree-sitter](https://github.com/tree-sitter/tree-sitter), forked from
+[tree-sitter-grammars/tree-sitter-kotlin](https://github.com/tree-sitter-grammars/tree-sitter-kotlin). We are grateful
+to its authors and contributors. This is not an official release of that project.
+
+This fork fixes parsing bugs and raises conformance with the Kotlin grammar.
 
 ## References
 

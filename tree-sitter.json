@@ -18,8 +18,7 @@
     "description": "Kotlin grammar for tree-sitter",
     "authors": [
       {
-        "name": "Amaan Qureshi",
-        "email": "amaanq12@gmail.com"
+        "name": "WillBooster Inc."
       }
     ],
     "links": {
