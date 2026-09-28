@@ -1884,6 +1884,18 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_loop_annotations"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
                 "name": "label"
               },
               {
@@ -1970,6 +1982,18 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_loop_annotations"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
                 "name": "label"
               },
               {
@@ -2045,6 +2069,18 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_loop_annotations"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
                 "name": "label"
               },
               {
@@ -2111,6 +2147,13 @@
             "value": ")"
           }
         ]
+      }
+    },
+    "_loop_annotations": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "SYMBOL",
+        "name": "annotation"
       }
     },
     "class_body": {
@@ -6370,6 +6413,29 @@
       "modifiers"
     ],
     [
+      "variable_declaration",
+      "for_statement",
+      "while_statement",
+      "do_while_statement",
+      "modifiers",
+      "type_modifiers",
+      "annotated_expression"
+    ],
+    [
+      "for_statement",
+      "while_statement",
+      "do_while_statement",
+      "annotated_expression"
+    ],
+    [
+      "for_statement",
+      "while_statement",
+      "do_while_statement",
+      "modifiers",
+      "type_modifiers",
+      "annotated_expression"
+    ],
+    [
       "parameter_modifiers",
       "type_modifiers"
     ],
@@ -6537,5 +6603,20 @@
     "type",
     "statement"
   ],
-  "reserved": {}
+  "reserved": {
+    "global": [
+      {
+        "type": "STRING",
+        "value": "do"
+      },
+      {
+        "type": "STRING",
+        "value": "for"
+      },
+      {
+        "type": "STRING",
+        "value": "while"
+      }
+    ]
+  }
 }

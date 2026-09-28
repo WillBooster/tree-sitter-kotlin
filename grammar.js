@@ -41,6 +41,17 @@ module.exports = grammar({
     [$.annotated_expression, $.type_modifiers],
     [$.annotated_expression, $.type_modifiers, $.when_subject],
     [$.annotated_expression, $.type_modifiers, $.modifiers],
+    [
+      $.variable_declaration,
+      $.for_statement,
+      $.while_statement,
+      $.do_while_statement,
+      $.modifiers,
+      $.type_modifiers,
+      $.annotated_expression,
+    ],
+    [$.for_statement, $.while_statement, $.do_while_statement, $.annotated_expression],
+    [$.for_statement, $.while_statement, $.do_while_statement, $.modifiers, $.type_modifiers, $.annotated_expression],
     [$.parameter_modifiers, $.type_modifiers],
     [$.function_modifier, $.type_modifiers],
     [$.function_modifier, $._reserved_identifier],
@@ -102,6 +113,10 @@ module.exports = grammar({
   ],
 
   word: ($) => $.identifier,
+
+  reserved: {
+    global: () => ['do', 'for', 'while'],
+  },
 
   rules: {
     source_file: ($) =>
@@ -286,6 +301,7 @@ module.exports = grammar({
     for_statement: ($) =>
       prec.right(
         seq(
+          optional($._loop_annotations),
           optional($.label),
           'for',
           '(',
@@ -301,6 +317,7 @@ module.exports = grammar({
     while_statement: ($) =>
       prec.right(
         seq(
+          optional($._loop_annotations),
           optional($.label),
           'while',
           '(',
@@ -313,6 +330,7 @@ module.exports = grammar({
     do_while_statement: ($) =>
       prec.right(
         seq(
+          optional($._loop_annotations),
           optional($.label),
           'do',
           optional(choice(field('body', choice($.block, $.statement)), ';')),
@@ -322,6 +340,8 @@ module.exports = grammar({
           ')'
         )
       ),
+
+    _loop_annotations: ($) => repeat1($.annotation),
 
     class_body: ($) => seq('{', repeat(seq($.class_member_declaration, $._class_member_semi)), '}'),
 

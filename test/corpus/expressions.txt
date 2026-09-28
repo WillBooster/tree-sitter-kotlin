@@ -591,6 +591,65 @@ fun f() {
                 (break_expression)))))))))
 
 =========================================
+Annotated loops
+=========================================
+
+fun f() {
+    @Suppress("X")
+    while (i-- > 0);
+    @A outer@ for (x in xs) {}
+    @A @B do {} while (x)
+    @A foo()
+}
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (while_statement
+          (annotation
+            (constructor_invocation
+              (user_type
+                (identifier))
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content))))))
+          condition: (binary_expression
+            left: (unary_expression
+              argument: (identifier))
+            right: (number_literal)))
+        (for_statement
+          (annotation
+            (user_type
+              (identifier)))
+          (label)
+          (variable_declaration
+            (identifier))
+          (identifier)
+          body: (block))
+        (do_while_statement
+          (annotation
+            (user_type
+              (identifier)))
+          (annotation
+            (user_type
+              (identifier)))
+          body: (block)
+          condition: (identifier))
+        (annotated_expression
+          (annotation
+            (user_type
+              (identifier)))
+          (call_expression
+            (identifier)
+            (value_arguments)))))))
+
+=========================================
 String interpolation
 =========================================
 
