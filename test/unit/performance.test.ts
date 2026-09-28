@@ -1,26 +1,26 @@
 import { expect, test } from 'bun:test';
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import Parser from 'tree-sitter';
+import { Language, Parser } from 'web-tree-sitter';
 
 const Root = path.join(import.meta.dir, '../..');
-// Bun cannot use node-gyp-build's lookup, so the addon that `bun install` builds is loaded directly.
-const AddonPath = path.join(Root, 'build/Release/tree_sitter_kotlin_binding.node');
+// The Wasm build is the one the package ships.
+const WasmPath = path.join(Root, 'tree-sitter-kotlin.wasm');
+await Parser.init();
 const parser = new Parser();
-parser.setLanguage(createRequire(import.meta.url)(AddonPath) as Parser.Language);
+parser.setLanguage(await Language.load(WasmPath));
 
-// Only `bun install` and `bun run build/ci` rebuild the addon, so a check against a stale one would pass
-// after a source edit that brings the slowdown back.
-test('uses a Node.js addon built from the current parser', () => {
-  // src/parser.c is generated from grammar.js, so an edit to the grammar alone also makes the addon stale.
+// Only `bun run build/ci` rebuilds the Wasm build, so a check against a stale one would pass after a source
+// edit that brings the slowdown back.
+test('uses a Wasm build built from the current parser', () => {
+  // src/parser.c is generated from grammar.js, so an edit to the grammar alone also makes the Wasm build stale.
   const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c'].map(
     (name) => fs.statSync(path.join(Root, name)).mtimeMs
   );
   expect(
-    Math.max(...sources) > fs.statSync(AddonPath).mtimeMs,
-    'grammar.js or src/ changed after the addon was built; run `bun run build/ci`'
+    Math.max(...sources) > fs.statSync(WasmPath).mtimeMs,
+    'grammar.js or src/ changed after the Wasm build was built; run `bun run build/ci`'
   ).toBe(false);
 });
 
@@ -28,6 +28,11 @@ test('uses a Node.js addon built from the current parser', () => {
 // takes about 0.2 s here; a scanner that read to the end of the input on each attempt took 50 s.
 test('recovers from an error on each of 10,000 lines in linear time', () => {
   const start = performance.now();
-  expect(parser.parse('$ a\n'.repeat(10_000)).rootNode.hasError).toBe(true);
-  expect(performance.now() - start).toBeLessThan(3000);
+  const tree = parser.parse('$ a\n'.repeat(10_000));
+  const elapsed = performance.now() - start;
+  if (!tree) throw new Error('The parser returned no tree');
+  const { hasError } = tree.rootNode;
+  tree.delete();
+  expect(hasError).toBe(true);
+  expect(elapsed).toBeLessThan(3000);
 });
