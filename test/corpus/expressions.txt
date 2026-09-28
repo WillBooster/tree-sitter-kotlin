@@ -661,6 +661,58 @@ fun f() {
             (value_arguments)))))))
 
 =========================================
+Loops in if bodies parse as calls without errors (if_expression accepts no loop)
+=========================================
+
+fun f() {
+    if (a) while (b) {}
+    if (c) for (i in xs) {} else @A do {} while (d)
+}
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (if_expression
+          condition: (identifier)
+          consequence: (call_expression
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier))))
+            (annotated_lambda
+              (lambda_literal))))
+        (if_expression
+          condition: (identifier)
+          consequence: (call_expression
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (in_expression
+                    left: (identifier)
+                    right: (identifier)))))
+            (annotated_lambda
+              (lambda_literal)))
+          alternative: (annotated_expression
+            (annotation
+              (user_type
+                (identifier)))
+            (infix_expression
+              (call_expression
+                (identifier)
+                (annotated_lambda
+                  (lambda_literal)))
+              (identifier)
+              (parenthesized_expression
+                (identifier)))))))))
+
+=========================================
 String interpolation
 =========================================
 
