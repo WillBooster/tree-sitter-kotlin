@@ -23,6 +23,12 @@
         "labels": ["r: semantic-release"],
         "releasedLabels": ["released :bookmark:"]
       }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "publishCmd": "script/publish-crate"
+      }
     ]
   ]
 }
