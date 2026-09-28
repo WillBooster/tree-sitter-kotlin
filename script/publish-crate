@@ -8,12 +8,15 @@ set -euo pipefail
 # semantic-release/exec would parse stdout as release info.
 exec 1>&2
 
+# crates.io rejects requests with curl's default User-Agent.
+user_agent='willbooster-tree-sitter-kotlin-release (https://github.com/WillBooster/tree-sitter-kotlin)'
+
 jwt=$(curl -sSf --retry 3 -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
   "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=crates.io" | jq -r .value)
-token=$(curl -sSf --retry 3 -X POST https://crates.io/api/v1/trusted_publishing/tokens \
+token=$(curl -sSf --retry 3 -A "$user_agent" -X POST https://crates.io/api/v1/trusted_publishing/tokens \
   -H 'Content-Type: application/json' -d "{\"jwt\":\"$jwt\"}" | jq -r .token)
 # Revocation is best-effort (the token expires on its own); its failure must not fail an already-done publish.
-trap 'curl -sSf -X DELETE -H "Authorization: Bearer $token" https://crates.io/api/v1/trusted_publishing/tokens ||
+trap 'curl -sSf -A "$user_agent" -X DELETE -H "Authorization: Bearer $token" https://crates.io/api/v1/trusted_publishing/tokens ||
   echo "warning: failed to revoke the crates.io token"' EXIT
 
 # The release versions written by script/set-grammar-version are not committed.
