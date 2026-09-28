@@ -11,7 +11,8 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "script/set-grammar-version ${nextRelease.version} && bun run build-wasm"
+        "prepareCmd": "script/set-grammar-version ${nextRelease.version} && bun run build-wasm",
+        "publishCmd": "script/publish-crate"
       }
     ],
     "@semantic-release/npm",

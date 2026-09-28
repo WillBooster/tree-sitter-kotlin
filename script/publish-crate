@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# Publishes the crate to crates.io with trusted publishing, exchanging the GitHub Actions OIDC token for a
+# short-lived crates.io token. crates.io matches the `release.yml` caller workflow, not the reusable workflow.
+
+set -euo pipefail
+
+# semantic-release/exec would parse stdout as release info.
+exec 1>&2
+
+jwt=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+  "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=crates.io" | jq -r .value)
+token=$(curl -sSf -X POST https://crates.io/api/v1/trusted_publishing/tokens \
+  -H 'Content-Type: application/json' -d "{\"jwt\":\"$jwt\"}" | jq -r .token)
+trap 'curl -sSf -X DELETE -H "Authorization: Bearer $token" https://crates.io/api/v1/trusted_publishing/tokens' EXIT
+
+# The release versions written by script/set-grammar-version are not committed.
+CARGO_REGISTRY_TOKEN=$token cargo publish --allow-dirty
