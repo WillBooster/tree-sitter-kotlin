@@ -15,14 +15,20 @@ This fork fixes parsing bugs and raises conformance with the Kotlin grammar.
 
 ## Usage
 
-```js
-const Parser = require('tree-sitter');
-const Kotlin = require('@willbooster/tree-sitter-kotlin');
+The npm package ships `tree-sitter-kotlin.wasm` for [web-tree-sitter](https://www.npmjs.com/package/web-tree-sitter):
 
+```js
+import { fileURLToPath } from 'node:url';
+import { Language, Parser } from 'web-tree-sitter';
+
+await Parser.init();
 const parser = new Parser();
-parser.setLanguage(Kotlin);
+const wasmPath = fileURLToPath(import.meta.resolve('@willbooster/tree-sitter-kotlin/tree-sitter-kotlin.wasm'));
+parser.setLanguage(await Language.load(wasmPath));
 const tree = parser.parse('fun main() = println("Hello")\n');
 ```
+
+The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the Git repository; the crate is not published to crates.io:
 
@@ -54,16 +60,15 @@ cargo test
 - an incremental-parsing check (`test/unit/incremental.test.ts`): `tree-sitter fuzz` edits each corpus case at random,
   reparses it, undoes the edits, and reparses again. `TREE_SITTER_SEED`, `TREE_SITTER_ITERATIONS`, and
   `TREE_SITTER_EDITS` run other or more edits;
-- the Node.js binding test;
 - a check that real-world Kotlin files cloned into `examples/` fail to parse exactly as listed in
   `script/known-failures.txt`. The first run clones them. The example repositories are pinned to commits in
   `script/parse-examples`. After a grammar change or a moved pin alters that list, `script/parse-examples` rewrites
   it; review its diff before committing;
 - a performance check (`test/unit/performance.test.ts`) that recovering from an error on each of 10,000 lines takes
-  linear time, since consumers parse files while they are being edited. It loads the Node.js addon, which
-  `bun run build/ci` rebuilds after regenerating the parser.
+  linear time, since consumers parse files while they are being edited. It loads the Wasm build through
+  web-tree-sitter, which `bun run build/ci` rebuilds after regenerating the parser.
 
-CI also runs these tests on every platform that gets a prebuild, and fuzzes the parser with libFuzzer and sanitizers
+CI also runs these tests on Linux arm64 and macOS, where the Rust binding compiles the parser natively, and fuzzes the parser with libFuzzer and sanitizers
 (`.github/workflows/robustness.yml`).
 
 ### References
