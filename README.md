@@ -1,6 +1,7 @@
 # @willbooster/tree-sitter-kotlin
 
 [![npm version](https://img.shields.io/npm/v/@willbooster/tree-sitter-kotlin.svg)](https://www.npmjs.com/package/@willbooster/tree-sitter-kotlin)
+[![crates.io](https://img.shields.io/crates/v/willbooster-tree-sitter-kotlin.svg)](https://crates.io/crates/willbooster-tree-sitter-kotlin)
 [![license](https://img.shields.io/npm/l/@willbooster/tree-sitter-kotlin.svg)](https://www.npmjs.com/package/@willbooster/tree-sitter-kotlin)
 [![Test](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test.yml)
 [![Test rust](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test-rust.yml/badge.svg)](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test-rust.yml)
@@ -30,12 +31,12 @@ const tree = parser.parse('fun main() = println("Hello")\n');
 
 The package also ships the node types in `src/node-types.json`.
 
-In Rust, depend on the Git repository; the crate is not published to crates.io:
+In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin):
 
 ```toml
 [dependencies]
 tree-sitter = "0.27"
-tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", git = "https://github.com/WillBooster/tree-sitter-kotlin", tag = "v1.1.0" }
+tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", version = "1.2" }
 ```
 
 ```rust
