@@ -2114,19 +2114,23 @@
       }
     },
     "_loop_prefix": {
-      "type": "REPEAT1",
+      "type": "PREC_DYNAMIC",
+      "value": 1,
       "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "annotation"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "label"
-          }
-        ]
+        "type": "REPEAT1",
+        "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "annotation"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "label"
+            }
+          ]
+        }
       }
     },
     "class_body": {
@@ -6386,33 +6390,25 @@
       "modifiers"
     ],
     [
-      "for_statement",
-      "while_statement",
-      "do_while_statement",
-      "labeled_expression"
-    ],
-    [
       "variable_declaration",
-      "for_statement",
-      "while_statement",
-      "do_while_statement",
+      "_loop_prefix",
       "modifiers",
       "type_modifiers",
       "annotated_expression"
     ],
     [
-      "for_statement",
-      "while_statement",
-      "do_while_statement",
+      "_loop_prefix",
       "annotated_expression"
     ],
     [
-      "for_statement",
-      "while_statement",
-      "do_while_statement",
+      "_loop_prefix",
       "modifiers",
       "type_modifiers",
       "annotated_expression"
+    ],
+    [
+      "_loop_prefix",
+      "labeled_expression"
     ],
     [
       "parameter_modifiers",
@@ -6582,20 +6578,5 @@
     "type",
     "statement"
   ],
-  "reserved": {
-    "global": [
-      {
-        "type": "STRING",
-        "value": "do"
-      },
-      {
-        "type": "STRING",
-        "value": "for"
-      },
-      {
-        "type": "STRING",
-        "value": "while"
-      }
-    ]
-  }
+  "reserved": {}
 }
