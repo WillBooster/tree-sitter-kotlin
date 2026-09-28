@@ -598,6 +598,7 @@ fun f() {
     @Suppress("X")
     while (i-- > 0);
     @A outer@ for (x in xs) {}
+    outer@ @A @B while (x) {}
     @A @B do {} while (x)
     @A foo()
 }
@@ -631,6 +632,16 @@ fun f() {
           (variable_declaration
             (identifier))
           (identifier)
+          body: (block))
+        (while_statement
+          (label)
+          (annotation
+            (user_type
+              (identifier)))
+          (annotation
+            (user_type
+              (identifier)))
+          condition: (identifier)
           body: (block))
         (do_while_statement
           (annotation

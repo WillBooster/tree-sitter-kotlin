@@ -1884,19 +1884,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "_loop_annotations"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          },
-          {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "label"
+                "name": "_loop_prefix"
               },
               {
                 "type": "BLANK"
@@ -1982,19 +1970,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "_loop_annotations"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          },
-          {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "label"
+                "name": "_loop_prefix"
               },
               {
                 "type": "BLANK"
@@ -2069,19 +2045,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "_loop_annotations"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          },
-          {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "label"
+                "name": "_loop_prefix"
               },
               {
                 "type": "BLANK"
@@ -2149,11 +2113,20 @@
         ]
       }
     },
-    "_loop_annotations": {
+    "_loop_prefix": {
       "type": "REPEAT1",
       "content": {
-        "type": "SYMBOL",
-        "name": "annotation"
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "annotation"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "label"
+          }
+        ]
       }
     },
     "class_body": {
@@ -6411,6 +6384,12 @@
       "annotated_expression",
       "type_modifiers",
       "modifiers"
+    ],
+    [
+      "for_statement",
+      "while_statement",
+      "do_while_statement",
+      "labeled_expression"
     ],
     [
       "variable_declaration",
