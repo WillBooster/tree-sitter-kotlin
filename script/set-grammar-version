@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Writes the release version into tree-sitter.json, the language metadata of the generated src/parser.c,
-// Cargo.toml and Cargo.lock, none of which semantic-release updates.
+// Writes the release version into tree-sitter.json, the language metadata of the generated src/parser.c and
+// Cargo.toml, none of which semantic-release updates.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -22,13 +22,8 @@ const metadata = /(\.metadata = \{\s*\.major_version = )\d+(,\s*\.minor_version 
 if (!metadata.test(parser)) throw new Error('src/parser.c has no language metadata block');
 fs.writeFileSync(parserFile, parser.replace(metadata, `$1${major}$2${minor}$3${patch}`));
 
-const crateVersions = {
-  'Cargo.toml': /^(version = )"[^"]*"/m,
-  'Cargo.lock': /^(name = "willbooster-tree-sitter-kotlin"\nversion = )"[^"]*"/m,
-};
-for (const [file, crateVersion] of Object.entries(crateVersions)) {
-  const manifestFile = path.join(root, file);
-  const manifest = fs.readFileSync(manifestFile, 'utf8');
-  if (!crateVersion.test(manifest)) throw new Error(`${file} has no version for the crate`);
-  fs.writeFileSync(manifestFile, manifest.replace(crateVersion, `$1"${version}"`));
-}
+const manifestFile = path.join(root, 'Cargo.toml');
+const manifest = fs.readFileSync(manifestFile, 'utf8');
+const crateVersion = /^(version = )"[^"]*"/m;
+if (!crateVersion.test(manifest)) throw new Error('Cargo.toml has no package version');
+fs.writeFileSync(manifestFile, manifest.replace(crateVersion, `$1"${version}"`));
