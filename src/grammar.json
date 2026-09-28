@@ -1884,7 +1884,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "label"
+                "name": "_loop_prefix"
               },
               {
                 "type": "BLANK"
@@ -1970,7 +1970,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "label"
+                "name": "_loop_prefix"
               },
               {
                 "type": "BLANK"
@@ -2045,7 +2045,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "label"
+                "name": "_loop_prefix"
               },
               {
                 "type": "BLANK"
@@ -2111,6 +2111,26 @@
             "value": ")"
           }
         ]
+      }
+    },
+    "_loop_prefix": {
+      "type": "PREC_DYNAMIC",
+      "value": 1,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "annotation"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "label"
+            }
+          ]
+        }
       }
     },
     "class_body": {
@@ -6368,6 +6388,27 @@
       "annotated_expression",
       "type_modifiers",
       "modifiers"
+    ],
+    [
+      "variable_declaration",
+      "_loop_prefix",
+      "modifiers",
+      "type_modifiers",
+      "annotated_expression"
+    ],
+    [
+      "_loop_prefix",
+      "annotated_expression"
+    ],
+    [
+      "_loop_prefix",
+      "modifiers",
+      "type_modifiers",
+      "annotated_expression"
+    ],
+    [
+      "_loop_prefix",
+      "labeled_expression"
     ],
     [
       "parameter_modifiers",

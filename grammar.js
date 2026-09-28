@@ -41,6 +41,10 @@ module.exports = grammar({
     [$.annotated_expression, $.type_modifiers],
     [$.annotated_expression, $.type_modifiers, $.when_subject],
     [$.annotated_expression, $.type_modifiers, $.modifiers],
+    [$.variable_declaration, $._loop_prefix, $.modifiers, $.type_modifiers, $.annotated_expression],
+    [$._loop_prefix, $.annotated_expression],
+    [$._loop_prefix, $.modifiers, $.type_modifiers, $.annotated_expression],
+    [$._loop_prefix, $.labeled_expression],
     [$.parameter_modifiers, $.type_modifiers],
     [$.function_modifier, $.type_modifiers],
     [$.function_modifier, $._reserved_identifier],
@@ -286,7 +290,7 @@ module.exports = grammar({
     for_statement: ($) =>
       prec.right(
         seq(
-          optional($.label),
+          optional($._loop_prefix),
           'for',
           '(',
           repeat($.annotation),
@@ -301,7 +305,7 @@ module.exports = grammar({
     while_statement: ($) =>
       prec.right(
         seq(
-          optional($.label),
+          optional($._loop_prefix),
           'while',
           '(',
           field('condition', $.expression),
@@ -313,7 +317,7 @@ module.exports = grammar({
     do_while_statement: ($) =>
       prec.right(
         seq(
-          optional($.label),
+          optional($._loop_prefix),
           'do',
           optional(choice(field('body', choice($.block, $.statement)), ';')),
           'while',
@@ -322,6 +326,8 @@ module.exports = grammar({
           ')'
         )
       ),
+
+    _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
     class_body: ($) => seq('{', repeat(seq($.class_member_declaration, $._class_member_semi)), '}'),
 
