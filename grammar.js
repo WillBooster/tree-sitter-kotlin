@@ -45,6 +45,7 @@ module.exports = grammar({
     [$._loop_prefix, $.annotated_expression],
     [$._loop_prefix, $.modifiers, $.type_modifiers, $.annotated_expression],
     [$._loop_prefix, $.labeled_expression],
+    [$._loop_prefix, $.type_modifiers, $.annotated_expression],
     [$.parameter_modifiers, $.type_modifiers],
     [$.function_modifier, $.type_modifiers],
     [$.function_modifier, $._reserved_identifier],
@@ -88,7 +89,7 @@ module.exports = grammar({
     '$',
   ],
 
-  inline: ($) => [$._statements, $._identifier],
+  inline: ($) => [$._statements, $._identifier, $._control_structure_body],
 
   precedences: ($) => [
     [$.block, $.lambda_literal],
@@ -298,7 +299,7 @@ module.exports = grammar({
           'in',
           $.expression,
           ')',
-          optional(field('body', choice($.block, $.statement)))
+          optional(field('body', $._control_structure_body))
         )
       ),
 
@@ -310,7 +311,7 @@ module.exports = grammar({
           '(',
           field('condition', $.expression),
           ')',
-          optional(choice(field('body', choice($.block, $.statement)), ';'))
+          optional(choice(field('body', $._control_structure_body), ';'))
         )
       ),
 
@@ -319,7 +320,7 @@ module.exports = grammar({
         seq(
           optional($._loop_prefix),
           'do',
-          optional(choice(field('body', choice($.block, $.statement)), ';')),
+          optional(choice(field('body', $._control_structure_body), ';')),
           'while',
           '(',
           field('condition', $.expression),
@@ -598,17 +599,22 @@ module.exports = grammar({
           field('condition', $.expression),
           ')',
           choice(
-            field('consequence', choice($.block, $.expression, $.assignment)),
+            field('consequence', $._control_structure_body),
             ';',
             seq(
-              optional(field('consequence', choice($.block, $.expression, $.assignment))),
+              optional(field('consequence', $._control_structure_body)),
               optional(';'),
               'else',
-              choice(field('alternative', choice($.block, $.expression, $.assignment)), ';')
+              choice(field('alternative', $._control_structure_body), ';')
             )
           )
         )
       ),
+
+    // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
+    // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
+    _control_structure_body: ($) =>
+      choice($.block, $.expression, $.assignment, $.for_statement, $.while_statement, $.do_while_statement),
 
     parenthesized_expression: ($) => seq('(', $.expression, ')'),
 
