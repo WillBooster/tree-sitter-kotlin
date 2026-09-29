@@ -65,21 +65,26 @@ static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE
 }
 
 static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
-    "public",   "private",  "protected", "internal", "abstract", "final",  "open",   "override", "lateinit",
-    "vararg",   "noinline", "crossinline", "external", "suspend", "inline", "infix", "expect",   "actual",
+    "public",   "private", "protected",   "internal", "abstract", "final",   "open",   "override",
+    "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
 };
 
-// The words other than the modifiers above that start a declaration.
-static const char DECLARATION_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
-    "fun",  "val",    "var",   "class", "interface",  "object", "typealias", "data",
-    "enum", "sealed", "inner", "value", "annotation", "const",  "operator",  "tailrec",
+// The other modifiers. Unlike those above, a statement after an expression may also start with them as names.
+static const char OTHER_MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "data",  "enum",     "sealed",  "inner", "value",  "annotation",
+    "const", "operator", "tailrec", "infix", "expect", "actual",
+};
+
+static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
 static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_'; }
 
 // Skips modifier words, leaving the next word, if any, in `scanned_word`.
-static void skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]) {
-    while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL)) {
+static void skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
+    while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
+           (all && scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL))) {
         memset(scanned_word, 0, MAX_WORD_SIZE);
         while (iswspace(lexer->lookahead)) {
             skip(lexer);
@@ -344,10 +349,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return false;
             }
             if (iswalpha(lexer->lookahead)) {
-                // Modifiers not followed by a declaration, as in `open = 1`, start a statement of their own.
-                skip_modifier_words(lexer, scanned_word);
+                // Modifiers not followed by a declaration, as in `open = 1` or `sealed = 1`, start a statement of their own.
+                skip_modifier_words(lexer, scanned_word, true);
                 if ((!scanned_word[0] && lexer->lookahead == '@') ||
-                    scan_words(lexer, DECLARATION_WORDS, scanned_word, NULL)) {
+                    scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
                     return false;
                 }
                 goto keywords;
@@ -415,7 +420,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case 'c':
             case 'b':
             case 'w':
-                skip_modifier_words(lexer, scanned_word);
+                skip_modifier_words(lexer, scanned_word, false);
             keywords:;
                 uint8_t index = -1;
                 bool res = scan_words(
