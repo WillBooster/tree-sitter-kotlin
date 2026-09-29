@@ -79,7 +79,8 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
-static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_'; }
+// Any non-ASCII character may be a letter, which `iswalpha` does not tell in the C locale.
+static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_' || c > 0x7f; }
 
 // Skips modifier words, leaving the next word, if any, in `scanned_word`.
 static void skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
@@ -135,11 +136,14 @@ static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
     }
 }
 
-static void skip_literal_rest(TSLexer *lexer, int32_t quote);
+// Bounds the recursion through string templates that nest strings, so that crafted input cannot overflow the stack.
+#define MAX_TEMPLATE_NESTING 16
+
+static bool skip_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting);
 
 // Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
-// Returns false at the end of the input.
-static bool skip_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close) {
+// Returns false at the end of the input or when templates nest too deeply.
+static bool skip_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting) {
     unsigned depth = 1;
     while (depth > 0) {
         int32_t c = lexer->lookahead;
@@ -155,21 +159,21 @@ static bool skip_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close)
             depth++;
         } else if (c == close) {
             depth--;
-        } else if (c == '"' || c == '\'' || c == '`') {
-            skip_literal_rest(lexer, c);
+        } else if ((c == '"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, nesting)) {
+            return false;
         }
     }
     return true;
 }
 
 // Skips the rest of a string or character literal or a backticked name after its opening quote, including the
-// expressions of string templates.
-static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
+// expressions of string templates. Returns false where `skip_to_closing_bracket` does.
+static bool skip_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting) {
     bool raw = false;
     if (quote == '"' && lexer->lookahead == '"') {
         skip(lexer);
         if (lexer->lookahead != '"') {
-            return;
+            return true;
         }
         skip(lexer);
         raw = true;
@@ -185,12 +189,15 @@ static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
             skip(lexer);
         } else if (c == '$' && quote == '"' && lexer->lookahead == '{') {
             skip(lexer);
-            skip_to_closing_bracket(lexer, '{', '}');
+            if (nesting == MAX_TEMPLATE_NESTING || !skip_to_closing_bracket(lexer, '{', '}', nesting + 1)) {
+                return false;
+            }
         }
     }
     if (!raw) {
         skip(lexer);
     }
+    return true;
 }
 
 // Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
@@ -212,7 +219,7 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
         return false;
     }
     // A parenthesis in a literal (e.g. in an annotation's argument) or in a backticked name is not one of the list.
-    if (!skip_to_closing_bracket(lexer, '(', ')')) {
+    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) {
         return false;
     }
     skip_whitespace_and_comments(lexer, true);

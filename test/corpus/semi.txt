@@ -481,6 +481,10 @@ class A {
     set(@A("${")"}") value) {
       field = value
     }
+  var r = 1
+    set(ä) {
+      field = ä
+    }
 }
 
 ---
@@ -595,6 +599,17 @@ class A {
                       (interpolation
                         (string_literal
                           (string_content)))))))))
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
           (identifier)
           (function_body
             (block
