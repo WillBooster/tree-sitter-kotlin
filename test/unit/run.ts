@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { spawn } from 'node:child_process';
 
-// Leaves time to kill the command and report its output before bun's own test timeout.
+// Leaves time to kill the command and report its output before Vitest's own test timeout.
 const KillMargin = 10_000;
 
 // Tests that a command run from the repository root exits zero within the timeout, and passes its output to
