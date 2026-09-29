@@ -88,84 +88,54 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
     return skipped;
 }
 
-static void skip_whitespace_and_comments(TSLexer *lexer) {
+// Skips the rest of a block comment after its `/*`. Block comments nest in Kotlin.
+static void skip_block_comment_rest(TSLexer *lexer) {
+    unsigned depth = 1;
+    while (depth > 0 && !lexer->eof(lexer)) {
+        int32_t c = lexer->lookahead;
+        skip(lexer);
+        if (c == '*' && lexer->lookahead == '/') {
+            skip(lexer);
+            depth--;
+        } else if (c == '/' && lexer->lookahead == '*') {
+            skip(lexer);
+            depth++;
+        }
+    }
+}
+
+// Skips whitespace and comments, but only up to the end of the line unless `across_lines` is set. Returns false when
+// it stops after consuming a `/` that starts no comment.
+static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
     for (;;) {
-        while (iswspace(lexer->lookahead)) {
+        while (across_lines ? iswspace(lexer->lookahead) : lexer->lookahead == ' ' || lexer->lookahead == '\t') {
             skip(lexer);
         }
         if (lexer->lookahead != '/') {
-            return;
+            return true;
         }
         skip(lexer);
-        if (lexer->lookahead == '/') {
+        if (lexer->lookahead == '*') {
+            skip(lexer);
+            skip_block_comment_rest(lexer);
+        } else if (lexer->lookahead == '/') {
             while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
                 skip(lexer);
             }
-        } else if (lexer->lookahead == '*') {
-            // Block comments nest in Kotlin.
-            skip(lexer);
-            unsigned depth = 1;
-            while (depth > 0 && !lexer->eof(lexer)) {
-                int32_t c = lexer->lookahead;
-                skip(lexer);
-                if (c == '*' && lexer->lookahead == '/') {
-                    skip(lexer);
-                    depth--;
-                } else if (c == '/' && lexer->lookahead == '*') {
-                    skip(lexer);
-                    depth++;
-                }
+            if (!across_lines) {
+                return true;
             }
         } else {
-            return;
+            return false;
         }
     }
 }
 
-// Skips the rest of a string or character literal or a backticked name after its opening quote.
-static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
-    if (quote == '"' && lexer->lookahead == '"') {
-        skip(lexer);
-        if (lexer->lookahead != '"') {
-            return;
-        }
-        skip(lexer);
-        // A raw string has no escapes and ends at the last of three or more quotes.
-        unsigned quotes = 0;
-        while (!lexer->eof(lexer) && (quotes < 3 || lexer->lookahead == '"')) {
-            quotes = lexer->lookahead == '"' ? quotes + 1 : 0;
-            skip(lexer);
-        }
-        return;
-    }
-    while (!lexer->eof(lexer) && lexer->lookahead != quote) {
-        // A backticked name has no escapes.
-        if (lexer->lookahead == '\\' && quote != '`') {
-            skip(lexer);
-        }
-        skip(lexer);
-    }
-    skip(lexer);
-}
+static void skip_literal_rest(TSLexer *lexer, int32_t quote);
 
-// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
-// a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
-// accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
-// such as `get("a") { … }` or an assignment such as `set = 1` on the next line from an accessor.
-static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-        skip(lexer);
-    }
-    if (lexer->lookahead != '(') {
-        return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
-               lexer->lookahead == '}' || lexer->lookahead == '/';
-    }
-    skip(lexer);
-    skip_whitespace_and_comments(lexer);
-    if (setter ? !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@' || lexer->lookahead == '`')
-               : lexer->lookahead != ')') {
-        return false;
-    }
+// Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
+// Returns false at the end of the input.
+static bool skip_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close) {
     unsigned depth = 1;
     while (depth > 0) {
         int32_t c = lexer->lookahead;
@@ -173,21 +143,75 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
             return false;
         }
         if (c == '/') {
-            skip_whitespace_and_comments(lexer);
+            skip_whitespace_and_comments(lexer, true);
             continue;
         }
         skip(lexer);
-        if (c == '(') {
+        if (c == open) {
             depth++;
-        } else if (c == ')') {
+        } else if (c == close) {
             depth--;
         } else if (c == '"' || c == '\'' || c == '`') {
-            // A parenthesis in a string or character literal (e.g. in an annotation's argument) or in a backticked name
-            // is not one of the list.
             skip_literal_rest(lexer, c);
         }
     }
-    skip_whitespace_and_comments(lexer);
+    return true;
+}
+
+// Skips the rest of a string or character literal or a backticked name after its opening quote, including the
+// expressions of string templates.
+static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
+    bool raw = false;
+    if (quote == '"' && lexer->lookahead == '"') {
+        skip(lexer);
+        if (lexer->lookahead != '"') {
+            return;
+        }
+        skip(lexer);
+        raw = true;
+    }
+    // A raw string ends at the last of three or more quotes.
+    unsigned quotes = 0;
+    while (!lexer->eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
+        int32_t c = lexer->lookahead;
+        quotes = c == '"' ? quotes + 1 : 0;
+        skip(lexer);
+        // Only single-line strings and character literals have escapes.
+        if (c == '\\' && !raw && quote != '`') {
+            skip(lexer);
+        } else if (c == '$' && quote == '"' && lexer->lookahead == '{') {
+            skip(lexer);
+            skip_to_closing_bracket(lexer, '{', '}');
+        }
+    }
+    if (!raw) {
+        skip(lexer);
+    }
+}
+
+// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
+// a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
+// accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
+// such as `get("a") { … }` or an assignment such as `set = 1` on the next line from an accessor.
+static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
+    if (!skip_whitespace_and_comments(lexer, false)) {
+        return false;
+    }
+    if (lexer->lookahead != '(') {
+        return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
+               lexer->lookahead == '}';
+    }
+    skip(lexer);
+    skip_whitespace_and_comments(lexer, true);
+    if (setter ? !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@' || lexer->lookahead == '`')
+               : lexer->lookahead != ')') {
+        return false;
+    }
+    // A parenthesis in a literal (e.g. in an annotation's argument) or in a backticked name is not one of the list.
+    if (!skip_to_closing_bracket(lexer, '(', ')')) {
+        return false;
+    }
+    skip_whitespace_and_comments(lexer, true);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
