@@ -208,7 +208,7 @@
         "named": true
       },
       {
-        "type": "declaration",
+        "type": "class_declaration",
         "named": true
       },
       {
@@ -221,6 +221,22 @@
       },
       {
         "type": "for_statement",
+        "named": true
+      },
+      {
+        "type": "function_declaration",
+        "named": true
+      },
+      {
+        "type": "object_declaration",
+        "named": true
+      },
+      {
+        "type": "property_declaration",
+        "named": true
+      },
+      {
+        "type": "type_alias",
         "named": true
       },
       {
@@ -2107,7 +2123,27 @@
       "required": false,
       "types": [
         {
+          "type": "assignment",
+          "named": true
+        },
+        {
+          "type": "declaration",
+          "named": true
+        },
+        {
+          "type": "do_while_statement",
+          "named": true
+        },
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
           "type": "file_annotation",
+          "named": true
+        },
+        {
+          "type": "for_statement",
           "named": true
         },
         {
@@ -2123,7 +2159,7 @@
           "named": true
         },
         {
-          "type": "statement",
+          "type": "while_statement",
           "named": true
         }
       ]

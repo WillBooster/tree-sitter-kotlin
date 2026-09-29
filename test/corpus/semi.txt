@@ -349,3 +349,144 @@ enum class E { X; val x = 1 }
         (variable_declaration
           (identifier))
         (number_literal)))))
+
+==========================
+Soft keywords as assignment targets
+==========================
+
+class A {
+  var open = false
+  fun f(isOpen: Boolean) {
+    open = isOpen
+    private = 1
+  }
+  open fun g() {}
+}
+
+fun f(bit: Int): Int {
+  var set = 0
+  set = set or bit
+  return set
+}
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (identifier))
+      (function_declaration
+        (identifier)
+        (function_value_parameters
+          (parameter
+            (identifier)
+            (user_type
+              (identifier))))
+        (function_body
+          (block
+            (assignment
+              (identifier)
+              (identifier))
+            (assignment
+              (identifier)
+              (number_literal)))))
+      (function_declaration
+        (modifiers
+          (inheritance_modifier))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (assignment
+          (identifier)
+          (infix_expression
+            (identifier)
+            (identifier)
+            (identifier)))
+        (return_expression
+          (identifier))))))
+
+==========================
+A get or set call after a local property
+==========================
+
+val top: Int
+  get() = 1
+
+fun f() {
+  val s = x
+  get("b")
+  val t = c["a"]!!
+  set("b", "bb", "bbb") // size 5
+  g()
+}
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (getter
+      (function_body
+        (number_literal))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (identifier))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content)))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (unary_expression
+            (index_expression
+              (identifier)
+              (string_literal
+                (string_content)))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content)))
+            (value_argument
+              (string_literal
+                (string_content)))
+            (value_argument
+              (string_literal
+                (string_content)))))
+        (line_comment)
+        (call_expression
+          (identifier)
+          (value_arguments))))))

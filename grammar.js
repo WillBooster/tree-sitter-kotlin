@@ -34,7 +34,6 @@ module.exports = grammar({
     [$._simple_user_type, $.primary_expression],
     [$.type, $._receiver_type],
 
-    [$.modifiers, $.annotated_lambda],
     [$.modifiers, $.annotated_expression],
 
     [$.delegation_specifier, $.type_modifiers],
@@ -61,6 +60,9 @@ module.exports = grammar({
     [$.class_modifier, $._reserved_identifier],
     [$.platform_modifier, $._reserved_identifier],
     [$.property_modifier, $._reserved_identifier],
+    [$.inheritance_modifier, $._reserved_identifier],
+    [$.visibility_modifier, $._reserved_identifier],
+    [$.member_modifier, $._reserved_identifier],
 
     [$.explicit_delegation, $.expression],
     [$.qualified_identifier],
@@ -115,7 +117,7 @@ module.exports = grammar({
         repeat($.file_annotation),
         optional($.package_header),
         repeat($.import),
-        repeat(seq($.statement, $._semi))
+        repeat(seq($._top_level_statement, $._semi))
       ),
 
     file_annotation: ($) =>
@@ -157,6 +159,14 @@ module.exports = grammar({
     property_declaration: ($) =>
       prec.right(
         seq(
+          $._property_declaration_head,
+          optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
+        )
+      ),
+
+    _property_declaration_head: ($) =>
+      prec.right(
+        seq(
           optional($.modifiers),
           choice('val', 'var'),
           optional($.type_parameters),
@@ -164,8 +174,7 @@ module.exports = grammar({
           choice($.variable_declaration, $.multi_variable_declaration),
           optional($.type_constraints),
           optional(choice(seq('=', $.expression), $.property_delegate)),
-          optional(';'),
-          optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
+          optional(';')
         )
       ),
 
@@ -351,8 +360,24 @@ module.exports = grammar({
 
     _statements: ($) => seq($.statement, repeat(seq($._semi, $.statement)), optional($._semi)),
 
-    statement: ($) =>
+    // Top-level properties, like class members, may have accessors.
+    _top_level_statement: ($) =>
       choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
+
+    statement: ($) =>
+      choice(
+        $.class_declaration,
+        $.object_declaration,
+        $.function_declaration,
+        // Kotlin parses no accessors after a local property, so a following `get(…)` or `set(…)` is a call.
+        alias($._property_declaration_head, $.property_declaration),
+        $.type_alias,
+        $.assignment,
+        $.for_statement,
+        $.while_statement,
+        $.do_while_statement,
+        $.expression
+      ),
 
     modifiers: ($) =>
       prec.right(
@@ -759,6 +784,20 @@ module.exports = grammar({
             'expect',
             'inner',
             'get',
+            'open',
+            'abstract',
+            'final',
+            'public',
+            'private',
+            'protected',
+            'internal',
+            'override',
+            'lateinit',
+            'sealed',
+            'inline',
+            'external',
+            'tailrec',
+            'infix',
             'set',
             'operator',
             'value'
