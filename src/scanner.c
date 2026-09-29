@@ -102,13 +102,20 @@ static void skip_whitespace_and_comments(TSLexer *lexer) {
                 skip(lexer);
             }
         } else if (lexer->lookahead == '*') {
+            // Block comments nest in Kotlin.
             skip(lexer);
-            bool after_star = false;
-            while (!lexer->eof(lexer) && !(after_star && lexer->lookahead == '/')) {
-                after_star = lexer->lookahead == '*';
+            unsigned depth = 1;
+            while (depth > 0 && !lexer->eof(lexer)) {
+                int32_t c = lexer->lookahead;
                 skip(lexer);
+                if (c == '*' && lexer->lookahead == '/') {
+                    skip(lexer);
+                    depth--;
+                } else if (c == '/' && lexer->lookahead == '*') {
+                    skip(lexer);
+                    depth++;
+                }
             }
-            skip(lexer);
         } else {
             return;
         }

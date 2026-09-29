@@ -454,7 +454,7 @@ class A {
     get(
     ) = 1
   val w: Int
-    get() /* note */ = 2
+    get() /* note /* nested */ still a note */ = 2
   var y = 1
     set(
       value
