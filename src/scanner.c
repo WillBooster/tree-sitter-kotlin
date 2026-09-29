@@ -122,6 +122,31 @@ static void skip_whitespace_and_comments(TSLexer *lexer) {
     }
 }
 
+// Skips the rest of a string or character literal after its opening quote.
+static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
+    if (quote == '"' && lexer->lookahead == '"') {
+        skip(lexer);
+        if (lexer->lookahead != '"') {
+            return;
+        }
+        skip(lexer);
+        // A raw string ends at three quotes and has no escapes.
+        unsigned quotes = 0;
+        while (!lexer->eof(lexer) && quotes < 3) {
+            quotes = lexer->lookahead == '"' ? quotes + 1 : 0;
+            skip(lexer);
+        }
+        return;
+    }
+    while (!lexer->eof(lexer) && lexer->lookahead != quote) {
+        if (lexer->lookahead == '\\') {
+            skip(lexer);
+        }
+        skip(lexer);
+    }
+    skip(lexer);
+}
+
 // Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
 // a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
 // accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
@@ -157,13 +182,7 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
             depth--;
         } else if (c == '"' || c == '\'') {
             // A parenthesis in a string or character literal, e.g. in an annotation's argument, is not one of the list.
-            while (!lexer->eof(lexer) && lexer->lookahead != c) {
-                if (lexer->lookahead == '\\') {
-                    skip(lexer);
-                }
-                skip(lexer);
-            }
-            skip(lexer);
+            skip_literal_rest(lexer, c);
         }
     }
     skip_whitespace_and_comments(lexer);
