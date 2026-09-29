@@ -466,7 +466,7 @@ class A {
       field = value
     }
   var v = 1
-    set(@A("""a"b)""") value) {
+    set(@A("""a"b)"""") value) {
       field = value
     }
   var u = 1

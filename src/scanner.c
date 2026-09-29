@@ -130,9 +130,9 @@ static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
             return;
         }
         skip(lexer);
-        // A raw string ends at three quotes and has no escapes.
+        // A raw string has no escapes and ends at the last of three or more quotes.
         unsigned quotes = 0;
-        while (!lexer->eof(lexer) && quotes < 3) {
+        while (!lexer->eof(lexer) && (quotes < 3 || lexer->lookahead == '"')) {
             quotes = lexer->lookahead == '"' ? quotes + 1 : 0;
             skip(lexer);
         }
