@@ -122,7 +122,7 @@ module.exports = grammar({
         repeat($.file_annotation),
         optional($.package_header),
         repeat($.import),
-        repeat(seq($._top_level_statement, $._semi))
+        repeat(seq($.statement, $._semi))
       ),
 
     file_annotation: ($) =>
@@ -133,7 +133,8 @@ module.exports = grammar({
     import: ($) =>
       seq('import', $.qualified_identifier, optional(choice(seq('.', '*'), seq('as', $.identifier))), optional(';')),
 
-    declaration: ($) => choice(...declarationKinds($, $.property_declaration)),
+    declaration: ($) =>
+      choice($.class_declaration, $.object_declaration, $.function_declaration, $.property_declaration, $.type_alias),
 
     class_declaration: ($) =>
       prec.right(
@@ -163,12 +164,17 @@ module.exports = grammar({
     property_declaration: ($) =>
       prec.right(
         seq(
-          ...propertyDeclarationHead($),
+          optional($.modifiers),
+          choice('val', 'var'),
+          optional($.type_parameters),
+          optional(seq($._receiver_type, optional('.'))),
+          choice($.variable_declaration, $.multi_variable_declaration),
+          optional($.type_constraints),
+          optional(choice(seq('=', $.expression), $.property_delegate)),
+          optional(';'),
           optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
         )
       ),
-
-    _local_property_declaration: ($) => prec.right(seq(...propertyDeclarationHead($))),
 
     type_alias: ($) =>
       prec.right(
@@ -352,15 +358,8 @@ module.exports = grammar({
 
     _statements: ($) => seq($.statement, repeat(seq($._semi, $.statement)), optional($._semi)),
 
-    // Top-level properties, like class members, may have accessors.
-    _top_level_statement: ($) => choice($.declaration, ...nonDeclarationStatementKinds($)),
-
     statement: ($) =>
-      choice(
-        // Kotlin parses no accessors after a local property, so a following `get(…)` or `set(…)` is a call.
-        ...declarationKinds($, alias($._local_property_declaration, $.property_declaration)),
-        ...nonDeclarationStatementKinds($)
-      ),
+      choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
 
     modifiers: ($) =>
       prec.right(
@@ -626,7 +625,8 @@ module.exports = grammar({
 
     // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
     // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
-    _control_structure_body: ($) => choice($.block, ...nonDeclarationStatementKinds($)),
+    _control_structure_body: ($) =>
+      choice($.block, $.expression, $.assignment, $.for_statement, $.while_statement, $.do_while_statement),
 
     parenthesized_expression: ($) => seq('(', $.expression, ')'),
 
@@ -796,48 +796,6 @@ module.exports = grammar({
     line_comment: () => token(seq('//', /.*/)),
   },
 });
-
-/**
- * @param {GrammarSymbols<string>} $
- *
- * @param {RuleOrLiteral} propertyDeclaration
- *
- * @returns {RuleOrLiteral[]}
- */
-function declarationKinds($, propertyDeclaration) {
-  return [$.class_declaration, $.object_declaration, $.function_declaration, propertyDeclaration, $.type_alias];
-}
-
-/**
- * @param {GrammarSymbols<string>} $
- *
- * @returns {RuleOrLiteral[]}
- */
-function nonDeclarationStatementKinds($) {
-  return [$.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression];
-}
-
-/**
- * Returns the parts of a property declaration before its accessors. They are spliced into `property_declaration`
- * rather than wrapped in a rule of their own: reducing such a rule before an accessor's annotation (`@A set`)
- * would conflict with continuing the initializer expression.
- *
- * @param {GrammarSymbols<string>} $
- *
- * @returns {RuleOrLiteral[]}
- */
-function propertyDeclarationHead($) {
-  return [
-    optional($.modifiers),
-    choice('val', 'var'),
-    optional($.type_parameters),
-    optional(seq($._receiver_type, optional('.'))),
-    choice($.variable_declaration, $.multi_variable_declaration),
-    optional($.type_constraints),
-    optional(choice(seq('=', $.expression), $.property_delegate)),
-    optional(';'),
-  ];
-}
 
 /**
  * Creates a rule to match one or more of the rules separated by `separator`

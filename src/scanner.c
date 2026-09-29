@@ -85,6 +85,36 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
     return skipped;
 }
 
+// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list followed by
+// a body or a type. The grammar accepts accessors after any property, including a local one, which Kotlin does not,
+// so this is what tells a call such as `get("a")` or an assignment such as `set = 1` on the next line from an accessor.
+static bool scan_accessor_rest(TSLexer *lexer) {
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        skip(lexer);
+    }
+    if (lexer->lookahead != '(') {
+        return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
+               lexer->lookahead == '}' || lexer->lookahead == '/';
+    }
+    // The parameter list ends on its line, which also keeps error recovery from scanning to the end of the input.
+    unsigned depth = 0;
+    do {
+        if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+            return false;
+        }
+        if (lexer->lookahead == '(') {
+            depth++;
+        } else if (lexer->lookahead == ')') {
+            depth--;
+        }
+        skip(lexer);
+    } while (depth > 0);
+    while (iswspace(lexer->lookahead)) {
+        skip(lexer);
+    }
+    return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
+}
+
 void *tree_sitter_kotlin_external_scanner_create() { return NULL; }
 
 void tree_sitter_kotlin_external_scanner_destroy(void *payload) {}
@@ -309,29 +339,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         }
                     }
                 }
-                // If `get` was found and the keyword is not valid, return a semi since it's being used as an identifier
-                else if (index == 3 && (!valid_symbols[GET] || lexer->lookahead == '[')) {
-                    return true;
-                }
-                // If `set` was found and the keyword is not valid, return a semi since it's being used as an identifier
-                else if (index == 4 && (!valid_symbols[SET] || lexer->lookahead == '[' || lexer->lookahead == '(' ||
-                                        lexer->lookahead == '.')) {
-                    if (lexer->lookahead == '(' && valid_symbols[SET]) {
-                        // skip until the closing parenthesis
-                        while (lexer->lookahead != ')' && !lexer->eof(lexer)) {
-                            skip(lexer);
-                        }
-                        skip(lexer);
-
-                        while (iswspace(lexer->lookahead)) {
-                            if (lexer->lookahead == '\n') {
-                                return true;
-                            }
-                            skip(lexer);
-                        }
-                        return false;
-                    }
-                    return true;
+                // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
+                else if (index == 3 || index == 4) {
+                    return !(valid_symbols[index == 3 ? GET : SET] && scan_accessor_rest(lexer));
                 }
                 // If `in` was found and this specific external keyword is valid,
                 // return a semi since it's being used in a range test
