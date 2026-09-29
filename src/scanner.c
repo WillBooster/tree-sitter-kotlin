@@ -135,15 +135,29 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     }
     unsigned depth = 1;
     while (depth > 0) {
+        int32_t c = lexer->lookahead;
         if (lexer->eof(lexer)) {
             return false;
         }
-        if (lexer->lookahead == '(') {
-            depth++;
-        } else if (lexer->lookahead == ')') {
-            depth--;
+        if (c == '/') {
+            skip_whitespace_and_comments(lexer);
+            continue;
         }
         skip(lexer);
+        if (c == '(') {
+            depth++;
+        } else if (c == ')') {
+            depth--;
+        } else if (c == '"' || c == '\'') {
+            // A parenthesis in a string or character literal, e.g. in an annotation's argument, is not one of the list.
+            while (!lexer->eof(lexer) && lexer->lookahead != c) {
+                if (lexer->lookahead == '\\') {
+                    skip(lexer);
+                }
+                skip(lexer);
+            }
+            skip(lexer);
+        }
     }
     skip_whitespace_and_comments(lexer);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';

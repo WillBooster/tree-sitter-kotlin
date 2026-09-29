@@ -461,6 +461,10 @@ class A {
     ) {
       field = value
     }
+  var z = 1
+    set(@A(")") value) {
+      field = value
+    }
 }
 
 ---
@@ -491,6 +495,26 @@ class A {
           (identifier))
         (number_literal)
         (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (parameter_modifiers
+            (annotation
+              (constructor_invocation
+                (user_type
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content)))))))
           (identifier)
           (function_body
             (block
