@@ -122,7 +122,7 @@ static void skip_whitespace_and_comments(TSLexer *lexer) {
     }
 }
 
-// Skips the rest of a string or character literal after its opening quote.
+// Skips the rest of a string or character literal or a backticked name after its opening quote.
 static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
     if (quote == '"' && lexer->lookahead == '"') {
         skip(lexer);
@@ -180,8 +180,9 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
             depth++;
         } else if (c == ')') {
             depth--;
-        } else if (c == '"' || c == '\'') {
-            // A parenthesis in a string or character literal, e.g. in an annotation's argument, is not one of the list.
+        } else if (c == '"' || c == '\'' || c == '`') {
+            // A parenthesis in a string or character literal (e.g. in an annotation's argument) or in a backticked name
+            // is not one of the list.
             skip_literal_rest(lexer, c);
         }
     }
