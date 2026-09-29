@@ -139,7 +139,8 @@ static void skip_literal_rest(TSLexer *lexer, int32_t quote) {
         return;
     }
     while (!lexer->eof(lexer) && lexer->lookahead != quote) {
-        if (lexer->lookahead == '\\') {
+        // A backticked name has no escapes.
+        if (lexer->lookahead == '\\' && quote != '`') {
             skip(lexer);
         }
         skip(lexer);

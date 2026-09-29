@@ -473,6 +473,10 @@ class A {
     set(`a)b`) {
       field = `a)b`
     }
+  var t = 1
+    set(`a\`) {
+      field = `a\`
+    }
 }
 
 ---
@@ -543,6 +547,17 @@ class A {
                   (value_argument
                     (multiline_string_literal
                       (string_content)))))))
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
           (identifier)
           (function_body
             (block
