@@ -34,6 +34,7 @@ module.exports = grammar({
     [$._simple_user_type, $.primary_expression],
     [$.type, $._receiver_type],
 
+    [$.modifiers, $.annotated_lambda],
     [$.modifiers, $.annotated_expression],
 
     [$.delegation_specifier, $.type_modifiers],
@@ -159,24 +160,12 @@ module.exports = grammar({
     property_declaration: ($) =>
       prec.right(
         seq(
-          $._property_declaration_head,
+          ...propertyDeclarationHead($),
           optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
         )
       ),
 
-    _property_declaration_head: ($) =>
-      prec.right(
-        seq(
-          optional($.modifiers),
-          choice('val', 'var'),
-          optional($.type_parameters),
-          optional(seq($._receiver_type, optional('.'))),
-          choice($.variable_declaration, $.multi_variable_declaration),
-          optional($.type_constraints),
-          optional(choice(seq('=', $.expression), $.property_delegate)),
-          optional(';')
-        )
-      ),
+    _local_property_declaration: ($) => prec.right(seq(...propertyDeclarationHead($))),
 
     type_alias: ($) =>
       prec.right(
@@ -370,7 +359,7 @@ module.exports = grammar({
         $.object_declaration,
         $.function_declaration,
         // Kotlin parses no accessors after a local property, so a following `get(…)` or `set(…)` is a call.
-        alias($._property_declaration_head, $.property_declaration),
+        alias($._local_property_declaration, $.property_declaration),
         $.type_alias,
         $.assignment,
         $.for_statement,
@@ -396,17 +385,22 @@ module.exports = grammar({
         )
       ),
 
-    class_modifier: () => choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value'),
+    // A modifier keyword that `_reserved_identifier` also accepts as a name makes `@A\nsealed interface B` parse as
+    // an infix call as well, since `interface` lexes as an identifier where no keyword is valid, so the modifier
+    // reading takes dynamic precedence. The name takes none: it would outweigh the modifiers again wherever a
+    // reading has more names, such as `get` calls in a class body misread as a trailing lambda.
+    class_modifier: () => prec.dynamic(1, choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value')),
 
-    function_modifier: () => prec.right(choice('tailrec', 'operator', 'infix', 'inline', 'external', 'suspend')),
+    function_modifier: () =>
+      prec.dynamic(1, prec.right(choice('tailrec', 'operator', 'infix', 'inline', 'external', 'suspend'))),
 
-    property_modifier: () => 'const',
+    property_modifier: () => prec.dynamic(1, 'const'),
 
-    visibility_modifier: () => choice('public', 'private', 'protected', 'internal'),
+    visibility_modifier: () => prec.dynamic(1, choice('public', 'private', 'protected', 'internal')),
 
-    inheritance_modifier: () => choice('abstract', 'final', 'open'),
+    inheritance_modifier: () => prec.dynamic(1, choice('abstract', 'final', 'open')),
 
-    member_modifier: () => choice('override', 'lateinit'),
+    member_modifier: () => prec.dynamic(1, choice('override', 'lateinit')),
 
     parameter_modifiers: ($) => repeat1(choice($.annotation, $.parameter_modifier)),
 
@@ -414,7 +408,7 @@ module.exports = grammar({
 
     reification_modifier: () => 'reified',
 
-    platform_modifier: () => choice('expect', 'actual'),
+    platform_modifier: () => prec.dynamic(1, choice('expect', 'actual')),
 
     type_modifiers: ($) => prec.right(repeat1(choice($.annotation, 'suspend'))),
 
@@ -771,39 +765,36 @@ module.exports = grammar({
     identifier: () => token(choice(/[\p{L}_][\p{L}_\p{Nd}]*/u, /`[^\r\n`]+`/)),
 
     _reserved_identifier: ($) =>
-      prec.dynamic(
-        1,
-        alias(
-          choice(
-            'actual',
-            'annotation',
-            'constructor',
-            'const',
-            'data',
-            'enum',
-            'expect',
-            'inner',
-            'get',
-            'open',
-            'abstract',
-            'final',
-            'public',
-            'private',
-            'protected',
-            'internal',
-            'override',
-            'lateinit',
-            'sealed',
-            'inline',
-            'external',
-            'tailrec',
-            'infix',
-            'set',
-            'operator',
-            'value'
-          ),
-          $.identifier
-        )
+      alias(
+        choice(
+          'abstract',
+          'actual',
+          'annotation',
+          'const',
+          'constructor',
+          'data',
+          'enum',
+          'expect',
+          'external',
+          'final',
+          'get',
+          'infix',
+          'inline',
+          'inner',
+          'internal',
+          'lateinit',
+          'open',
+          'operator',
+          'override',
+          'private',
+          'protected',
+          'public',
+          'sealed',
+          'set',
+          'tailrec',
+          'value'
+        ),
+        $.identifier
       ),
 
     shebang: () => /#!.*/,
@@ -811,6 +802,28 @@ module.exports = grammar({
     line_comment: () => token(seq('//', /.*/)),
   },
 });
+
+/**
+ * Returns the parts of a property declaration before its accessors. They are spliced into `property_declaration`
+ * rather than wrapped in a rule of their own: reducing such a rule before an accessor's annotation (`@A set`)
+ * would conflict with continuing the initializer expression.
+ *
+ * @param {GrammarSymbols<string>} $
+ *
+ * @returns {RuleOrLiteral[]}
+ */
+function propertyDeclarationHead($) {
+  return [
+    optional($.modifiers),
+    choice('val', 'var'),
+    optional($.type_parameters),
+    optional(seq($._receiver_type, optional('.'))),
+    choice($.variable_declaration, $.multi_variable_declaration),
+    optional($.type_constraints),
+    optional(choice(seq('=', $.expression), $.property_delegate)),
+    optional(';'),
+  ];
+}
 
 /**
  * Creates a rule to match one or more of the rules separated by `separator`

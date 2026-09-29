@@ -350,6 +350,101 @@ enum class E { X; val x = 1 }
           (identifier))
         (number_literal)))))
 
+================================
+Annotated accessors without bodies
+================================
+
+class K {
+  var x = 1
+    @Synchronized set
+  var y = 1
+    @VisibleForTesting internal set
+}
+
+var z = 1
+  @Synchronized get
+
+var w = 1 @Synchronized set
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (modifiers
+            (annotation
+              (user_type
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (modifiers
+            (annotation
+              (user_type
+                (identifier)))
+            (visibility_modifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (getter
+      (modifiers
+        (annotation
+          (user_type
+            (identifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (setter
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)))))))
+
+================================
+Modifiers on the line after an annotation
+================================
+
+@Serializable
+sealed interface M
+
+@Suppress("unused")
+private val logger = 1
+
+---
+
+(source_file
+  (class_declaration
+    (modifiers
+      (annotation
+        (user_type
+          (identifier)))
+      (class_modifier))
+    (identifier))
+  (property_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content))))))
+      (visibility_modifier))
+    (variable_declaration
+      (identifier))
+    (number_literal)))
+
 ==========================
 Soft keywords as assignment targets
 ==========================
