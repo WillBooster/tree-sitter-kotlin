@@ -96,10 +96,9 @@ static bool scan_accessor_rest(TSLexer *lexer) {
         return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
                lexer->lookahead == '}' || lexer->lookahead == '/';
     }
-    // The parameter list ends on its line, which also keeps error recovery from scanning to the end of the input.
     unsigned depth = 0;
     do {
-        if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+        if (lexer->eof(lexer)) {
             return false;
         }
         if (lexer->lookahead == '(') {
@@ -341,7 +340,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {
-                    return !(valid_symbols[index == 3 ? GET : SET] && scan_accessor_rest(lexer));
+                    // During error recovery, scanning a parameter list to its end on every attempt would make recovery
+                    // quadratic in the input length.
+                    return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer));
                 }
                 // If `in` was found and this specific external keyword is valid,
                 // return a semi since it's being used in a range test
