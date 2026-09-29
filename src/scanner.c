@@ -15,6 +15,7 @@ enum TokenType {
     GET,
     SET,
     DOLLAR,
+    VAL,
 };
 
 #define MAX_WORD_SIZE 16
@@ -59,6 +60,29 @@ static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE
     }
 
     return false;
+}
+
+static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "public",   "private", "protected",   "internal", "abstract", "final",   "open",   "override",
+    "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
+};
+
+// The words other than the modifiers above that start a declaration.
+static const char DECLARATION_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "fun",  "val",    "var",   "class", "interface",  "object", "typealias", "data",
+    "enum", "sealed", "inner", "value", "annotation", "const",  "operator",  "tailrec",
+};
+
+static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]) {
+    bool skipped = false;
+    while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL)) {
+        skipped = true;
+        memset(scanned_word, 0, MAX_WORD_SIZE);
+        while (iswspace(lexer->lookahead)) {
+            skip(lexer);
+        }
+    }
+    return skipped;
 }
 
 void *tree_sitter_kotlin_external_scanner_create() { return NULL; }
@@ -183,6 +207,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
 
         char scanned_word[16] = {0};
+        // Where a statement may end, `val` is valid only after a modifier that `_reserved_identifier` also reads as a
+        // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration on
+        // the next line.
+        if (valid_symbols[VAL] && !error_recovery && iswalpha(lexer->lookahead)) {
+            if (skip_modifier_words(lexer, scanned_word) || scan_words(lexer, DECLARATION_WORDS, scanned_word, NULL)) {
+                return false;
+            }
+            goto keywords;
+        }
     _switch:
         switch (lexer->lookahead) {
             case ',':
@@ -245,17 +278,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case 'c':
             case 'b':
             case 'w':
-                while (scan_words(lexer,
-                                  (const char[16][16]){"public", "private", "protected", "internal", "abstract",
-                                                       "final", "open", "override", "lateinit", "vararg", "noinline",
-                                                       "crossinline", "external", "suspend", "inline"},
-                                  scanned_word, NULL)) {
-                    memset(scanned_word, 0, MAX_WORD_SIZE);
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                }
-
+                skip_modifier_words(lexer, scanned_word);
+            keywords:;
                 uint8_t index = -1;
                 bool res = scan_words(
                     lexer,

@@ -449,11 +449,15 @@ private val logger = 1
 Soft keywords as assignment targets
 ==========================
 
-class A {
+class A(val inline: Int) {
   var open = false
   fun f(isOpen: Boolean) {
     open = isOpen
     private = 1
+    var override = 0
+    override = override + 1
+    var suspend = 0
+    suspend = suspend + 1
   }
   open fun g() {}
 }
@@ -469,6 +473,12 @@ fun f(bit: Int): Int {
 (source_file
   (class_declaration
     (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier)))))
     (class_body
       (property_declaration
         (variable_declaration
@@ -488,7 +498,25 @@ fun f(bit: Int): Int {
               (identifier))
             (assignment
               (identifier)
-              (number_literal)))))
+              (number_literal))
+            (property_declaration
+              (variable_declaration
+                (identifier))
+              (number_literal))
+            (assignment
+              (identifier)
+              (binary_expression
+                (identifier)
+                (number_literal)))
+            (property_declaration
+              (variable_declaration
+                (identifier))
+              (number_literal))
+            (assignment
+              (identifier)
+              (binary_expression
+                (identifier)
+                (number_literal))))))
       (function_declaration
         (modifiers
           (inheritance_modifier))
@@ -519,6 +547,48 @@ fun f(bit: Int): Int {
             (identifier)))
         (return_expression
           (identifier))))))
+
+==========================
+A modifier alone on the line before its declaration
+==========================
+
+private
+fun f() {
+  open
+  class B
+  var x = 0
+  data
+  class C(val y: Int)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (modifiers
+      (visibility_modifier))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (class_declaration
+          (modifiers
+            (inheritance_modifier))
+          (identifier))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (class_declaration
+          (modifiers
+            (class_modifier))
+          (identifier)
+          (primary_constructor
+            (class_parameters
+              (class_parameter
+                (identifier)
+                (user_type
+                  (identifier))))))))))
 
 ==========================
 A get or set call after a local property

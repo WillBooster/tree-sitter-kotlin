@@ -5060,10 +5060,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "expression"
-        },
-        {
-          "type": "SYMBOL",
           "name": "assignment"
         },
         {
@@ -5077,6 +5073,10 @@
         {
           "type": "SYMBOL",
           "name": "do_while_statement"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
         }
       ]
     },
@@ -6517,6 +6517,10 @@
           },
           {
             "type": "STRING",
+            "value": "suspend"
+          },
+          {
+            "type": "STRING",
             "value": "tailrec"
           },
           {
@@ -6660,6 +6664,15 @@
     ],
     [
       "function_modifier",
+      "_reserved_identifier"
+    ],
+    [
+      "function_modifier",
+      "type_modifiers",
+      "_reserved_identifier"
+    ],
+    [
+      "type_modifiers",
       "_reserved_identifier"
     ],
     [
@@ -6816,6 +6829,10 @@
     {
       "type": "STRING",
       "value": "$"
+    },
+    {
+      "type": "STRING",
+      "value": "val"
     }
   ],
   "inline": [

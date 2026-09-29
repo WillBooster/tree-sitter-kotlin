@@ -49,6 +49,8 @@ module.exports = grammar({
     [$.parameter_modifiers, $.type_modifiers],
     [$.function_modifier, $.type_modifiers],
     [$.function_modifier, $._reserved_identifier],
+    [$.function_modifier, $.type_modifiers, $._reserved_identifier],
+    [$.type_modifiers, $._reserved_identifier],
     [$.variable_declaration, $.type_modifiers],
     [$.variable_declaration, $.type_modifiers, $.modifiers, $.annotated_expression],
     [$.variable_declaration, $.type_modifiers, $.annotated_expression],
@@ -90,6 +92,8 @@ module.exports = grammar({
     'set',
     // used to check if we can parse a comment
     '$',
+    // used to check if a modifier alone on its line belongs to a declaration on the next line
+    'val',
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -129,8 +133,7 @@ module.exports = grammar({
     import: ($) =>
       seq('import', $.qualified_identifier, optional(choice(seq('.', '*'), seq('as', $.identifier))), optional(';')),
 
-    declaration: ($) =>
-      choice($.class_declaration, $.object_declaration, $.function_declaration, $.property_declaration, $.type_alias),
+    declaration: ($) => choice(...declarationKinds($, $.property_declaration)),
 
     class_declaration: ($) =>
       prec.right(
@@ -350,22 +353,13 @@ module.exports = grammar({
     _statements: ($) => seq($.statement, repeat(seq($._semi, $.statement)), optional($._semi)),
 
     // Top-level properties, like class members, may have accessors.
-    _top_level_statement: ($) =>
-      choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
+    _top_level_statement: ($) => choice($.declaration, ...nonDeclarationStatementKinds($)),
 
     statement: ($) =>
       choice(
-        $.class_declaration,
-        $.object_declaration,
-        $.function_declaration,
         // Kotlin parses no accessors after a local property, so a following `get(…)` or `set(…)` is a call.
-        alias($._local_property_declaration, $.property_declaration),
-        $.type_alias,
-        $.assignment,
-        $.for_statement,
-        $.while_statement,
-        $.do_while_statement,
-        $.expression
+        ...declarationKinds($, alias($._local_property_declaration, $.property_declaration)),
+        ...nonDeclarationStatementKinds($)
       ),
 
     modifiers: ($) =>
@@ -632,8 +626,7 @@ module.exports = grammar({
 
     // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
     // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
-    _control_structure_body: ($) =>
-      choice($.block, $.expression, $.assignment, $.for_statement, $.while_statement, $.do_while_statement),
+    _control_structure_body: ($) => choice($.block, ...nonDeclarationStatementKinds($)),
 
     parenthesized_expression: ($) => seq('(', $.expression, ')'),
 
@@ -791,6 +784,7 @@ module.exports = grammar({
           'public',
           'sealed',
           'set',
+          'suspend',
           'tailrec',
           'value'
         ),
@@ -802,6 +796,26 @@ module.exports = grammar({
     line_comment: () => token(seq('//', /.*/)),
   },
 });
+
+/**
+ * @param {GrammarSymbols<string>} $
+ *
+ * @param {RuleOrLiteral} propertyDeclaration
+ *
+ * @returns {RuleOrLiteral[]}
+ */
+function declarationKinds($, propertyDeclaration) {
+  return [$.class_declaration, $.object_declaration, $.function_declaration, propertyDeclaration, $.type_alias];
+}
+
+/**
+ * @param {GrammarSymbols<string>} $
+ *
+ * @returns {RuleOrLiteral[]}
+ */
+function nonDeclarationStatementKinds($) {
+  return [$.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression];
+}
 
 /**
  * Returns the parts of a property declaration before its accessors. They are spliced into `property_declaration`
