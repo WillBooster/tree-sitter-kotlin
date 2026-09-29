@@ -89,7 +89,7 @@ module.exports = grammar({
     '$',
   ],
 
-  inline: ($) => [$._statements, $._identifier, $._if_body],
+  inline: ($) => [$._statements, $._identifier, $._control_structure_body],
 
   precedences: ($) => [
     [$.block, $.lambda_literal],
@@ -288,11 +288,45 @@ module.exports = grammar({
 
     block: ($) => seq('{', optional($._statements), '}'),
 
-    for_statement: ($) => forLoop($, choice($.block, $.statement)),
+    for_statement: ($) =>
+      prec.right(
+        seq(
+          optional($._loop_prefix),
+          'for',
+          '(',
+          repeat($.annotation),
+          choice($.variable_declaration, $.multi_variable_declaration),
+          'in',
+          $.expression,
+          ')',
+          optional(field('body', $._control_structure_body))
+        )
+      ),
 
-    while_statement: ($) => whileLoop($, choice($.block, $.statement)),
+    while_statement: ($) =>
+      prec.right(
+        seq(
+          optional($._loop_prefix),
+          'while',
+          '(',
+          field('condition', $.expression),
+          ')',
+          optional(choice(field('body', $._control_structure_body), ';'))
+        )
+      ),
 
-    do_while_statement: ($) => doWhileLoop($, choice($.block, $.statement)),
+    do_while_statement: ($) =>
+      prec.right(
+        seq(
+          optional($._loop_prefix),
+          'do',
+          optional(choice(field('body', $._control_structure_body), ';')),
+          'while',
+          '(',
+          field('condition', $.expression),
+          ')'
+        )
+      ),
 
     _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
@@ -565,35 +599,22 @@ module.exports = grammar({
           field('condition', $.expression),
           ')',
           choice(
-            field('consequence', $._if_body),
+            field('consequence', $._control_structure_body),
             ';',
             seq(
-              optional(field('consequence', $._if_body)),
+              optional(field('consequence', $._control_structure_body)),
               optional(';'),
               'else',
-              choice(field('alternative', $._if_body), ';')
+              choice(field('alternative', $._control_structure_body), ';')
             )
           )
         )
       ),
 
-    // Loops here take `_if_body` rather than `statement` as their unbraced body: bringing declarations into
-    // every expression context exceeds tree-sitter's limit of 65535 parse states.
-    _if_body: ($) =>
-      choice(
-        $.block,
-        $.expression,
-        $.assignment,
-        alias($._if_body_for_statement, $.for_statement),
-        alias($._if_body_while_statement, $.while_statement),
-        alias($._if_body_do_while_statement, $.do_while_statement)
-      ),
-
-    _if_body_for_statement: ($) => forLoop($, $._if_body),
-
-    _if_body_while_statement: ($) => whileLoop($, $._if_body),
-
-    _if_body_do_while_statement: ($) => doWhileLoop($, $._if_body),
+    // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
+    // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
+    _control_structure_body: ($) =>
+      choice($.block, $.expression, $.assignment, $.for_statement, $.while_statement, $.do_while_statement),
 
     parenthesized_expression: ($) => seq('(', $.expression, ')'),
 
@@ -811,59 +832,4 @@ function commaSep1(rule) {
  */
 function optionalCommaSep1(rule) {
   return optional(seq(rule, repeat(seq(',', rule)), optional(',')));
-}
-
-/**
- * @param {GrammarSymbols<string>} $
- * @param {Rule} body
- */
-function forLoop($, body) {
-  return prec.right(
-    seq(
-      optional($._loop_prefix),
-      'for',
-      '(',
-      repeat($.annotation),
-      choice($.variable_declaration, $.multi_variable_declaration),
-      'in',
-      $.expression,
-      ')',
-      optional(field('body', body))
-    )
-  );
-}
-
-/**
- * @param {GrammarSymbols<string>} $
- * @param {Rule} body
- */
-function whileLoop($, body) {
-  return prec.right(
-    seq(
-      optional($._loop_prefix),
-      'while',
-      '(',
-      field('condition', $.expression),
-      ')',
-      optional(choice(field('body', body), ';'))
-    )
-  );
-}
-
-/**
- * @param {GrammarSymbols<string>} $
- * @param {Rule} body
- */
-function doWhileLoop($, body) {
-  return prec.right(
-    seq(
-      optional($._loop_prefix),
-      'do',
-      optional(choice(field('body', body), ';')),
-      'while',
-      '(',
-      field('condition', $.expression),
-      ')'
-    )
-  );
 }

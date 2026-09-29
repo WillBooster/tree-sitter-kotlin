@@ -937,11 +937,27 @@
         "required": false,
         "types": [
           {
+            "type": "assignment",
+            "named": true
+          },
+          {
             "type": "block",
             "named": true
           },
           {
-            "type": "statement",
+            "type": "do_while_statement",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          },
+          {
+            "type": "for_statement",
+            "named": true
+          },
+          {
+            "type": "while_statement",
             "named": true
           }
         ]
@@ -1080,11 +1096,27 @@
         "required": false,
         "types": [
           {
+            "type": "assignment",
+            "named": true
+          },
+          {
             "type": "block",
             "named": true
           },
           {
-            "type": "statement",
+            "type": "do_while_statement",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          },
+          {
+            "type": "for_statement",
+            "named": true
+          },
+          {
+            "type": "while_statement",
             "named": true
           }
         ]
@@ -2630,11 +2662,27 @@
         "required": false,
         "types": [
           {
+            "type": "assignment",
+            "named": true
+          },
+          {
             "type": "block",
             "named": true
           },
           {
-            "type": "statement",
+            "type": "do_while_statement",
+            "named": true
+          },
+          {
+            "type": "expression",
+            "named": true
+          },
+          {
+            "type": "for_statement",
+            "named": true
+          },
+          {
+            "type": "while_statement",
             "named": true
           }
         ]
