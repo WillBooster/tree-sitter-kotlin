@@ -76,16 +76,14 @@ static const char DECLARATION_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
 
 static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_'; }
 
-static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]) {
-    bool skipped = false;
+// Skips modifier words, leaving the next word, if any, in `scanned_word`.
+static void skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]) {
     while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL)) {
-        skipped = true;
         memset(scanned_word, 0, MAX_WORD_SIZE);
         while (iswspace(lexer->lookahead)) {
             skip(lexer);
         }
     }
-    return skipped;
 }
 
 // Skips the rest of a block comment after its `/*`. Block comments nest in Kotlin.
@@ -345,7 +343,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return false;
             }
             if (iswalpha(lexer->lookahead)) {
-                if (skip_modifier_words(lexer, scanned_word) ||
+                // Modifiers not followed by a declaration, as in `open = 1`, start a statement of their own.
+                skip_modifier_words(lexer, scanned_word);
+                if ((!scanned_word[0] && lexer->lookahead == '@') ||
                     scan_words(lexer, DECLARATION_WORDS, scanned_word, NULL)) {
                     return false;
                 }
