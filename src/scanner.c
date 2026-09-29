@@ -37,9 +37,10 @@ static bool scan_word(TSLexer *lexer, const char *const word) {
 
 static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE], char scanned_word[16],
                        uint8_t *index) {
+    // A word is a whole identifier, so that e.g. `value_x` does not match `value`.
     if (!scanned_word[0]) {
         for (uint8_t i = 0; i < MAX_WORD_SIZE - 1; i++) {
-            if (!iswalpha(lexer->lookahead)) {
+            if (!(iswalpha(lexer->lookahead) || (i > 0 && (iswdigit(lexer->lookahead) || lexer->lookahead == '_')))) {
                 if (i == 0) {
                     return false;
                 }

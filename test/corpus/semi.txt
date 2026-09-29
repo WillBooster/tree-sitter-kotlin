@@ -723,6 +723,8 @@ fun f() {
   var open = 0
   open
   open = 1
+  open
+  value_x = 1
   private
   public val z = 1
 }
@@ -782,6 +784,10 @@ fun f() {
         (property_declaration
           (variable_declaration
             (identifier))
+          (number_literal))
+        (identifier)
+        (assignment
+          (identifier)
           (number_literal))
         (identifier)
         (assignment
