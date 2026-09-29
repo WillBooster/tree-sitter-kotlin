@@ -35,18 +35,22 @@ static bool scan_word(TSLexer *lexer, const char *const word) {
     return true;
 }
 
+// Any non-ASCII character may be a letter, which `iswalpha` does not tell in the C locale.
+static inline bool is_identifier_part(int32_t c) { return iswalnum(c) || c == '_' || c > 0x7f; }
+
 static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE], char scanned_word[16],
                        uint8_t *index) {
     // A word is a whole identifier, so that e.g. `value_x` does not match `value`.
     if (!scanned_word[0]) {
         for (uint8_t i = 0; i < MAX_WORD_SIZE - 1; i++) {
-            if (!(iswalpha(lexer->lookahead) || (i > 0 && (iswdigit(lexer->lookahead) || lexer->lookahead == '_')))) {
+            if (!(i == 0 ? iswalpha(lexer->lookahead) : is_identifier_part(lexer->lookahead))) {
                 if (i == 0) {
                     return false;
                 }
                 break;
             }
-            scanned_word[i] = (char)lexer->lookahead;
+            // No keyword has a non-ASCII character, which a cast could turn into an ASCII one.
+            scanned_word[i] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
             skip(lexer);
         }
     }
@@ -79,7 +83,6 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
-// Any non-ASCII character may be a letter, which `iswalpha` does not tell in the C locale.
 static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_' || c > 0x7f; }
 
 // Skips modifier words, leaving the next word, if any, in `scanned_word`.
