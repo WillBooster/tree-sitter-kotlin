@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import { spawn } from 'node:child_process';
 
 // Leaves time to kill the command and report its output before bun's own test timeout.
@@ -17,7 +17,7 @@ export function testCommand(
     name,
     async () => {
       const child = spawn(command[0], command.slice(1), {
-        cwd: `${import.meta.dir}/../..`,
+        cwd: `${import.meta.dirname}/../..`,
         detached: true,
         env: { ...process.env, ...options.env },
         stdio: ['ignore', 'pipe', 'pipe'],
