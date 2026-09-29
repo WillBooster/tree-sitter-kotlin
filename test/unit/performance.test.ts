@@ -1,10 +1,10 @@
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Language, Parser } from 'web-tree-sitter';
+import { Language, Parser } from '@willbooster/web-tree-sitter';
 
-const Root = path.join(import.meta.dir, '../..');
+const Root = path.join(import.meta.dirname, '../..');
 // The Wasm build is the one the package ships.
 const WasmPath = path.join(Root, 'tree-sitter-kotlin.wasm');
 await Parser.init();

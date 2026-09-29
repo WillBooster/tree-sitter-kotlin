@@ -3,9 +3,10 @@
   "extends": ["github>WillBooster/willbooster-configs:renovate.jsonc"],
   "packageRules": [
     {
-      // The Wasm build that tree-sitter-cli emits must load in the web-tree-sitter release of the same version.
-      "matchPackageNames": ["tree-sitter-cli", "web-tree-sitter"],
-      "groupName": "tree-sitter",
+      // @willbooster/web-tree-sitter 1.x is built from tree-sitter 0.27 and must load the Wasm build that
+      // tree-sitter-cli emits.
+      "matchPackageNames": ["tree-sitter-cli"],
+      "allowedVersions": "0.27.x",
     },
   ],
 }
