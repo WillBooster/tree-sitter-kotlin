@@ -19,7 +19,7 @@ enum TokenType {
 };
 
 #define MAX_WORD_SIZE 16
-#define MAX_WORDS 16
+#define MAX_WORDS 20
 
 static inline void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
 
@@ -50,7 +50,8 @@ static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE
         }
     }
 
-    for (uint8_t i = 0; i < MAX_WORDS; i++) {
+    // A list ends at its first empty word.
+    for (uint8_t i = 0; i < MAX_WORDS && words[i][0]; i++) {
         if (strncmp(scanned_word, words[i], MAX_WORD_SIZE) == 0) {
             if (index != NULL) {
                 *index = i;
@@ -63,8 +64,8 @@ static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE
 }
 
 static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
-    "public",   "private", "protected",   "internal", "abstract", "final",   "open",   "override",
-    "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
+    "public",   "private",  "protected", "internal", "abstract", "final",  "open",   "override", "lateinit",
+    "vararg",   "noinline", "crossinline", "external", "suspend", "inline", "infix", "expect",   "actual",
 };
 
 // The words other than the modifiers above that start a declaration.
@@ -72,6 +73,8 @@ static const char DECLARATION_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun",  "val",    "var",   "class", "interface",  "object", "typealias", "data",
     "enum", "sealed", "inner", "value", "annotation", "const",  "operator",  "tailrec",
 };
+
+static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_'; }
 
 static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]) {
     bool skipped = false;
@@ -85,10 +88,38 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
     return skipped;
 }
 
-// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list followed by
-// a body or a type. The grammar accepts accessors after any property, including a local one, which Kotlin does not,
-// so this is what tells a call such as `get("a")` or an assignment such as `set = 1` on the next line from an accessor.
-static bool scan_accessor_rest(TSLexer *lexer) {
+static void skip_whitespace_and_comments(TSLexer *lexer) {
+    for (;;) {
+        while (iswspace(lexer->lookahead)) {
+            skip(lexer);
+        }
+        if (lexer->lookahead != '/') {
+            return;
+        }
+        skip(lexer);
+        if (lexer->lookahead == '/') {
+            while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+                skip(lexer);
+            }
+        } else if (lexer->lookahead == '*') {
+            skip(lexer);
+            bool after_star = false;
+            while (!lexer->eof(lexer) && !(after_star && lexer->lookahead == '/')) {
+                after_star = lexer->lookahead == '*';
+                skip(lexer);
+            }
+            skip(lexer);
+        } else {
+            return;
+        }
+    }
+}
+
+// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
+// a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
+// accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
+// such as `get("a") { … }` or an assignment such as `set = 1` on the next line from an accessor.
+static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         skip(lexer);
     }
@@ -96,8 +127,14 @@ static bool scan_accessor_rest(TSLexer *lexer) {
         return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
                lexer->lookahead == '}' || lexer->lookahead == '/';
     }
-    unsigned depth = 0;
-    do {
+    skip(lexer);
+    skip_whitespace_and_comments(lexer);
+    if (setter ? !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@' || lexer->lookahead == '`')
+               : lexer->lookahead != ')') {
+        return false;
+    }
+    unsigned depth = 1;
+    while (depth > 0) {
         if (lexer->eof(lexer)) {
             return false;
         }
@@ -107,10 +144,8 @@ static bool scan_accessor_rest(TSLexer *lexer) {
             depth--;
         }
         skip(lexer);
-    } while (depth > 0);
-    while (iswspace(lexer->lookahead)) {
-        skip(lexer);
     }
+    skip_whitespace_and_comments(lexer);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
@@ -237,13 +272,19 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
         char scanned_word[16] = {0};
         // Where a statement may end, `val` is valid only after a modifier that `_reserved_identifier` also reads as a
-        // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration on
-        // the next line.
-        if (valid_symbols[VAL] && !error_recovery && iswalpha(lexer->lookahead)) {
-            if (skip_modifier_words(lexer, scanned_word) || scan_words(lexer, DECLARATION_WORDS, scanned_word, NULL)) {
+        // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration that
+        // starts on the next line, possibly with more modifiers or annotations.
+        if (valid_symbols[VAL] && !error_recovery) {
+            if (lexer->lookahead == '@') {
                 return false;
             }
-            goto keywords;
+            if (iswalpha(lexer->lookahead)) {
+                if (skip_modifier_words(lexer, scanned_word) ||
+                    scan_words(lexer, DECLARATION_WORDS, scanned_word, NULL)) {
+                    return false;
+                }
+                goto keywords;
+            }
         }
     _switch:
         switch (lexer->lookahead) {
@@ -342,7 +383,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 else if (index == 3 || index == 4) {
                     // During error recovery, scanning a parameter list to its end on every attempt would make recovery
                     // quadratic in the input length.
-                    return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer));
+                    return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer, index == 4));
                 }
                 // If `in` was found and this specific external keyword is valid,
                 // return a semi since it's being used in a range test
