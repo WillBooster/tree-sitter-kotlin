@@ -754,6 +754,104 @@ val m = """$value ${x} $"""
         (identifier))
       (string_content))))
 
+==================================
+Multi-dollar string interpolation
+==================================
+
+val s = $$"""{"a": $$x, "b": "$c"}"""
+val t = $$"a $b $$c $${d + 1} \n \$ $$$e"
+val u = $$$"""x $$y $$$z $$${w} """"
+val v = $$"outer $${ $$"inner $$q" } end"
+val w = $$""
+fun f() = $$"r $$s"
+fun g(): String {
+  x
+  $$"statement"
+  return $$"r $$s"
+}
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (binary_expression
+          (identifier)
+          (number_literal)))
+      (string_content)
+      (escape_sequence)
+      (string_content)
+      (escape_sequence)
+      (string_content)
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (string_literal
+          (string_content)
+          (interpolation
+            (identifier))))
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (string_literal
+        (string_content)
+        (interpolation
+          (identifier)))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (user_type
+      (identifier))
+    (function_body
+      (block
+        (identifier)
+        (string_literal
+          (string_content))
+        (return_expression
+          (string_literal
+            (string_content)
+            (interpolation
+              (identifier))))))))
+
 =========================================
 Callable references
 =========================================
