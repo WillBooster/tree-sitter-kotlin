@@ -299,6 +299,128 @@ enum class Color2(val rgb: Int) {
           (identifier))))))
 
 ==============================
+Class bodies after delegations to expressions
+==============================
+
+class A : B by b {
+  val x get() = 1
+}
+
+class C(d: D) : B by D.create(d), E by e.f<G>() {
+  fun g() = 1
+}
+
+val h = object : B by i(j { 1 }) {
+  val k = 2
+}
+
+class L : B by m[0]
+class N : B by (o)
+{
+}
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (delegation_specifiers
+      (delegation_specifier
+        (explicit_delegation
+          (user_type
+            (identifier))
+          (identifier))))
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (getter
+          (function_body
+            (number_literal))))))
+  (class_declaration
+    (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (delegation_specifiers
+      (delegation_specifier
+        (explicit_delegation
+          (user_type
+            (identifier))
+          (call_expression
+            (navigation_expression
+              (identifier)
+              (identifier))
+            (value_arguments
+              (value_argument
+                (identifier))))))
+      (delegation_specifier
+        (explicit_delegation
+          (user_type
+            (identifier))
+          (call_expression
+            (navigation_expression
+              (identifier)
+              (identifier))
+            (type_arguments
+              (type_projection
+                (user_type
+                  (identifier))))
+            (value_arguments)))))
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (object_literal
+      (delegation_specifiers
+        (delegation_specifier
+          (explicit_delegation
+            (user_type
+              (identifier))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (call_expression
+                    (identifier)
+                    (annotated_lambda
+                      (lambda_literal
+                        (number_literal))))))))))
+      (class_body
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal)))))
+  (class_declaration
+    (identifier)
+    (delegation_specifiers
+      (delegation_specifier
+        (explicit_delegation
+          (user_type
+            (identifier))
+          (index_expression
+            (identifier)
+            (number_literal))))))
+  (class_declaration
+    (identifier)
+    (delegation_specifiers
+      (delegation_specifier
+        (explicit_delegation
+          (user_type
+            (identifier))
+          (parenthesized_expression
+            (identifier)))))
+    (class_body)))
+
+==============================
 Unfinished annotation at the end of input
 :error
 ==============================
