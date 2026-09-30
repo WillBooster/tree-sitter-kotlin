@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "build-wasm": "tree-sitter build --wasm",
-    "build/ci": "tree-sitter generate && tree-sitter build --wasm",
+    "build/ci": "tree-sitter generate && script/generate-letter-ranges && tree-sitter build --wasm",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
     "lint": "bun wb lint",
