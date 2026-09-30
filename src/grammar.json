@@ -1627,21 +1627,25 @@
       ]
     },
     "explicit_delegation": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "type"
-        },
-        {
-          "type": "STRING",
-          "value": "by"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "primary_expression"
-        }
-      ]
+      "type": "PREC",
+      "value": 15,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "type"
+          },
+          {
+            "type": "STRING",
+            "value": "by"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "expression"
+          }
+        ]
+      }
     },
     "getter": {
       "type": "PREC_RIGHT",
@@ -6696,10 +6700,6 @@
     [
       "member_modifier",
       "_reserved_identifier"
-    ],
-    [
-      "explicit_delegation",
-      "expression"
     ],
     [
       "qualified_identifier"

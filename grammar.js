@@ -16,6 +16,7 @@ const PREC = {
   AS: 12,
   CALL: 13,
   UNARY: 14,
+  DELEGATION: 15,
 };
 
 // oxlint-disable-next-line unicorn/prefer-module -- This package is CommonJS, so tree-sitter loads grammar.js as CommonJS.
@@ -67,7 +68,6 @@ module.exports = grammar({
     [$.visibility_modifier, $._reserved_identifier],
     [$.member_modifier, $._reserved_identifier],
 
-    [$.explicit_delegation, $.expression],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -271,7 +271,9 @@ module.exports = grammar({
 
     property_delegate: ($) => seq('by', $.expression),
 
-    explicit_delegation: ($) => seq($.type, 'by', $.primary_expression),
+    // Above PREC.CALL so that, as in Kotlin, a `{` after the delegation expression starts the class body instead of a
+    // trailing lambda. The last operand of an operator expression still takes the lambda (#29).
+    explicit_delegation: ($) => prec(PREC.DELEGATION, seq($.type, 'by', $.expression)),
 
     getter: ($) =>
       prec.right(
