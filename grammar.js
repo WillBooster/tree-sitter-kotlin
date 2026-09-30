@@ -122,6 +122,37 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
+  // Kotlin's hard keywords are never names. `true`, `false`, `null`, and `typeof` are hard keywords too, but this
+  // grammar has no tokens for them, so they still parse as names.
+  reserved: {
+    global: () => [
+      'as',
+      'break',
+      'class',
+      'continue',
+      'do',
+      'else',
+      'for',
+      'fun',
+      'if',
+      'in',
+      'interface',
+      'is',
+      'object',
+      'package',
+      'return',
+      'super',
+      'this',
+      'throw',
+      'try',
+      'typealias',
+      'val',
+      'var',
+      'when',
+      'while',
+    ],
+  },
+
   rules: {
     source_file: ($) =>
       seq(
