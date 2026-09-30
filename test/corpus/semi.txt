@@ -179,6 +179,63 @@ public class Foo
             (identifier))
           (number_literal))))))
 
+==================================
+Primary constructor parameters on the line after the class name
+==================================
+
+class A
+    (context: Context) :
+    B(context) {
+}
+
+class C<T>
+    (val t: T)
+
+fun f() {
+  foo
+  (bar)
+}
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (delegation_specifiers
+      (delegation_specifier
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (identifier))))))
+    (class_body))
+  (class_declaration
+    (identifier)
+    (type_parameters
+      (type_parameter
+        (identifier)))
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier))))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (identifier)
+        (parenthesized_expression
+          (identifier))))))
+
 ====================================
 Secondary Constructor on a newline
 ====================================

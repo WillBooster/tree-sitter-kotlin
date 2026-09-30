@@ -298,8 +298,25 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "SYMBOL",
-                "name": "primary_constructor"
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "_primary_constructor_position"
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "primary_constructor"
+                  }
+                ]
               },
               {
                 "type": "BLANK"
@@ -6641,6 +6658,10 @@
     {
       "type": "STRING",
       "value": "val"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_primary_constructor_position"
     }
   ],
   "inline": [

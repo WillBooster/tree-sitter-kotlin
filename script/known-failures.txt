@@ -1,4 +1,3 @@
-examples/LibreTube/app/src/main/java/com/github/libretube/util/DefaultTrackSelectorWithAudioQualitySupport.kt
 examples/ktlint/build-logic/src/main/kotlin/KtlintCliTask.kt
 examples/ktlint/build-logic/src/main/kotlin/ShadowJarExecutableTask.kt
 examples/ktlint/ktlint-cli/src/main/kotlin/io/github/ktlint/core/cli/internal/KtlintCommandLine.kt
