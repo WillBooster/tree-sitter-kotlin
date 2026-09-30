@@ -349,3 +349,600 @@ enum class E { X; val x = 1 }
         (variable_declaration
           (identifier))
         (number_literal)))))
+
+================================
+Annotated accessors without bodies
+================================
+
+class K {
+  var x = 1
+    @Synchronized set
+  var y = 1
+    @VisibleForTesting internal set
+}
+
+var z = 1
+  @Synchronized get
+
+var w = 1 @Synchronized set
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (modifiers
+            (annotation
+              (user_type
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (modifiers
+            (annotation
+              (user_type
+                (identifier)))
+            (visibility_modifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (getter
+      (modifiers
+        (annotation
+          (user_type
+            (identifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (setter
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)))))))
+
+================================
+Modifiers on the line after an annotation
+================================
+
+@Serializable
+sealed interface M
+
+@Suppress("unused")
+private val logger = 1
+
+---
+
+(source_file
+  (class_declaration
+    (modifiers
+      (annotation
+        (user_type
+          (identifier)))
+      (class_modifier))
+    (identifier))
+  (property_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content))))))
+      (visibility_modifier))
+    (variable_declaration
+      (identifier))
+    (number_literal)))
+
+================================
+Accessor parameter lists across lines
+================================
+
+class A {
+  val x: Int
+    get(
+    ) = 1
+  val w: Int
+    get() /* note /* nested */ still a note */ = 2
+  val q
+    get(): Int = 3
+  var y = 1
+    set(
+      value
+    ) {
+      field = value
+    }
+  var z = 1
+    set(@A(")") value) {
+      field = value
+    }
+  var v = 1
+    set(@A("""a"b)"""") value) {
+      field = value
+    }
+  var u = 1
+    set(`a)b`) {
+      field = `a)b`
+    }
+  var t = 1
+    set(`a\`) {
+      field = `a\`
+    }
+  var s = 1
+    set(@A("${")"}") value) {
+      field = value
+    }
+  var r = 1
+    set(ä) {
+      field = ä
+    }
+}
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier)
+          (user_type
+            (identifier)))
+        (getter
+          (function_body
+            (number_literal))))
+      (property_declaration
+        (variable_declaration
+          (identifier)
+          (user_type
+            (identifier)))
+        (getter
+          (block_comment)
+          (function_body
+            (number_literal))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (getter
+          (user_type
+            (identifier))
+          (function_body
+            (number_literal))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (parameter_modifiers
+            (annotation
+              (constructor_invocation
+                (user_type
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content)))))))
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (parameter_modifiers
+            (annotation
+              (constructor_invocation
+                (user_type
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (multiline_string_literal
+                      (string_content)))))))
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (parameter_modifiers
+            (annotation
+              (constructor_invocation
+                (user_type
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (interpolation
+                        (string_literal
+                          (string_content)))))))))
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier)))))))))
+
+==========================
+Soft keywords as assignment targets
+==========================
+
+class A(val inline: Int) {
+  var open = false
+  fun f(isOpen: Boolean) {
+    open = isOpen
+    private = 1
+    var override = 0
+    override = override + 1
+    var suspend = 0
+    suspend = suspend + 1
+  }
+  open fun g() {}
+}
+
+fun f(bit: Int): Int {
+  var set = 0
+  set = set or bit
+  return set
+}
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (identifier))
+      (function_declaration
+        (identifier)
+        (function_value_parameters
+          (parameter
+            (identifier)
+            (user_type
+              (identifier))))
+        (function_body
+          (block
+            (assignment
+              (identifier)
+              (identifier))
+            (assignment
+              (identifier)
+              (number_literal))
+            (property_declaration
+              (variable_declaration
+                (identifier))
+              (number_literal))
+            (assignment
+              (identifier)
+              (binary_expression
+                (identifier)
+                (number_literal)))
+            (property_declaration
+              (variable_declaration
+                (identifier))
+              (number_literal))
+            (assignment
+              (identifier)
+              (binary_expression
+                (identifier)
+                (number_literal))))))
+      (function_declaration
+        (modifiers
+          (inheritance_modifier))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (assignment
+          (identifier)
+          (infix_expression
+            (identifier)
+            (identifier)
+            (identifier)))
+        (return_expression
+          (identifier))))))
+
+==========================
+A modifier alone on the line before its declaration
+==========================
+
+private
+fun f() {
+  open
+  class B
+  private
+  infix fun Int.g(x: Int) = x
+  internal
+  @A fun h() {}
+  var x = 0
+  data
+  class C(val y: Int)
+  var open = 0
+  open
+  open = 1
+  open
+  value_x = 1
+  var sealed = 0
+  open
+  sealed = 1
+  open
+  classä = 1
+  f()
+  private as Any
+  private
+  public val z = 1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (modifiers
+      (visibility_modifier))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (class_declaration
+          (modifiers
+            (inheritance_modifier))
+          (identifier))
+        (function_declaration
+          (modifiers
+            (visibility_modifier)
+            (function_modifier))
+          (user_type
+            (identifier))
+          (identifier)
+          (function_value_parameters
+            (parameter
+              (identifier)
+              (user_type
+                (identifier))))
+          (function_body
+            (identifier)))
+        (function_declaration
+          (modifiers
+            (visibility_modifier)
+            (annotation
+              (user_type
+                (identifier))))
+          (identifier)
+          (function_value_parameters)
+          (function_body
+            (block)))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (class_declaration
+          (modifiers
+            (class_modifier))
+          (identifier)
+          (primary_constructor
+            (class_parameters
+              (class_parameter
+                (identifier)
+                (user_type
+                  (identifier))))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (identifier)
+        (assignment
+          (identifier)
+          (number_literal))
+        (identifier)
+        (assignment
+          (identifier)
+          (number_literal))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (identifier)
+        (assignment
+          (identifier)
+          (number_literal))
+        (identifier)
+        (assignment
+          (identifier)
+          (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments))
+        (as_expression
+          (identifier)
+          (user_type
+            (identifier)))
+        (property_declaration
+          (modifiers
+            (visibility_modifier)
+            (visibility_modifier))
+          (variable_declaration
+            (identifier))
+          (number_literal))))))
+
+==========================
+A get or set call after a local property
+==========================
+
+val top: Int
+  get() = 1
+
+fun f() {
+  val s = x
+  get("b")
+  val t = c["a"]!!
+  set("b", "bb", "bbb") // size 5
+  g()
+  val u = 1
+  get("/a") { 1 }
+  val v = 1
+  get /* note */ ("a")
+}
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (getter
+      (function_body
+        (number_literal))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (identifier))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content)))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (unary_expression
+            (index_expression
+              (identifier)
+              (string_literal
+                (string_content)))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content)))
+            (value_argument
+              (string_literal
+                (string_content)))
+            (value_argument
+              (string_literal
+                (string_content)))))
+        (line_comment)
+        (call_expression
+          (identifier)
+          (value_arguments))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (string_literal
+                  (string_content)))))
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (identifier)
+          (block_comment)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content)))))))))

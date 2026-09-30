@@ -6,8 +6,6 @@ examples/ktlint/ktlint-ruleset-standard/src/test/kotlin/io/github/ktlint/core/ru
 examples/mockk/modules/mockk-context-parameters/src/commonMain/kotlin/io/mockk/context/ContextParameters.kt
 examples/mockk/modules/mockk-dsl/src/commonMain/kotlin/io/mockk/API.kt
 examples/ort/clients/clearly-defined/src/main/kotlin/ClearlyDefinedService.kt
-examples/ort/model/src/main/kotlin/config/AnalyzerConfiguration.kt
-examples/ort/model/src/main/kotlin/config/PackageManagerConfiguration.kt
 examples/ort/plugins/api/src/main/kotlin/OrtPluginEnumEntry.kt
 examples/ort/plugins/api/src/main/kotlin/OrtPluginOption.kt
 examples/ort/plugins/package-managers/node/src/main/kotlin/NodeVersionManagerCommand.kt

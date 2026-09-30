@@ -15,10 +15,11 @@ enum TokenType {
     GET,
     SET,
     DOLLAR,
+    VAL,
 };
 
 #define MAX_WORD_SIZE 16
-#define MAX_WORDS 16
+#define MAX_WORDS 20
 
 static inline void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
 
@@ -34,22 +35,28 @@ static bool scan_word(TSLexer *lexer, const char *const word) {
     return true;
 }
 
+// Any non-ASCII character may be a letter, which `iswalpha` does not tell in the C locale.
+static inline bool is_identifier_part(int32_t c) { return iswalnum(c) || c == '_' || c > 0x7f; }
+
 static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE], char scanned_word[16],
                        uint8_t *index) {
+    // A word is a whole identifier, so that e.g. `value_x` does not match `value`.
     if (!scanned_word[0]) {
         for (uint8_t i = 0; i < MAX_WORD_SIZE - 1; i++) {
-            if (!iswalpha(lexer->lookahead)) {
+            if (!(i == 0 ? iswalpha(lexer->lookahead) : is_identifier_part(lexer->lookahead))) {
                 if (i == 0) {
                     return false;
                 }
                 break;
             }
-            scanned_word[i] = (char)lexer->lookahead;
+            // No keyword has a non-ASCII character, which a cast could turn into an ASCII one.
+            scanned_word[i] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
             skip(lexer);
         }
     }
 
-    for (uint8_t i = 0; i < MAX_WORDS; i++) {
+    // A list ends at its first empty word.
+    for (uint8_t i = 0; i < MAX_WORDS && words[i][0]; i++) {
         if (strncmp(scanned_word, words[i], MAX_WORD_SIZE) == 0) {
             if (index != NULL) {
                 *index = i;
@@ -59,6 +66,171 @@ static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE
     }
 
     return false;
+}
+
+static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "public",   "private", "protected",   "internal", "abstract", "final",   "open",   "override",
+    "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
+};
+
+// The other modifiers. Only a declaration after a lone modifier skips them: after an expression, the words above are
+// skipped just so that accessor modifiers (`internal set`) reach the accessor check, and these are common names.
+static const char OTHER_MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "data",  "enum",     "sealed",  "inner", "value",  "annotation",
+    "const", "operator", "tailrec", "infix", "expect", "actual",
+};
+
+static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+    "fun", "val", "var", "class", "interface", "object", "typealias",
+};
+
+static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_' || c > 0x7f; }
+
+// Skips modifier words, leaving the next word, if any, in `scanned_word`. Returns whether it skipped any.
+static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
+    bool skipped = false;
+    while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
+           (all && scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL))) {
+        skipped = true;
+        memset(scanned_word, 0, MAX_WORD_SIZE);
+        while (iswspace(lexer->lookahead)) {
+            skip(lexer);
+        }
+    }
+    return skipped;
+}
+
+// Skips the rest of a block comment after its `/*`. Block comments nest in Kotlin.
+static void skip_block_comment_rest(TSLexer *lexer) {
+    unsigned depth = 1;
+    while (depth > 0 && !lexer->eof(lexer)) {
+        int32_t c = lexer->lookahead;
+        skip(lexer);
+        if (c == '*' && lexer->lookahead == '/') {
+            skip(lexer);
+            depth--;
+        } else if (c == '/' && lexer->lookahead == '*') {
+            skip(lexer);
+            depth++;
+        }
+    }
+}
+
+// Skips whitespace and comments, but only up to the end of the line unless `across_lines` is set. Returns false when
+// it stops after consuming a `/` that starts no comment.
+static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
+    for (;;) {
+        while (across_lines ? iswspace(lexer->lookahead) : lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+            skip(lexer);
+        }
+        if (lexer->lookahead != '/') {
+            return true;
+        }
+        skip(lexer);
+        if (lexer->lookahead == '*') {
+            skip(lexer);
+            skip_block_comment_rest(lexer);
+        } else if (lexer->lookahead == '/') {
+            while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+                skip(lexer);
+            }
+            if (!across_lines) {
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+}
+
+// Bounds the recursion through string templates that nest strings, so that crafted input cannot overflow the stack.
+#define MAX_TEMPLATE_NESTING 16
+
+static bool skip_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting);
+
+// Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
+// Returns false at the end of the input or when templates nest too deeply.
+static bool skip_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting) {
+    unsigned depth = 1;
+    while (depth > 0) {
+        int32_t c = lexer->lookahead;
+        if (lexer->eof(lexer)) {
+            return false;
+        }
+        if (c == '/') {
+            skip_whitespace_and_comments(lexer, true);
+            continue;
+        }
+        skip(lexer);
+        if (c == open) {
+            depth++;
+        } else if (c == close) {
+            depth--;
+        } else if ((c == '"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, nesting)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Skips the rest of a string or character literal or a backticked name after its opening quote, including the
+// expressions of string templates. Returns false where `skip_to_closing_bracket` does.
+static bool skip_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting) {
+    bool raw = false;
+    if (quote == '"' && lexer->lookahead == '"') {
+        skip(lexer);
+        if (lexer->lookahead != '"') {
+            return true;
+        }
+        skip(lexer);
+        raw = true;
+    }
+    // A raw string ends at the last of three or more quotes.
+    unsigned quotes = 0;
+    while (!lexer->eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
+        int32_t c = lexer->lookahead;
+        quotes = c == '"' ? quotes + 1 : 0;
+        skip(lexer);
+        // Only single-line strings and character literals have escapes.
+        if (c == '\\' && !raw && quote != '`') {
+            skip(lexer);
+        } else if (c == '$' && quote == '"' && lexer->lookahead == '{') {
+            skip(lexer);
+            if (nesting == MAX_TEMPLATE_NESTING || !skip_to_closing_bracket(lexer, '{', '}', nesting + 1)) {
+                return false;
+            }
+        }
+    }
+    if (!raw) {
+        skip(lexer);
+    }
+    return true;
+}
+
+// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
+// a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
+// accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
+// such as `get("a") { … }` or an assignment such as `set = 1` on the next line from an accessor.
+static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
+    if (!skip_whitespace_and_comments(lexer, false)) {
+        return false;
+    }
+    if (lexer->lookahead != '(') {
+        return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
+               lexer->lookahead == '}';
+    }
+    skip(lexer);
+    skip_whitespace_and_comments(lexer, true);
+    if (setter ? !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@' || lexer->lookahead == '`')
+               : lexer->lookahead != ')') {
+        return false;
+    }
+    // A parenthesis in a literal (e.g. in an annotation's argument) or in a backticked name is not one of the list.
+    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) {
+        return false;
+    }
+    skip_whitespace_and_comments(lexer, true);
+    return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
 void *tree_sitter_kotlin_external_scanner_create() { return NULL; }
@@ -183,6 +355,24 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
 
         char scanned_word[16] = {0};
+        bool skipped_modifiers = false;
+        // Where a statement may end, `val` is valid only after a modifier that `_reserved_identifier` also reads as a
+        // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration that
+        // starts on the next line, possibly with more modifiers or annotations.
+        if (valid_symbols[VAL] && !error_recovery) {
+            if (lexer->lookahead == '@') {
+                return false;
+            }
+            if (iswalpha(lexer->lookahead)) {
+                // Modifiers not followed by a declaration, as in `open = 1` or `sealed = 1`, start a statement of their own.
+                skipped_modifiers = skip_modifier_words(lexer, scanned_word, true);
+                if ((!scanned_word[0] && lexer->lookahead == '@') ||
+                    scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
+                    return false;
+                }
+                goto keywords;
+            }
+        }
     _switch:
         switch (lexer->lookahead) {
             case ',':
@@ -245,22 +435,17 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case 'c':
             case 'b':
             case 'w':
-                while (scan_words(lexer,
-                                  (const char[16][16]){"public", "private", "protected", "internal", "abstract",
-                                                       "final", "open", "override", "lateinit", "vararg", "noinline",
-                                                       "crossinline", "external", "suspend", "inline"},
-                                  scanned_word, NULL)) {
-                    memset(scanned_word, 0, MAX_WORD_SIZE);
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                }
-
+                skipped_modifiers = skip_modifier_words(lexer, scanned_word, false);
+            keywords:;
                 uint8_t index = -1;
                 bool res = scan_words(
                     lexer,
                     (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where"},
                     scanned_word, &index);
+                // Of these, only an accessor or a constructor follows modifiers; in `private as T`, `private` is a name.
+                if (skipped_modifiers && index != 3 && index != 4 && index != 5) {
+                    return true;
+                }
 
                 // If `CLASS_MEMBER_SEMI` is valid, we found a secondary constructor and so we want to insert a semi, OR
                 // we found a variable named constructor whose field is being accessed
@@ -285,29 +470,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         }
                     }
                 }
-                // If `get` was found and the keyword is not valid, return a semi since it's being used as an identifier
-                else if (index == 3 && (!valid_symbols[GET] || lexer->lookahead == '[')) {
-                    return true;
-                }
-                // If `set` was found and the keyword is not valid, return a semi since it's being used as an identifier
-                else if (index == 4 && (!valid_symbols[SET] || lexer->lookahead == '[' || lexer->lookahead == '(' ||
-                                        lexer->lookahead == '.')) {
-                    if (lexer->lookahead == '(' && valid_symbols[SET]) {
-                        // skip until the closing parenthesis
-                        while (lexer->lookahead != ')' && !lexer->eof(lexer)) {
-                            skip(lexer);
-                        }
-                        skip(lexer);
-
-                        while (iswspace(lexer->lookahead)) {
-                            if (lexer->lookahead == '\n') {
-                                return true;
-                            }
-                            skip(lexer);
-                        }
-                        return false;
-                    }
-                    return true;
+                // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
+                else if (index == 3 || index == 4) {
+                    // During error recovery, scanning a parameter list to its end on every attempt would make recovery
+                    // quadratic in the input length.
+                    return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer, index == 4));
                 }
                 // If `in` was found and this specific external keyword is valid,
                 // return a semi since it's being used in a range test

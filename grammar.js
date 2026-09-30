@@ -49,6 +49,8 @@ module.exports = grammar({
     [$.parameter_modifiers, $.type_modifiers],
     [$.function_modifier, $.type_modifiers],
     [$.function_modifier, $._reserved_identifier],
+    [$.function_modifier, $.type_modifiers, $._reserved_identifier],
+    [$.type_modifiers, $._reserved_identifier],
     [$.variable_declaration, $.type_modifiers],
     [$.variable_declaration, $.type_modifiers, $.modifiers, $.annotated_expression],
     [$.variable_declaration, $.type_modifiers, $.annotated_expression],
@@ -61,6 +63,9 @@ module.exports = grammar({
     [$.class_modifier, $._reserved_identifier],
     [$.platform_modifier, $._reserved_identifier],
     [$.property_modifier, $._reserved_identifier],
+    [$.inheritance_modifier, $._reserved_identifier],
+    [$.visibility_modifier, $._reserved_identifier],
+    [$.member_modifier, $._reserved_identifier],
 
     [$.explicit_delegation, $.expression],
     [$.qualified_identifier],
@@ -87,6 +92,8 @@ module.exports = grammar({
     'set',
     // used to check if we can parse a comment
     '$',
+    // used to check if a modifier alone on its line belongs to a declaration on the next line
+    'val',
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -371,17 +378,22 @@ module.exports = grammar({
         )
       ),
 
-    class_modifier: () => choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value'),
+    // A modifier keyword that `_reserved_identifier` also accepts as a name makes `@A\nsealed interface B` parse as
+    // an infix call as well, since `interface` lexes as an identifier where no keyword is valid, so the modifier
+    // reading takes dynamic precedence. The name takes none: it would outweigh the modifiers again wherever a
+    // reading has more names, such as `get` calls in a class body misread as a trailing lambda.
+    class_modifier: () => prec.dynamic(1, choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value')),
 
-    function_modifier: () => prec.right(choice('tailrec', 'operator', 'infix', 'inline', 'external', 'suspend')),
+    function_modifier: () =>
+      prec.dynamic(1, prec.right(choice('tailrec', 'operator', 'infix', 'inline', 'external', 'suspend'))),
 
-    property_modifier: () => 'const',
+    property_modifier: () => prec.dynamic(1, 'const'),
 
-    visibility_modifier: () => choice('public', 'private', 'protected', 'internal'),
+    visibility_modifier: () => prec.dynamic(1, choice('public', 'private', 'protected', 'internal')),
 
-    inheritance_modifier: () => choice('abstract', 'final', 'open'),
+    inheritance_modifier: () => prec.dynamic(1, choice('abstract', 'final', 'open')),
 
-    member_modifier: () => choice('override', 'lateinit'),
+    member_modifier: () => prec.dynamic(1, choice('override', 'lateinit')),
 
     parameter_modifiers: ($) => repeat1(choice($.annotation, $.parameter_modifier)),
 
@@ -389,7 +401,7 @@ module.exports = grammar({
 
     reification_modifier: () => 'reified',
 
-    platform_modifier: () => choice('expect', 'actual'),
+    platform_modifier: () => prec.dynamic(1, choice('expect', 'actual')),
 
     type_modifiers: ($) => prec.right(repeat1(choice($.annotation, 'suspend'))),
 
@@ -746,25 +758,37 @@ module.exports = grammar({
     identifier: () => token(choice(/[\p{L}_][\p{L}_\p{Nd}]*/u, /`[^\r\n`]+`/)),
 
     _reserved_identifier: ($) =>
-      prec.dynamic(
-        1,
-        alias(
-          choice(
-            'actual',
-            'annotation',
-            'constructor',
-            'const',
-            'data',
-            'enum',
-            'expect',
-            'inner',
-            'get',
-            'set',
-            'operator',
-            'value'
-          ),
-          $.identifier
-        )
+      alias(
+        choice(
+          'abstract',
+          'actual',
+          'annotation',
+          'const',
+          'constructor',
+          'data',
+          'enum',
+          'expect',
+          'external',
+          'final',
+          'get',
+          'infix',
+          'inline',
+          'inner',
+          'internal',
+          'lateinit',
+          'open',
+          'operator',
+          'override',
+          'private',
+          'protected',
+          'public',
+          'sealed',
+          'set',
+          'suspend',
+          'tailrec',
+          'value'
+        ),
+        $.identifier
       ),
 
     shebang: () => /#!.*/,
