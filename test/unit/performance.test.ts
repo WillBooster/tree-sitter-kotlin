@@ -25,8 +25,9 @@ test('uses a Wasm build built from the current parser', () => {
 });
 
 // Consumers parse files being edited, so recovering from many errors must stay linear. Linear recovery
-// takes about 0.2 s here; a scanner that read to the end of the input on each attempt took 50 s.
-test('recovers from an error on each of 10,000 lines in linear time', () => {
+// takes about 0.2 s here; a scanner that read to the end of the input on each attempt took 50 s. The timeout
+// exceeds Vitest's 5 s default so that a slow run fails on the elapsed time it reports, not on the timeout.
+test('recovers from an error on each of 10,000 lines in linear time', { timeout: 60_000 }, () => {
   const start = performance.now();
   const tree = parser.parse('$ a\n'.repeat(10_000));
   const elapsed = performance.now() - start;
