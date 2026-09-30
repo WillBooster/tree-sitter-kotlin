@@ -73,7 +73,8 @@ static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
 };
 
-// The other modifiers. Unlike those above, a statement after an expression may also start with them as names.
+// The other modifiers. Only a declaration after a lone modifier skips them: after an expression, the words above are
+// skipped just so that accessor modifiers (`internal set`) reach the accessor check, and these are common names.
 static const char OTHER_MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "data",  "enum",     "sealed",  "inner", "value",  "annotation",
     "const", "operator", "tailrec", "infix", "expect", "actual",
@@ -85,15 +86,18 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
 
 static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_' || c > 0x7f; }
 
-// Skips modifier words, leaving the next word, if any, in `scanned_word`.
-static void skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
+// Skips modifier words, leaving the next word, if any, in `scanned_word`. Returns whether it skipped any.
+static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
+    bool skipped = false;
     while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
            (all && scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL))) {
+        skipped = true;
         memset(scanned_word, 0, MAX_WORD_SIZE);
         while (iswspace(lexer->lookahead)) {
             skip(lexer);
         }
     }
+    return skipped;
 }
 
 // Skips the rest of a block comment after its `/*`. Block comments nest in Kotlin.
@@ -351,6 +355,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
 
         char scanned_word[16] = {0};
+        bool skipped_modifiers = false;
         // Where a statement may end, `val` is valid only after a modifier that `_reserved_identifier` also reads as a
         // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration that
         // starts on the next line, possibly with more modifiers or annotations.
@@ -360,7 +365,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             }
             if (iswalpha(lexer->lookahead)) {
                 // Modifiers not followed by a declaration, as in `open = 1` or `sealed = 1`, start a statement of their own.
-                skip_modifier_words(lexer, scanned_word, true);
+                skipped_modifiers = skip_modifier_words(lexer, scanned_word, true);
                 if ((!scanned_word[0] && lexer->lookahead == '@') ||
                     scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
                     return false;
@@ -430,13 +435,17 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case 'c':
             case 'b':
             case 'w':
-                skip_modifier_words(lexer, scanned_word, false);
+                skipped_modifiers = skip_modifier_words(lexer, scanned_word, false);
             keywords:;
                 uint8_t index = -1;
                 bool res = scan_words(
                     lexer,
                     (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where"},
                     scanned_word, &index);
+                // Of these, only an accessor or a constructor follows modifiers; in `private as T`, `private` is a name.
+                if (skipped_modifiers && index != 3 && index != 4 && index != 5) {
+                    return true;
+                }
 
                 // If `CLASS_MEMBER_SEMI` is valid, we found a secondary constructor and so we want to insert a semi, OR
                 // we found a variable named constructor whose field is being accessed

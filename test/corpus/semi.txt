@@ -755,6 +755,8 @@ fun f() {
   sealed = 1
   open
   classä = 1
+  f()
+  private as Any
   private
   public val z = 1
 }
@@ -835,6 +837,13 @@ fun f() {
         (assignment
           (identifier)
           (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments))
+        (as_expression
+          (identifier)
+          (user_type
+            (identifier)))
         (property_declaration
           (modifiers
             (visibility_modifier)
