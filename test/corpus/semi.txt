@@ -455,6 +455,8 @@ class A {
     ) = 1
   val w: Int
     get() /* note /* nested */ still a note */ = 2
+  val q
+    get(): Int = 3
   var y = 1
     set(
       value
@@ -508,6 +510,14 @@ class A {
             (identifier)))
         (getter
           (block_comment)
+          (function_body
+            (number_literal))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (getter
+          (user_type
+            (identifier))
           (function_body
             (number_literal))))
       (property_declaration
