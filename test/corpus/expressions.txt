@@ -717,6 +717,56 @@ fun f() {
                     (identifier)))))))))))
 
 =========================================
+Calls with type arguments
+=========================================
+
+fun f() {
+  assertFailsWith<E> { g() }
+  val m = mock<T>()
+  val c = a < b && c > d
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (call_expression
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier))))
+          (annotated_lambda
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments)))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (call_expression
+            (identifier)
+            (type_arguments
+              (type_projection
+                (user_type
+                  (identifier))))
+            (value_arguments)))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (binary_expression
+            (binary_expression
+              (identifier)
+              (identifier))
+            (binary_expression
+              (identifier)
+              (identifier))))))))
+
+=========================================
 String interpolation
 =========================================
 

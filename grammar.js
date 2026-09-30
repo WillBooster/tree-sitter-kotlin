@@ -472,7 +472,8 @@ module.exports = grammar({
     _receiver_type: ($) =>
       seq(optional($.type_modifiers), choice($.user_type, 'dynamic', $.parenthesized_type, $.nullable_type)),
 
-    type_arguments: ($) => seq('<', commaSep1($.type_projection), '>'),
+    // `a<B>(c)` also reads as comparisons (`a < B > (c)`); like Kotlin's parser, prefer the type arguments.
+    type_arguments: ($) => prec.dynamic(1, seq('<', commaSep1($.type_projection), '>')),
 
     type_projection: ($) => choice(seq(repeat($.variance_modifier), $.type), '*'),
 
