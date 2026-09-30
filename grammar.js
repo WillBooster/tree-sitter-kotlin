@@ -94,6 +94,8 @@ module.exports = grammar({
     '$',
     // used to check if a modifier alone on its line belongs to a declaration on the next line
     'val',
+    // never scanned: it tells the scanner where a primary constructor may start
+    $._primary_constructor_position,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -143,7 +145,7 @@ module.exports = grammar({
           choice('class', seq(optional('fun'), 'interface')),
           field('name', $.identifier),
           optional($.type_parameters),
-          optional($.primary_constructor),
+          optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
           optional(seq(':', $.delegation_specifiers)),
           optional($.type_constraints),
           optional(choice($.class_body, $.enum_class_body))

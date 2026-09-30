@@ -16,6 +16,7 @@ enum TokenType {
     SET,
     DOLLAR,
     VAL,
+    PRIMARY_CONSTRUCTOR_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -486,6 +487,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 advance(lexer);
                 lexer->mark_end(lexer);
                 return true;
+            // Kotlin allows a primary constructor on the line after the class name.
+            case '(':
+                return !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
                     while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
