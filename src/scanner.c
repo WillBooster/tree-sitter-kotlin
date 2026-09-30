@@ -1,5 +1,9 @@
 #include "tree_sitter/parser.h"
 
+#include "tree_sitter/alloc.h"
+
+#include "letter_ranges.h"
+
 #include <string.h>
 #include <wctype.h>
 
@@ -11,6 +15,11 @@ enum TokenType {
     IN,
     Q_DOT,
     MULTILINE_STRING_CONTENT,
+    MULTI_DOLLAR_STRING_START,
+    MULTI_DOLLAR_MULTILINE_STRING_START,
+    MULTI_DOLLAR_STRING_CONTENT,
+    MULTI_DOLLAR_INTERPOLATION_START,
+    MULTI_DOLLAR_STRING_END,
     CONSTRUCTOR,
     GET,
     SET,
@@ -85,7 +94,27 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
-static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_' || c > 0x7f; }
+// Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
+static bool is_letter(int32_t c) {
+    if (c < 0x80) {
+        return iswalpha(c);
+    }
+    size_t low = 0;
+    size_t high = sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]);
+    while (low < high) {
+        size_t middle = (low + high) / 2;
+        if ((uint32_t)c < LETTER_RANGES[middle][0]) {
+            high = middle;
+        } else if ((uint32_t)c > LETTER_RANGES[middle][1]) {
+            low = middle + 1;
+        } else {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline bool is_identifier_start(int32_t c) { return is_letter(c) || c == '_'; }
 
 // Skips modifier words, leaving the next word, if any, in `scanned_word`. Returns whether it skipped any.
 static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
@@ -234,19 +263,208 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
-void *tree_sitter_kotlin_external_scanner_create() { return NULL; }
+typedef struct {
+    // The leading dollars of a run that the last string content token did not cover although they are content, since
+    // the run ends in an interpolation (see `scan_multi_dollar_string_part`).
+    uint32_t surplus_dollars;
+    // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
+    // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
+    unsigned length;
+    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - sizeof(uint32_t)) / sizeof(uint16_t)];
+} Scanner;
 
-void tree_sitter_kotlin_external_scanner_destroy(void *payload) {}
+#define MULTILINE_FLAG 0x8000
+#define MAX_DOLLAR_COUNT 0x7fff
 
-unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) { return 0; }
+void *tree_sitter_kotlin_external_scanner_create() { return ts_calloc(1, sizeof(Scanner)); }
 
-void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {}
+void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payload); }
+
+unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) {
+    Scanner *scanner = (Scanner *)payload;
+    memcpy(buffer, &scanner->surplus_dollars, sizeof(uint32_t));
+    memcpy(buffer + sizeof(uint32_t), scanner->strings, scanner->length * sizeof(uint16_t));
+    return sizeof(uint32_t) + scanner->length * sizeof(uint16_t);
+}
+
+void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
+    Scanner *scanner = (Scanner *)payload;
+    scanner->surplus_dollars = 0;
+    scanner->length = 0;
+    if (length >= sizeof(uint32_t)) {
+        memcpy(&scanner->surplus_dollars, buffer, sizeof(uint32_t));
+        scanner->length = (length - sizeof(uint32_t)) / sizeof(uint16_t);
+        memcpy(scanner->strings, buffer + sizeof(uint32_t), length - sizeof(uint32_t));
+    }
+}
+
+// Scans `$$"` or `$$"""` with two or more dollars.
+static bool scan_multi_dollar_string_start(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
+    unsigned dollar_count = 0;
+    while (lexer->lookahead == '$') {
+        advance(lexer);
+        dollar_count++;
+    }
+    if (dollar_count < 2 || dollar_count > MAX_DOLLAR_COUNT || lexer->lookahead != '"' ||
+        scanner->length == sizeof(scanner->strings) / sizeof(uint16_t)) {
+        return false;
+    }
+    advance(lexer);
+    lexer->mark_end(lexer);
+    uint16_t string = (uint16_t)dollar_count;
+    lexer->result_symbol = MULTI_DOLLAR_STRING_START;
+    if (lexer->lookahead == '"') {
+        advance(lexer);
+        // `$$""` is an empty single-line string.
+        if (lexer->lookahead == '"' && valid_symbols[MULTI_DOLLAR_MULTILINE_STRING_START]) {
+            advance(lexer);
+            lexer->mark_end(lexer);
+            string |= MULTILINE_FLAG;
+            lexer->result_symbol = MULTI_DOLLAR_MULTILINE_STRING_START;
+        }
+    }
+    if (!valid_symbols[lexer->result_symbol]) {
+        return false;
+    }
+    scanner->strings[scanner->length++] = string;
+    scanner->surplus_dollars = 0;
+    return true;
+}
+
+// Scans the content of the innermost multi-dollar string up to an interpolation or the closing quotes, or else
+// those. Content ends before a run of dollars that starts an interpolation, and the run's leading dollars beyond
+// the string's dollar count are content. A token cannot end at a position already passed, so when such a run starts
+// a token, the first dollar is returned as content and the rest of the surplus, now counted, as the next token.
+// Closing quotes work alike, one quote at a time: in a multiline string, the last three quotes of a run close it.
+static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
+    uint16_t string = scanner->strings[scanner->length - 1];
+    unsigned dollar_count = string & MAX_DOLLAR_COUNT;
+    bool multiline = string & MULTILINE_FLAG;
+    bool has_content = false;
+    lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+    uint32_t surplus_dollars = scanner->surplus_dollars;
+    scanner->surplus_dollars = 0;
+    if (surplus_dollars > 0) {
+        while (surplus_dollars > 0 && lexer->lookahead == '$') {
+            advance(lexer);
+            surplus_dollars--;
+            has_content = true;
+        }
+        if (has_content) {
+            lexer->mark_end(lexer);
+            return true;
+        }
+    }
+    for (;;) {
+        lexer->mark_end(lexer);
+        if (lexer->eof(lexer)) {
+            return has_content;
+        }
+        switch (lexer->lookahead) {
+            case '$': {
+                advance(lexer);
+                if (!has_content) {
+                    lexer->mark_end(lexer);
+                }
+                unsigned run = 1;
+                while (lexer->lookahead == '$') {
+                    advance(lexer);
+                    run++;
+                }
+                if (run < dollar_count || !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '{')) {
+                    has_content = true;
+                    break;
+                }
+                if (!has_content) {
+                    if (run == dollar_count) {
+                        lexer->mark_end(lexer);
+                        lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+                    } else {
+                        scanner->surplus_dollars = run - dollar_count - 1;
+                    }
+                }
+                return true;
+            }
+            case '"': {
+                advance(lexer);
+                if (!has_content) {
+                    lexer->mark_end(lexer);
+                }
+                unsigned run = 1;
+                while (multiline && lexer->lookahead == '"' && run < 3) {
+                    advance(lexer);
+                    run++;
+                }
+                if (multiline && run < 3) {
+                    has_content = true;
+                    break;
+                }
+                if (has_content) {
+                    return true;
+                }
+                // A fourth quote makes the first one content.
+                if (multiline && lexer->lookahead == '"') {
+                    return true;
+                }
+                lexer->mark_end(lexer);
+                lexer->result_symbol = MULTI_DOLLAR_STRING_END;
+                scanner->length--;
+                return true;
+            }
+            case '\\': {
+                bool had_content = has_content;
+                advance(lexer);
+                has_content = true;
+                if (multiline) {
+                    break;
+                }
+                // An escape sequence is a token of its own in a single-line string. What `escape_sequence` does not
+                // accept is content, as `string_literal` takes a backslash and any other character as content.
+                int32_t escaped = lexer->lookahead;
+                if (escaped == 'u') {
+                    advance(lexer);
+                    unsigned digits = 0;
+                    while (digits < 4 && iswxdigit(lexer->lookahead)) {
+                        advance(lexer);
+                        digits++;
+                    }
+                    if (digits == 4) {
+                        return had_content;
+                    }
+                } else if (escaped == 'x' || (escaped >= '0' && escaped <= '7')) {
+                    advance(lexer);
+                } else {
+                    return had_content;
+                }
+                break;
+            }
+            case '\n':
+            case '\r':
+                if (!multiline) {
+                    return has_content;
+                }
+                advance(lexer);
+                has_content = true;
+                break;
+            default:
+                advance(lexer);
+                has_content = true;
+                break;
+        }
+    }
+}
 
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
+    Scanner *scanner = (Scanner *)payload;
     // During error recovery every token is valid, including string content and a semicolon, which never are
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    if (valid_symbols[MULTI_DOLLAR_STRING_CONTENT] && !error_recovery && scanner->length > 0) {
+        return scan_multi_dollar_string_part(scanner, lexer);
+    }
+    bool can_start_multi_dollar_string =
+        !error_recovery && (valid_symbols[MULTI_DOLLAR_STRING_START] || valid_symbols[MULTI_DOLLAR_MULTILINE_STRING_START]);
     if (valid_symbols[MULTILINE_STRING_CONTENT] && !error_recovery) {
         bool did_advance = false;
         lexer->result_symbol = MULTILINE_STRING_CONTENT;
@@ -343,6 +561,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return false;
                 case 'i':
                     return scan_word(lexer, "import");
+                // A string after an expression that may end here, e.g. `return $$"…"`.
+                case '$':
+                    return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
                 case ';':
                     advance(lexer);
                     lexer->mark_end(lexer);
@@ -536,6 +757,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
     while (iswspace(lexer->lookahead)) {
         skip(lexer);
+    }
+
+    if (lexer->lookahead == '$' && can_start_multi_dollar_string) {
+        return scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
     }
 
     if (valid_symbols[NOT_IS]) {

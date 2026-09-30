@@ -86,6 +86,11 @@ module.exports = grammar({
     $._in,
     $._q_dot,
     $._multiline_string_content,
+    $._multi_dollar_string_start,
+    $._multi_dollar_multiline_string_start,
+    $._multi_dollar_string_content,
+    $._multi_dollar_interpolation_start,
+    $._multi_dollar_string_end,
     // used to check if a preceding annoation should not have an automatic _semi inserted
     'constructor',
     'get',
@@ -683,26 +688,51 @@ module.exports = grammar({
     object_literal: ($) => seq('object', optional(seq(':', $.delegation_specifiers)), $.class_body),
 
     string_literal: ($) =>
-      seq(
-        '"',
-        repeat(
-          choice(
-            alias(
-              choice(token.immediate(prec(2, seq('\\', /[^bnrt'"\\$]/))), token.immediate(prec(1, /[^"\\$]+/)), '$'),
-              $.string_content
-            ),
-            $.escape_sequence,
-            $.interpolation
-          )
+      choice(
+        seq(
+          '"',
+          repeat(
+            choice(
+              alias(
+                choice(token.immediate(prec(2, seq('\\', /[^bnrt'"\\$]/))), token.immediate(prec(1, /[^"\\$]+/)), '$'),
+                $.string_content
+              ),
+              $.escape_sequence,
+              $.interpolation
+            )
+          ),
+          '"'
         ),
-        '"'
+        seq(
+          $._multi_dollar_string_start,
+          repeat(
+            choice(
+              alias($._multi_dollar_string_content, $.string_content),
+              $.escape_sequence,
+              alias($._multi_dollar_interpolation, $.interpolation)
+            )
+          ),
+          $._multi_dollar_string_end
+        )
       ),
 
     multiline_string_literal: ($) =>
-      seq(
-        '"""',
-        repeat(choice(alias($._multiline_string_content, $.string_content), $.interpolation)),
-        choice('"""', '""""')
+      choice(
+        seq(
+          '"""',
+          repeat(choice(alias($._multiline_string_content, $.string_content), $.interpolation)),
+          choice('"""', '""""')
+        ),
+        seq(
+          $._multi_dollar_multiline_string_start,
+          repeat(
+            choice(
+              alias($._multi_dollar_string_content, $.string_content),
+              alias($._multi_dollar_interpolation, $.interpolation)
+            )
+          ),
+          $._multi_dollar_string_end
+        )
       ),
 
     interpolation: ($) =>
@@ -710,6 +740,17 @@ module.exports = grammar({
         // Immediate so that it outranks the string content that would otherwise absorb the name.
         seq('$', alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier)),
         seq('${', $.expression, '}')
+      ),
+
+    // In a string prefixed with n dollars (Kotlin 2.1), exactly n dollars start an interpolation; the scanner
+    // returns them as one token only where they do.
+    _multi_dollar_interpolation: ($) =>
+      seq(
+        $._multi_dollar_interpolation_start,
+        choice(
+          alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
+          seq(token.immediate('{'), $.expression, '}')
+        )
       ),
 
     character_literal: ($) => seq("'", choice(token.immediate(prec(1, /[^'\\\r\n]/)), $.escape_sequence), "'"),
