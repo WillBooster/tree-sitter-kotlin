@@ -764,6 +764,8 @@ val u = $$$"""x $$y $$$z $$${w} """"
 val v = $$"outer $${ $$"inner $$q" } end"
 val w = $$""
 val p = $$"price $$€5 for $$ä"
+val q = $$"a\x b\0 c\u00 d\u0041 e"
+val r = $$"$$$$$$x"
 fun f() = $$"r $$s"
 fun g(): String {
   x
@@ -833,6 +835,21 @@ fun g(): String {
     (variable_declaration
       (identifier))
     (string_literal
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
+      (escape_sequence)
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
       (string_content)
       (interpolation
         (identifier))))

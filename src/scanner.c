@@ -263,11 +263,14 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
-// The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
-// the string's dollar count, with MULTILINE_FLAG set for a multiline string.
 typedef struct {
+    // The leading dollars of a run that the last string content token did not cover although they are content, since
+    // the run ends in an interpolation (see `scan_multi_dollar_string_part`).
+    uint32_t surplus_dollars;
+    // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
+    // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
     unsigned length;
-    uint16_t strings[TREE_SITTER_SERIALIZATION_BUFFER_SIZE / sizeof(uint16_t)];
+    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - sizeof(uint32_t)) / sizeof(uint16_t)];
 } Scanner;
 
 #define MULTILINE_FLAG 0x8000
@@ -279,14 +282,20 @@ void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payloa
 
 unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) {
     Scanner *scanner = (Scanner *)payload;
-    memcpy(buffer, scanner->strings, scanner->length * sizeof(uint16_t));
-    return scanner->length * sizeof(uint16_t);
+    memcpy(buffer, &scanner->surplus_dollars, sizeof(uint32_t));
+    memcpy(buffer + sizeof(uint32_t), scanner->strings, scanner->length * sizeof(uint16_t));
+    return sizeof(uint32_t) + scanner->length * sizeof(uint16_t);
 }
 
 void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
     Scanner *scanner = (Scanner *)payload;
-    scanner->length = length / sizeof(uint16_t);
-    memcpy(scanner->strings, buffer, length);
+    scanner->surplus_dollars = 0;
+    scanner->length = 0;
+    if (length >= sizeof(uint32_t)) {
+        memcpy(&scanner->surplus_dollars, buffer, sizeof(uint32_t));
+        scanner->length = (length - sizeof(uint32_t)) / sizeof(uint16_t);
+        memcpy(scanner->strings, buffer + sizeof(uint32_t), length - sizeof(uint32_t));
+    }
 }
 
 // Scans `$$"` or `$$"""` with two or more dollars.
@@ -318,19 +327,34 @@ static bool scan_multi_dollar_string_start(Scanner *scanner, TSLexer *lexer, con
         return false;
     }
     scanner->strings[scanner->length++] = string;
+    scanner->surplus_dollars = 0;
     return true;
 }
 
 // Scans the content of the innermost multi-dollar string up to an interpolation or the closing quotes, or else
 // those. Content ends before a run of dollars that starts an interpolation, and the run's leading dollars beyond
-// the string's dollar count are content, so a run longer than that count yields its surplus one dollar at a
-// time. Closing quotes work alike: in a multiline string, the last three quotes of a run close it.
+// the string's dollar count are content. A token cannot end at a position already passed, so when such a run starts
+// a token, the first dollar is returned as content and the rest of the surplus, now counted, as the next token.
+// Closing quotes work alike, one quote at a time: in a multiline string, the last three quotes of a run close it.
 static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
     uint16_t string = scanner->strings[scanner->length - 1];
     unsigned dollar_count = string & MAX_DOLLAR_COUNT;
     bool multiline = string & MULTILINE_FLAG;
     bool has_content = false;
     lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+    uint32_t surplus_dollars = scanner->surplus_dollars;
+    scanner->surplus_dollars = 0;
+    if (surplus_dollars > 0) {
+        while (surplus_dollars > 0 && lexer->lookahead == '$') {
+            advance(lexer);
+            surplus_dollars--;
+            has_content = true;
+        }
+        if (has_content) {
+            lexer->mark_end(lexer);
+            return true;
+        }
+    }
     for (;;) {
         lexer->mark_end(lexer);
         if (lexer->eof(lexer)) {
@@ -351,9 +375,13 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
                     has_content = true;
                     break;
                 }
-                if (run == dollar_count && !has_content) {
-                    lexer->mark_end(lexer);
-                    lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+                if (!has_content) {
+                    if (run == dollar_count) {
+                        lexer->mark_end(lexer);
+                        lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+                    } else {
+                        scanner->surplus_dollars = run - dollar_count - 1;
+                    }
                 }
                 return true;
             }
@@ -383,14 +411,33 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
                 scanner->length--;
                 return true;
             }
-            case '\\':
-                // Escape sequences are tokens of their own in single-line strings.
-                if (!multiline) {
-                    return has_content;
-                }
+            case '\\': {
+                bool had_content = has_content;
                 advance(lexer);
                 has_content = true;
+                if (multiline) {
+                    break;
+                }
+                // An escape sequence is a token of its own in a single-line string. What `escape_sequence` does not
+                // accept is content, as `string_literal` takes a backslash and any other character as content.
+                int32_t escaped = lexer->lookahead;
+                if (escaped == 'u') {
+                    advance(lexer);
+                    unsigned digits = 0;
+                    while (digits < 4 && iswxdigit(lexer->lookahead)) {
+                        advance(lexer);
+                        digits++;
+                    }
+                    if (digits == 4) {
+                        return had_content;
+                    }
+                } else if (escaped == 'x' || (escaped >= '0' && escaped <= '7')) {
+                    advance(lexer);
+                } else {
+                    return had_content;
+                }
                 break;
+            }
             case '\n':
             case '\r':
                 if (!multiline) {
