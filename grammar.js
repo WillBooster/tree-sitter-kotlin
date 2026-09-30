@@ -720,11 +720,7 @@ module.exports = grammar({
 
     multiline_string_literal: ($) =>
       choice(
-        seq(
-          '"""',
-          repeat(choice(alias($._multiline_string_content, $.string_content), $.interpolation)),
-          choice('"""', '""""')
-        ),
+        seq('"""', repeat(choice(alias($._multiline_string_content, $.string_content), $.interpolation)), '"""'),
         seq(
           $._multi_dollar_multiline_string_start,
           repeat(

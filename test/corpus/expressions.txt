@@ -754,6 +754,60 @@ val m = """$value ${x} $"""
         (identifier))
       (string_content))))
 
+=========================================
+Raw strings ending in quotes
+=========================================
+
+val a = """a"""""
+val b = """"""
+val c = """""""
+val d = """""a""""
+val e = """$_x $é ${y} $1"""
+val f = 1
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)
+      (string_content)
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)))
+
 ==================================
 Multi-dollar string interpolation
 ==================================

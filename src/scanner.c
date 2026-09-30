@@ -473,27 +473,30 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '$':
                     lexer->mark_end(lexer);
                     advance(lexer);
-                    if (iswalpha(lexer->lookahead) || lexer->lookahead == '{') {
+                    if (is_identifier_start(lexer->lookahead) || lexer->lookahead == '{') {
                         return did_advance;
                     }
                     did_advance = true;
                     break;
-                case '"':
+                // The last three quotes of a run close the string, and the quotes before them are content, which is
+                // returned one quote at a time since the token cannot end at a quote already passed.
+                case '"': {
                     lexer->mark_end(lexer);
-                    // 3 or 4 quotes means we're done
                     advance(lexer);
-                    if (lexer->lookahead == '"') {
-                        advance(lexer);
-                        if (lexer->lookahead == '"') {
-                            advance(lexer);
-                            if (lexer->lookahead == '"') {
-                                advance(lexer);
-                            }
-                            return did_advance;
-                        }
+                    if (!did_advance) {
+                        lexer->mark_end(lexer);
                     }
-                    did_advance = true;
-                    break;
+                    unsigned run = 1;
+                    while (lexer->lookahead == '"' && run < 3) {
+                        advance(lexer);
+                        run++;
+                    }
+                    if (run < 3) {
+                        did_advance = true;
+                        break;
+                    }
+                    return did_advance || lexer->lookahead == '"';
+                }
                 default:
                     advance(lexer);
                     did_advance = true;
