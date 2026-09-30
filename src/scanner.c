@@ -267,11 +267,11 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
 // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
 typedef struct {
     unsigned length;
-    uint8_t strings[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    uint16_t strings[TREE_SITTER_SERIALIZATION_BUFFER_SIZE / sizeof(uint16_t)];
 } Scanner;
 
-#define MULTILINE_FLAG 0x80
-#define MAX_DOLLAR_COUNT 0x7f
+#define MULTILINE_FLAG 0x8000
+#define MAX_DOLLAR_COUNT 0x7fff
 
 void *tree_sitter_kotlin_external_scanner_create() { return ts_calloc(1, sizeof(Scanner)); }
 
@@ -279,13 +279,13 @@ void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payloa
 
 unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) {
     Scanner *scanner = (Scanner *)payload;
-    memcpy(buffer, scanner->strings, scanner->length);
-    return scanner->length;
+    memcpy(buffer, scanner->strings, scanner->length * sizeof(uint16_t));
+    return scanner->length * sizeof(uint16_t);
 }
 
 void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
     Scanner *scanner = (Scanner *)payload;
-    scanner->length = length;
+    scanner->length = length / sizeof(uint16_t);
     memcpy(scanner->strings, buffer, length);
 }
 
@@ -297,12 +297,12 @@ static bool scan_multi_dollar_string_start(Scanner *scanner, TSLexer *lexer, con
         dollar_count++;
     }
     if (dollar_count < 2 || dollar_count > MAX_DOLLAR_COUNT || lexer->lookahead != '"' ||
-        scanner->length == sizeof(scanner->strings)) {
+        scanner->length == sizeof(scanner->strings) / sizeof(uint16_t)) {
         return false;
     }
     advance(lexer);
     lexer->mark_end(lexer);
-    uint8_t string = (uint8_t)dollar_count;
+    uint16_t string = (uint16_t)dollar_count;
     lexer->result_symbol = MULTI_DOLLAR_STRING_START;
     if (lexer->lookahead == '"') {
         advance(lexer);
@@ -326,7 +326,7 @@ static bool scan_multi_dollar_string_start(Scanner *scanner, TSLexer *lexer, con
 // the string's dollar count are content, so a run longer than that count yields its surplus one dollar at a
 // time. Closing quotes work alike: in a multiline string, the last three quotes of a run close it.
 static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
-    uint8_t string = scanner->strings[scanner->length - 1];
+    uint16_t string = scanner->strings[scanner->length - 1];
     unsigned dollar_count = string & MAX_DOLLAR_COUNT;
     bool multiline = string & MULTILINE_FLAG;
     bool has_content = false;
