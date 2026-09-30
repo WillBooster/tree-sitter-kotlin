@@ -2,6 +2,8 @@
 
 #include "tree_sitter/alloc.h"
 
+#include "letter_ranges.h"
+
 #include <string.h>
 #include <wctype.h>
 
@@ -92,7 +94,27 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
-static inline bool is_identifier_start(int32_t c) { return iswalpha(c) || c == '_' || c > 0x7f; }
+// Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
+static bool is_letter(int32_t c) {
+    if (c < 0x80) {
+        return iswalpha(c);
+    }
+    size_t low = 0;
+    size_t high = sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]);
+    while (low < high) {
+        size_t middle = (low + high) / 2;
+        if ((uint32_t)c < LETTER_RANGES[middle][0]) {
+            high = middle;
+        } else if ((uint32_t)c > LETTER_RANGES[middle][1]) {
+            low = middle + 1;
+        } else {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline bool is_identifier_start(int32_t c) { return is_letter(c) || c == '_'; }
 
 // Skips modifier words, leaving the next word, if any, in `scanned_word`. Returns whether it skipped any.
 static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE], bool all) {
