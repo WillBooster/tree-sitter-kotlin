@@ -1,4 +1,3 @@
-examples/ktlint/ktlint-cli/src/main/kotlin/io/github/ktlint/core/cli/internal/KtlintCommandLine.kt
 examples/mockk/modules/mockk-context-parameters/src/commonMain/kotlin/io/mockk/context/ContextParameters.kt
 examples/ort/clients/clearly-defined/src/main/kotlin/ClearlyDefinedService.kt
 examples/ort/plugins/scanners/scanoss/src/test/resources/exclusionTest/random-data-05-04-43.kt

@@ -11,6 +11,7 @@ enum TokenType {
     SEMI,
     CLASS_MEMBER_SEMI,
     BLOCK_COMMENT,
+    LINE_COMMENT,
     NOT_IS,
     IN,
     Q_DOT,
@@ -773,6 +774,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return !iswalnum(lexer->lookahead);
                 }
             }
+            // Past a `!` that starts no `!is`, a comment must not be scanned as a token that starts with the `!`.
+            return false;
         }
     }
 
@@ -804,6 +807,8 @@ q_dot_from_semi:
                 lexer->mark_end(lexer);
                 return true;
             }
+            // The `?` is consumed, so a comment after it must not be scanned as a token that starts with the `?`.
+            return false;
         }
     }
 
@@ -814,6 +819,14 @@ comment:
 
     if (lexer->lookahead == '/') {
         advance(lexer);
+        if (lexer->lookahead == '/') {
+            while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+                advance(lexer);
+            }
+            lexer->mark_end(lexer);
+            lexer->result_symbol = LINE_COMMENT;
+            return true;
+        }
         if (lexer->lookahead != '*') {
             return false;
         }
@@ -821,10 +834,8 @@ comment:
 
         bool after_star = false;
         unsigned nesting_depth = 1;
-        for (;;) {
+        while (!lexer->eof(lexer)) {
             switch (lexer->lookahead) {
-                case '\0':
-                    return false;
                 case '*':
                     advance(lexer);
                     after_star = true;
