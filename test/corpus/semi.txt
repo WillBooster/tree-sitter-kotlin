@@ -621,6 +621,7 @@ class A {
                 (value_arguments
                   (value_argument
                     (multiline_string_literal
+                      (string_content)
                       (string_content)))))))
           (identifier)
           (function_body

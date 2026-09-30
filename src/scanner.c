@@ -331,11 +331,28 @@ static bool scan_multi_dollar_string_start(Scanner *scanner, TSLexer *lexer, con
     return true;
 }
 
+// Consumes a quote and, in a multiline string, up to two more, returning how many it consumed. The last three quotes
+// of a run close a multiline string and the quotes before them are content. A token cannot end at a position already
+// passed, so the token's end is marked before the run, and also after its first quote when the token has no content
+// yet: a run of four or more quotes then returns that quote as content, and the next token sees a shorter run.
+static unsigned scan_quote_run(TSLexer *lexer, bool multiline, bool has_content) {
+    lexer->mark_end(lexer);
+    advance(lexer);
+    if (!has_content) {
+        lexer->mark_end(lexer);
+    }
+    unsigned run = 1;
+    while (multiline && lexer->lookahead == '"' && run < 3) {
+        advance(lexer);
+        run++;
+    }
+    return run;
+}
+
 // Scans the content of the innermost multi-dollar string up to an interpolation or the closing quotes, or else
 // those. Content ends before a run of dollars that starts an interpolation, and the run's leading dollars beyond
 // the string's dollar count are content. A token cannot end at a position already passed, so when such a run starts
 // a token, the first dollar is returned as content and the rest of the surplus, now counted, as the next token.
-// Closing quotes work alike, one quote at a time: in a multiline string, the last three quotes of a run close it.
 static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
     uint16_t string = scanner->strings[scanner->length - 1];
     unsigned dollar_count = string & MAX_DOLLAR_COUNT;
@@ -386,24 +403,12 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
                 return true;
             }
             case '"': {
-                advance(lexer);
-                if (!has_content) {
-                    lexer->mark_end(lexer);
-                }
-                unsigned run = 1;
-                while (multiline && lexer->lookahead == '"' && run < 3) {
-                    advance(lexer);
-                    run++;
-                }
+                unsigned run = scan_quote_run(lexer, multiline, has_content);
                 if (multiline && run < 3) {
                     has_content = true;
                     break;
                 }
-                if (has_content) {
-                    return true;
-                }
-                // A fourth quote makes the first one content.
-                if (multiline && lexer->lookahead == '"') {
+                if (has_content || (multiline && lexer->lookahead == '"')) {
                     return true;
                 }
                 lexer->mark_end(lexer);
@@ -473,27 +478,19 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '$':
                     lexer->mark_end(lexer);
                     advance(lexer);
-                    if (iswalpha(lexer->lookahead) || lexer->lookahead == '{') {
+                    if (is_identifier_start(lexer->lookahead) || lexer->lookahead == '{') {
                         return did_advance;
                     }
                     did_advance = true;
                     break;
-                case '"':
-                    lexer->mark_end(lexer);
-                    // 3 or 4 quotes means we're done
-                    advance(lexer);
-                    if (lexer->lookahead == '"') {
-                        advance(lexer);
-                        if (lexer->lookahead == '"') {
-                            advance(lexer);
-                            if (lexer->lookahead == '"') {
-                                advance(lexer);
-                            }
-                            return did_advance;
-                        }
+                case '"': {
+                    unsigned run = scan_quote_run(lexer, true, did_advance);
+                    if (run < 3) {
+                        did_advance = true;
+                        break;
                     }
-                    did_advance = true;
-                    break;
+                    return did_advance || lexer->lookahead == '"';
+                }
                 default:
                     advance(lexer);
                     did_advance = true;
