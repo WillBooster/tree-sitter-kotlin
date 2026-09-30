@@ -625,3 +625,13 @@ fun f() {
   val fun = 2
 }
 ---
+
+==============================
+An index expression without an index
+:error
+==============================
+
+fun f() {
+  a[]
+}
+---
