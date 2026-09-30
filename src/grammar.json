@@ -2480,50 +2480,54 @@
       ]
     },
     "modifiers": {
-      "type": "PREC_RIGHT",
-      "value": 0,
+      "type": "PREC_DYNAMIC",
+      "value": 1,
       "content": {
-        "type": "REPEAT1",
+        "type": "PREC_RIGHT",
+        "value": 0,
         "content": {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "annotation"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "class_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "member_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "function_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "property_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "visibility_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "inheritance_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "parameter_modifier"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "platform_modifier"
-            }
-          ]
+          "type": "REPEAT1",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "annotation"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "class_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "member_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "function_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "property_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "visibility_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "inheritance_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "parameter_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "platform_modifier"
+              }
+            ]
+          }
         }
       }
     },

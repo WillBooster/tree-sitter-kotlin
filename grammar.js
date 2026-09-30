@@ -370,19 +370,24 @@ module.exports = grammar({
     statement: ($) =>
       choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
 
+    // An annotation before a declaration may also read as an annotated expression statement (`@A (b)`), and both
+    // readings parse, so the one in which it modifies the declaration takes dynamic precedence, as in Kotlin.
     modifiers: ($) =>
-      prec.right(
-        repeat1(
-          choice(
-            $.annotation,
-            $.class_modifier,
-            $.member_modifier,
-            $.function_modifier,
-            $.property_modifier,
-            $.visibility_modifier,
-            $.inheritance_modifier,
-            $.parameter_modifier,
-            $.platform_modifier
+      prec.dynamic(
+        1,
+        prec.right(
+          repeat1(
+            choice(
+              $.annotation,
+              $.class_modifier,
+              $.member_modifier,
+              $.function_modifier,
+              $.property_modifier,
+              $.visibility_modifier,
+              $.inheritance_modifier,
+              $.parameter_modifier,
+              $.platform_modifier
+            )
           )
         )
       ),
