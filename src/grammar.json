@@ -2532,145 +2532,121 @@
       }
     },
     "class_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "enum"
+        },
+        {
+          "type": "STRING",
+          "value": "sealed"
+        },
+        {
+          "type": "STRING",
+          "value": "annotation"
+        },
+        {
+          "type": "STRING",
+          "value": "data"
+        },
+        {
+          "type": "STRING",
+          "value": "inner"
+        },
+        {
+          "type": "STRING",
+          "value": "value"
+        }
+      ]
+    },
+    "function_modifier": {
+      "type": "PREC_RIGHT",
+      "value": 0,
       "content": {
         "type": "CHOICE",
         "members": [
           {
             "type": "STRING",
-            "value": "enum"
+            "value": "tailrec"
           },
           {
             "type": "STRING",
-            "value": "sealed"
+            "value": "operator"
           },
           {
             "type": "STRING",
-            "value": "annotation"
+            "value": "infix"
           },
           {
             "type": "STRING",
-            "value": "data"
+            "value": "inline"
           },
           {
             "type": "STRING",
-            "value": "inner"
+            "value": "external"
           },
           {
             "type": "STRING",
-            "value": "value"
+            "value": "suspend"
           }
         ]
-      }
-    },
-    "function_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "PREC_RIGHT",
-        "value": 0,
-        "content": {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "tailrec"
-            },
-            {
-              "type": "STRING",
-              "value": "operator"
-            },
-            {
-              "type": "STRING",
-              "value": "infix"
-            },
-            {
-              "type": "STRING",
-              "value": "inline"
-            },
-            {
-              "type": "STRING",
-              "value": "external"
-            },
-            {
-              "type": "STRING",
-              "value": "suspend"
-            }
-          ]
-        }
       }
     },
     "property_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "STRING",
-        "value": "const"
-      }
+      "type": "STRING",
+      "value": "const"
     },
     "visibility_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "public"
-          },
-          {
-            "type": "STRING",
-            "value": "private"
-          },
-          {
-            "type": "STRING",
-            "value": "protected"
-          },
-          {
-            "type": "STRING",
-            "value": "internal"
-          }
-        ]
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "public"
+        },
+        {
+          "type": "STRING",
+          "value": "private"
+        },
+        {
+          "type": "STRING",
+          "value": "protected"
+        },
+        {
+          "type": "STRING",
+          "value": "internal"
+        }
+      ]
     },
     "inheritance_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "abstract"
-          },
-          {
-            "type": "STRING",
-            "value": "final"
-          },
-          {
-            "type": "STRING",
-            "value": "open"
-          }
-        ]
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "abstract"
+        },
+        {
+          "type": "STRING",
+          "value": "final"
+        },
+        {
+          "type": "STRING",
+          "value": "open"
+        }
+      ]
     },
     "member_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "override"
-          },
-          {
-            "type": "STRING",
-            "value": "lateinit"
-          }
-        ]
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "override"
+        },
+        {
+          "type": "STRING",
+          "value": "lateinit"
+        }
+      ]
     },
     "parameter_modifiers": {
       "type": "REPEAT1",
@@ -2710,21 +2686,17 @@
       "value": "reified"
     },
     "platform_modifier": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "expect"
-          },
-          {
-            "type": "STRING",
-            "value": "actual"
-          }
-        ]
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "expect"
+        },
+        {
+          "type": "STRING",
+          "value": "actual"
+        }
+      ]
     },
     "type_modifiers": {
       "type": "PREC_RIGHT",
@@ -6835,5 +6807,104 @@
     "type",
     "statement"
   ],
-  "reserved": {}
+  "reserved": {
+    "global": [
+      {
+        "type": "STRING",
+        "value": "as"
+      },
+      {
+        "type": "STRING",
+        "value": "break"
+      },
+      {
+        "type": "STRING",
+        "value": "class"
+      },
+      {
+        "type": "STRING",
+        "value": "continue"
+      },
+      {
+        "type": "STRING",
+        "value": "do"
+      },
+      {
+        "type": "STRING",
+        "value": "else"
+      },
+      {
+        "type": "STRING",
+        "value": "for"
+      },
+      {
+        "type": "STRING",
+        "value": "fun"
+      },
+      {
+        "type": "STRING",
+        "value": "if"
+      },
+      {
+        "type": "STRING",
+        "value": "in"
+      },
+      {
+        "type": "STRING",
+        "value": "interface"
+      },
+      {
+        "type": "STRING",
+        "value": "is"
+      },
+      {
+        "type": "STRING",
+        "value": "object"
+      },
+      {
+        "type": "STRING",
+        "value": "package"
+      },
+      {
+        "type": "STRING",
+        "value": "return"
+      },
+      {
+        "type": "STRING",
+        "value": "super"
+      },
+      {
+        "type": "STRING",
+        "value": "this"
+      },
+      {
+        "type": "STRING",
+        "value": "throw"
+      },
+      {
+        "type": "STRING",
+        "value": "try"
+      },
+      {
+        "type": "STRING",
+        "value": "typealias"
+      },
+      {
+        "type": "STRING",
+        "value": "val"
+      },
+      {
+        "type": "STRING",
+        "value": "var"
+      },
+      {
+        "type": "STRING",
+        "value": "when"
+      },
+      {
+        "type": "STRING",
+        "value": "while"
+      }
+    ]
+  }
 }

@@ -521,3 +521,21 @@ Unfinished annotation after a typed property at the end of input
 val a: Int
 @B
 ---
+
+==============================
+A hard keyword as a property name
+:error
+==============================
+
+val class = 1
+---
+
+==============================
+A hard keyword as a local property name
+:error
+==============================
+
+fun f() {
+  val fun = 2
+}
+---

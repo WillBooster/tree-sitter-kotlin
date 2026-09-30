@@ -122,6 +122,37 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
+  // Kotlin's hard keywords are never names. `true`, `false`, `null`, and `typeof` are hard keywords too, but this
+  // grammar has no tokens for them, so they still parse as names.
+  reserved: {
+    global: () => [
+      'as',
+      'break',
+      'class',
+      'continue',
+      'do',
+      'else',
+      'for',
+      'fun',
+      'if',
+      'in',
+      'interface',
+      'is',
+      'object',
+      'package',
+      'return',
+      'super',
+      'this',
+      'throw',
+      'try',
+      'typealias',
+      'val',
+      'var',
+      'when',
+      'while',
+    ],
+  },
+
   rules: {
     source_file: ($) =>
       seq(
@@ -370,8 +401,9 @@ module.exports = grammar({
     statement: ($) =>
       choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
 
-    // An annotation before a declaration may also read as an annotated expression statement (`@A (b)`), and both
-    // readings parse, so the one in which it modifies the declaration takes dynamic precedence, as in Kotlin.
+    // Modifiers before a declaration may also read as an annotated expression statement (`@A (b)`) or, for modifier
+    // keywords that `_reserved_identifier` accepts, as names, and both readings parse, so the one in which they modify
+    // the declaration takes dynamic precedence, as in Kotlin.
     modifiers: ($) =>
       prec.dynamic(
         1,
@@ -392,22 +424,17 @@ module.exports = grammar({
         )
       ),
 
-    // A modifier keyword that `_reserved_identifier` also accepts as a name makes `@A\nsealed interface B` parse as
-    // an infix call as well, since `interface` lexes as an identifier where no keyword is valid, so the modifier
-    // reading takes dynamic precedence. The name takes none: it would outweigh the modifiers again wherever a
-    // reading has more names, such as `get` calls in a class body misread as a trailing lambda.
-    class_modifier: () => prec.dynamic(1, choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value')),
+    class_modifier: () => choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value'),
 
-    function_modifier: () =>
-      prec.dynamic(1, prec.right(choice('tailrec', 'operator', 'infix', 'inline', 'external', 'suspend'))),
+    function_modifier: () => prec.right(choice('tailrec', 'operator', 'infix', 'inline', 'external', 'suspend')),
 
-    property_modifier: () => prec.dynamic(1, 'const'),
+    property_modifier: () => 'const',
 
-    visibility_modifier: () => prec.dynamic(1, choice('public', 'private', 'protected', 'internal')),
+    visibility_modifier: () => choice('public', 'private', 'protected', 'internal'),
 
-    inheritance_modifier: () => prec.dynamic(1, choice('abstract', 'final', 'open')),
+    inheritance_modifier: () => choice('abstract', 'final', 'open'),
 
-    member_modifier: () => prec.dynamic(1, choice('override', 'lateinit')),
+    member_modifier: () => choice('override', 'lateinit'),
 
     parameter_modifiers: ($) => repeat1(choice($.annotation, $.parameter_modifier)),
 
@@ -415,7 +442,7 @@ module.exports = grammar({
 
     reification_modifier: () => 'reified',
 
-    platform_modifier: () => prec.dynamic(1, choice('expect', 'actual')),
+    platform_modifier: () => choice('expect', 'actual'),
 
     type_modifiers: ($) => prec.right(repeat1(choice($.annotation, 'suspend'))),
 
