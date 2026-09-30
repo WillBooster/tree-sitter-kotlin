@@ -505,6 +505,92 @@ val x = 1
     (number_literal)))
 
 ==============================
+Trailing commas and an empty collection literal
+==============================
+
+class A<T, U,>(x: Map<T, U,>) {
+  var p = 1
+    set(value,) { field = value }
+  fun f() {
+    a[1, 2,]
+    val e = []
+    try { } catch (e: E,) { }
+  }
+}
+@Ann(xs = [])
+fun g() = 1
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (type_parameters
+      (type_parameter
+        (identifier))
+      (type_parameter
+        (identifier)))
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier)
+            (type_arguments
+              (type_projection
+                (user_type
+                  (identifier)))
+              (type_projection
+                (user_type
+                  (identifier))))))))
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block
+            (index_expression
+              (identifier)
+              (number_literal)
+              (number_literal))
+            (property_declaration
+              (variable_declaration
+                (identifier))
+              (collection_literal))
+            (try_expression
+              (block)
+              (catch_block
+                (identifier)
+                (user_type
+                  (identifier))
+                (block))))))))
+  (function_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (identifier)
+              (collection_literal))))))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (number_literal))))
+
+==============================
 Unfinished annotation at the end of input
 :error
 ==============================

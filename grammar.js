@@ -242,7 +242,7 @@ module.exports = grammar({
 
     constructor_delegation_call: ($) => seq(choice('this', 'super'), $.value_arguments),
 
-    type_parameters: ($) => seq('<', commaSep1($.type_parameter), '>'),
+    type_parameters: ($) => seq('<', commaSep1($.type_parameter), optional(','), '>'),
 
     type_parameter: ($) => seq(optional($.type_parameter_modifiers), $.identifier, optional(seq(':', $.type))),
 
@@ -323,6 +323,7 @@ module.exports = grammar({
               $.identifier,
               optional(seq(':', $.type)),
               optional(seq('=', $.expression)),
+              optional(','),
               ')',
               optional(seq(':', $.type)),
               $.function_body
@@ -473,7 +474,7 @@ module.exports = grammar({
       seq(optional($.type_modifiers), choice($.user_type, 'dynamic', $.parenthesized_type, $.nullable_type)),
 
     // `a<B>(c)` also reads as comparisons (`a < B > (c)`); like Kotlin's parser, prefer the type arguments.
-    type_arguments: ($) => prec.dynamic(1, seq('<', commaSep1($.type_projection), '>')),
+    type_arguments: ($) => prec.dynamic(1, seq('<', commaSep1($.type_projection), optional(','), '>')),
 
     type_projection: ($) => choice(seq(repeat($.variance_modifier), $.type), '*'),
 
@@ -631,7 +632,7 @@ module.exports = grammar({
         )
       ),
 
-    index_expression: ($) => prec(PREC.CALL, seq($.expression, '[', commaSep($.expression), ']')),
+    index_expression: ($) => prec(PREC.CALL, seq($.expression, '[', commaSep1($.expression), optional(','), ']')),
 
     this_expression: ($) => seq(choice('this', seq('this@', $.identifier))),
 
@@ -672,7 +673,7 @@ module.exports = grammar({
 
     parenthesized_expression: ($) => seq('(', $.expression, ')'),
 
-    collection_literal: ($) => seq('[', commaSep1($.expression), optional(','), ']'),
+    collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) => seq('when', optional($.when_subject), '{', repeat($.when_entry), '}'),
 
@@ -696,7 +697,7 @@ module.exports = grammar({
     try_expression: ($) =>
       seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block)),
 
-    catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, ')', $.block),
+    catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
 
     finally_block: ($) => seq('finally', $.block),
 
@@ -896,17 +897,6 @@ function sep1(rule, separator) {
  */
 function optionalSep1(rule, separator) {
   return optional(seq(rule, repeat(seq(separator, rule)), optional(separator)));
-}
-
-/**
- * Creates a rule to optionally match one or more of the rules separated by a comma
- *
- * @param {Rule} rule
- *
- * @returns {ChoiceRule}
- */
-function commaSep(rule) {
-  return optional(commaSep1(rule));
 }
 
 /**
