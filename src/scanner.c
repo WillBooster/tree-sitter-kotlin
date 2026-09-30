@@ -487,9 +487,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 advance(lexer);
                 lexer->mark_end(lexer);
                 return true;
-            // Kotlin allows a primary constructor on the line after the class name.
+            // Kotlin allows a primary constructor on the line after the class name. During error recovery, where every
+            // token is valid, a `(` on a new line still starts a statement.
             case '(':
-                return !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
+                return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
                     while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
