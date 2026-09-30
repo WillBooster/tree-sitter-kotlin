@@ -1039,3 +1039,28 @@ fun f() {
             (identifier)
             (identifier)))))))
 
+==================================
+A name before a comment in a when condition
+==================================
+
+fun f() {
+  when (x) { i// c
+ -> 1 }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (identifier)
+            (line_comment)
+            (number_literal)))))))
+

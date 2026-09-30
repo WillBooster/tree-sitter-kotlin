@@ -788,6 +788,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 lexer->mark_end(lexer);
                 return !iswalnum(lexer->lookahead);
             }
+            // Past an `i` that starts no `in`, a comment must not be scanned as a token that starts with the `i`.
+            return false;
         }
     }
 
