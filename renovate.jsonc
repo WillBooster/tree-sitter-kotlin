@@ -11,11 +11,8 @@
     {
       // The Wasm build that tree-sitter-cli emits must load in @willbooster/web-tree-sitter, and the Rust tests and
       // the fuzz job run on willbooster-tree-sitter, the same runtime, so they are updated together.
-      // The preset gives npm and Cargo updates different group slugs (all-patch, all-minor, cargo), which name the
-      // branches, so the group needs its own slug to put the three updates in one pull request.
       "matchPackageNames": ["tree-sitter-cli", "@willbooster/web-tree-sitter", "willbooster-tree-sitter"],
       "groupName": "tree-sitter",
-      "groupSlug": "tree-sitter",
     },
     {
       // The preset exempts @willbooster npm packages, including @willbooster/web-tree-sitter, from its release-age
