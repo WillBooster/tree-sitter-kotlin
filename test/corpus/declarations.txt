@@ -754,7 +754,7 @@ fun f() {
 }
 
 enum class E { context, b }
-enum class F { a, context(1), b }
+enum class F { a, context(1), @Anno context, b }
 
 ---
 
@@ -807,6 +807,12 @@ enum class F { a, context(1), b }
         (value_arguments
           (value_argument
             (number_literal))))
+      (enum_entry
+        (modifiers
+          (annotation
+            (user_type
+              (identifier))))
+        (identifier))
       (enum_entry
         (identifier)))))
 

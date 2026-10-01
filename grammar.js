@@ -71,6 +71,7 @@ module.exports = grammar({
     [$.context_parameters, $._reserved_identifier],
     [$.modifiers, $.function_type],
     [$.secondary_constructor, $._reserved_identifier],
+    [$.enum_entry, $.modifiers],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -388,6 +389,8 @@ module.exports = grammar({
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
 
+    _annotations: ($) => repeat1($.annotation),
+
     enum_class_body: ($) =>
       seq(
         '{',
@@ -396,7 +399,15 @@ module.exports = grammar({
         '}'
       ),
 
-    enum_entry: ($) => seq(optional($.modifiers), $._identifier, optional($.value_arguments), optional($.class_body)),
+    // Only annotations can modify an enum entry, and with the full modifier list a `context` after an annotation would
+    // start a context parameter list instead of naming the entry.
+    enum_entry: ($) =>
+      seq(
+        optional(alias($._annotations, $.modifiers)),
+        $._identifier,
+        optional($.value_arguments),
+        optional($.class_body)
+      ),
 
     value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), ')'),
 
