@@ -1639,25 +1639,33 @@
       ]
     },
     "explicit_delegation": {
-      "type": "PREC",
-      "value": 15,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "type"
-          },
-          {
-            "type": "STRING",
-            "value": "by"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "expression"
-          }
-        ]
-      }
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "type"
+        },
+        {
+          "type": "STRING",
+          "value": "by"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_delegation_end"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
     },
     "getter": {
       "type": "PREC_RIGHT",
@@ -2402,7 +2410,12 @@
           ]
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_arguments_end"
+          },
+          "named": false,
           "value": ")"
         }
       ]
@@ -4463,7 +4476,7 @@
       }
     },
     "call_expression": {
-      "type": "PREC_LEFT",
+      "type": "PREC_RIGHT",
       "value": 13,
       "content": {
         "type": "SEQ",
@@ -4768,16 +4781,8 @@
             ]
           },
           {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "function_body"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "function_body"
           }
         ]
       }
@@ -7042,6 +7047,14 @@
     {
       "type": "SYMBOL",
       "name": "_primary_constructor_position"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_delegation_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_arguments_end"
     }
   ],
   "inline": [

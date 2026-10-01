@@ -767,6 +767,108 @@ fun f() {
               (identifier))))))))
 
 =========================================
+Calls with arguments and a trailing lambda
+=========================================
+
+fun f() {
+  foo(x) { 1 }
+  a.b<T>(1) { 2 }
+  g(1)(2) { 3 }
+  h(1) l@{ 4 }
+  i(1) /* c */ { 5 }
+  j { 6 }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (identifier)))
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))
+        (call_expression
+          (navigation_expression
+            (identifier)
+            (identifier))
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier))))
+          (value_arguments
+            (value_argument
+              (number_literal)))
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))
+        (call_expression
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (number_literal))))
+          (value_arguments
+            (value_argument
+              (number_literal)))
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (number_literal)))
+          (annotated_lambda
+            (label)
+            (lambda_literal
+              (number_literal))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (number_literal)))
+          (block_comment)
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))
+        (call_expression
+          (identifier)
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))))))
+
+=========================================
+A call without its closing parenthesis at the end of input
+=========================================
+
+val x = a.b(c, d
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (call_expression
+      (navigation_expression
+        (identifier)
+        (identifier))
+      (value_arguments
+        (value_argument
+          (identifier))
+        (value_argument
+          (identifier))
+        (MISSING ")")))))
+
+=========================================
 String interpolation
 =========================================
 

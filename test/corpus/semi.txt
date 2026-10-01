@@ -984,12 +984,11 @@ fun f() {
             (identifier))
           (number_literal))
         (call_expression
-          (call_expression
-            (identifier)
-            (value_arguments
-              (value_argument
-                (string_literal
-                  (string_content)))))
+          (identifier)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content))))
           (annotated_lambda
             (lambda_literal
               (number_literal))))
