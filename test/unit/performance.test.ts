@@ -32,7 +32,7 @@ test('uses a Wasm build built from the current parser', () => {
 // alongside inflate unevenly. That CPU time also counts the engine's compiler and garbage collector threads, which
 // dominate parses of about 10 ms: a ratio of 1,000 to 10,000 lines ranged from 8 to 29 for the same parser. So the
 // sizes are 2,000 and 20,000 lines (ratios of 9.6 to 13.8), measured after warm-up parses and in alternation, each
-// keeping its fastest run; 18 leaves a margin over that and fails for growth of n^1.25 or faster.
+// keeping its fastest run; 18 leaves a margin over that and fails for growth faster than about n^1.25.
 test('recovers from an error on each line in linear time', { timeout: 60_000 }, () => {
   const small = '$ a\n'.repeat(2000);
   const large = '$ a\n'.repeat(20_000);
