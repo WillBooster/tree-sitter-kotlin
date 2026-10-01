@@ -37,3 +37,23 @@ test('parses escapes and string templates next to NUL characters', () => {
     '(source_file (property_declaration (variable_declaration (identifier)) (string_literal (string_content))) (property_declaration (variable_declaration (identifier)) (string_literal (string_content) (interpolation (identifier)))) (property_declaration (variable_declaration (identifier)) (string_literal (string_content) (string_content) (string_content))))'
   );
 });
+
+test('parses escapes and string content after escapes and templates next to NUL characters', () => {
+  const tree = parser.parse('val k = \'\\\0\'\nval l = "\\n\0"\nval m = "${x}\0y"\n');
+  if (!tree) throw new Error('The parser returned no tree');
+  const root = tree.rootNode.toString();
+  tree.delete();
+  expect(root).toBe(
+    '(source_file (property_declaration (variable_declaration (identifier)) (character_literal (escape_sequence))) (property_declaration (variable_declaration (identifier)) (string_literal (escape_sequence) (string_content))) (property_declaration (variable_declaration (identifier)) (string_literal (interpolation (identifier)) (string_content))))'
+  );
+});
+
+test('parses a shebang line that contains a NUL character', () => {
+  const tree = parser.parse('#!/usr/bin/env k\0s\nval n = 1\n');
+  if (!tree) throw new Error('The parser returned no tree');
+  const root = tree.rootNode.toString();
+  tree.delete();
+  expect(root).toBe(
+    '(source_file (shebang) (property_declaration (variable_declaration (identifier)) (number_literal)))'
+  );
+});
