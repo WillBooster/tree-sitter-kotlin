@@ -608,9 +608,12 @@ private
 context(a: A) @Ann
 internal fun i() = 1
 
+val m = context(a: A) fun () {}
+
 fun j(block: context(C) () -> Unit, k: suspend context(C) () -> Unit, l: @A context(C) () -> Unit) {
   context(x: Foo) fun local() {}
 }
+
 
 ---
 
@@ -694,6 +697,18 @@ fun j(block: context(C) () -> Unit, k: suspend context(C) () -> Unit, l: @A cont
     (function_value_parameters)
     (function_body
       (number_literal)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (anonymous_function
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier))))
+      (function_value_parameters)
+      (function_body
+        (block))))
   (function_declaration
     (identifier)
     (function_value_parameters

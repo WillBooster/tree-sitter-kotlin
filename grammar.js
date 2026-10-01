@@ -72,6 +72,7 @@ module.exports = grammar({
     [$.modifiers, $.function_type],
     [$.secondary_constructor, $._reserved_identifier],
     [$.enum_entry, $.modifiers],
+    [$.modifiers, $.anonymous_function],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -657,6 +658,7 @@ module.exports = grammar({
     anonymous_function: ($) =>
       prec.right(
         seq(
+          optional($.context_parameters),
           'fun',
           optional(seq($.type, '.')),
           $.function_value_parameters,

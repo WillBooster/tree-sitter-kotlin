@@ -4694,6 +4694,18 @@
         "type": "SEQ",
         "members": [
           {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "context_parameters"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
             "type": "STRING",
             "value": "fun"
           },
@@ -6897,6 +6909,10 @@
     [
       "enum_entry",
       "modifiers"
+    ],
+    [
+      "modifiers",
+      "anonymous_function"
     ],
     [
       "qualified_identifier"
