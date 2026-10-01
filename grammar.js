@@ -772,7 +772,8 @@ module.exports = grammar({
     interpolation: ($) => choice(seq('$', $._template_name), seq('${', $.expression, '}')),
 
     // Immediate so that it outranks the string content that would otherwise absorb the name. As in Kotlin, `$this`
-    // refers to `this`: a string token wins over the name pattern of the same length.
+    // refers to `this`: with the same token precedence as the name pattern, the string token wins a match of equal
+    // length (without its `prec(2)`, `$this` lexes as a name again), while a longer name such as `$thisX` still wins.
     _template_name: ($) =>
       choice(
         alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
