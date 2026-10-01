@@ -27,3 +27,13 @@ test('parses strings and character literals that contain NUL characters', () => 
     '(source_file (property_declaration (variable_declaration (identifier)) (string_literal (string_content))) (property_declaration (variable_declaration (identifier)) (multiline_string_literal (string_content))) (property_declaration (variable_declaration (identifier)) (character_literal)))'
   );
 });
+
+test('parses escapes and string templates next to NUL characters', () => {
+  const tree = parser.parse('val h = "\\\0"\nval i = "x\0${y}"\nval j = "x$\0"\n');
+  if (!tree) throw new Error('The parser returned no tree');
+  const root = tree.rootNode.toString();
+  tree.delete();
+  expect(root).toBe(
+    '(source_file (property_declaration (variable_declaration (identifier)) (string_literal (string_content))) (property_declaration (variable_declaration (identifier)) (string_literal (string_content) (interpolation (identifier)))) (property_declaration (variable_declaration (identifier)) (string_literal (string_content) (string_content) (string_content))))'
+  );
+});
