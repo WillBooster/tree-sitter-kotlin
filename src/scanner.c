@@ -613,6 +613,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     if (valid_symbols[KEYWORD_REFERENCE_END] && after_short_template && !error_recovery && scanner->length > 0) {
         if (!scan_multi_dollar_string_part(scanner, lexer)) {
             lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+        } else if (lexer->result_symbol == MULTI_DOLLAR_INTERPOLATION_START && scanner->after_short_template) {
+            // Error recovery cannot also recover from a second reference right after this one, so the next one is
+            // content: the string has an error already.
+            if (scan_template_keyword(lexer)) {
+                lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+                scanner->after_short_template = 0;
+            } else {
+                lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+            }
         }
         return true;
     }

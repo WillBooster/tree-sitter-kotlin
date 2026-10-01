@@ -1143,7 +1143,8 @@ val a = $$"x $$class y"
 val b = """$class"""
 val c = $$"""o $${ """y $class""" } t"""
 val d = $$"$$class\u0041"
-val e = 2
+val e = $$"$$class$$class"
+val f = 2
 
 ---
 
@@ -1183,6 +1184,13 @@ val e = 2
       (ERROR
         (identifier))
       (escape_sequence)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (ERROR
+        (identifier)
+        (identifier))))
   (property_declaration
     (variable_declaration
       (identifier))
