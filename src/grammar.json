@@ -6302,6 +6302,29 @@
           },
           "named": true,
           "value": "this_expression"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_keyword_reference"
+              },
+              "named": true,
+              "value": "identifier"
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_keyword_reference_end"
+              },
+              "named": false,
+              "value": "keyword_reference_end"
+            }
+          ]
         }
       ]
     },
@@ -7350,6 +7373,14 @@
     {
       "type": "SYMBOL",
       "name": "_context_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_keyword_reference"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_keyword_reference_end"
     }
   ],
   "inline": [

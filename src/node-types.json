@@ -3130,6 +3130,10 @@
     "named": false
   },
   {
+    "type": "keyword_reference_end",
+    "named": false
+  },
+  {
     "type": "label",
     "named": true
   },

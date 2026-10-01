@@ -34,6 +34,8 @@ enum TokenType {
     CLOSE_BRACES,
     TOP_LEVEL_STATEMENT_END,
     CONTEXT_END,
+    KEYWORD_REFERENCE,
+    KEYWORD_REFERENCE_END,
 };
 
 #define MAX_WORD_SIZE 16
@@ -102,24 +104,31 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
-// Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
-static bool is_letter(int32_t c) {
-    if (c < 0x80) {
-        return iswalpha(c);
-    }
+static bool in_ranges(int32_t c, const uint32_t ranges[][2], size_t count) {
     size_t low = 0;
-    size_t high = sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]);
+    size_t high = count;
     while (low < high) {
         size_t middle = (low + high) / 2;
-        if ((uint32_t)c < LETTER_RANGES[middle][0]) {
+        if ((uint32_t)c < ranges[middle][0]) {
             high = middle;
-        } else if ((uint32_t)c > LETTER_RANGES[middle][1]) {
+        } else if ((uint32_t)c > ranges[middle][1]) {
             low = middle + 1;
         } else {
             return true;
         }
     }
     return false;
+}
+
+// Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
+static bool is_letter(int32_t c) {
+    return c < 0x80 ? iswalpha(c) : in_ranges(c, LETTER_RANGES, sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]));
+}
+
+// Tells a character that continues a name in a string template (`[\p{L}_\p{Nd}]`).
+static bool is_template_name_part(int32_t c) {
+    return c < 0x80 ? iswalnum(c) || c == '_'
+                    : in_ranges(c, NAME_PART_RANGES, sizeof(NAME_PART_RANGES) / sizeof(NAME_PART_RANGES[0]));
 }
 
 static inline bool is_identifier_start(int32_t c) { return is_letter(c) || c == '_'; }
@@ -271,6 +280,36 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
+// Kotlin's hard keywords other than `this`, which a string template cannot reference.
+static const char *const TEMPLATE_KEYWORDS[] = {
+    "as",  "break", "class", "continue", "do",     "else",    "false",  "for",       "fun",    "if",
+    "in",  "interface", "is", "null",   "object", "package", "return", "super",     "throw",  "true",
+    "try", "typealias", "typeof", "val", "var",   "when",    "while",
+};
+
+// Scans a hard keyword other than `this` right after the `$` of a template, as a whole identifier.
+static bool scan_template_keyword(TSLexer *lexer) {
+    char word[MAX_WORD_SIZE] = {0};
+    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_template_name_part(lexer->lookahead); i++) {
+        if (lexer->lookahead > 0x7f) {
+            return false;
+        }
+        word[i] = (char)lexer->lookahead;
+        advance(lexer);
+    }
+    if (is_template_name_part(lexer->lookahead)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
+        if (strcmp(word, TEMPLATE_KEYWORDS[i]) == 0) {
+            lexer->mark_end(lexer);
+            lexer->result_symbol = KEYWORD_REFERENCE;
+            return true;
+        }
+    }
+    return false;
+}
+
 // Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
 #define MAX_FRAMES 256
 
@@ -281,13 +320,17 @@ typedef struct {
     // The leading dollars of a run that the last string content token did not cover although they are content, since
     // the run ends in an interpolation (see `scan_multi_dollar_string_part`).
     uint32_t surplus_dollars;
+    // Whether the last token this scanner returned is the start of an interpolation of a name in a multi-dollar string
+    // (`$$name`), or a keyword reference right after one.
+    uint8_t after_short_template;
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
     uint8_t frames[MAX_FRAMES / 8];
     // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
     // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
     unsigned length;
-    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2 * sizeof(uint32_t) - MAX_FRAMES / 8) / sizeof(uint16_t)];
+    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2 * sizeof(uint32_t) - 1 - MAX_FRAMES / 8) /
+                     sizeof(uint16_t)];
 } Scanner;
 
 static unsigned frame_bytes(uint32_t depth) { return ((depth < MAX_FRAMES ? depth : MAX_FRAMES) + 7) / 8; }
@@ -334,6 +377,7 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     size += sizeof(uint32_t);
     memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
     size += sizeof(uint32_t);
+    buffer[size++] = (char)scanner->after_short_template;
     memcpy(buffer + size, scanner->frames, frame_bytes(scanner->depth));
     size += frame_bytes(scanner->depth);
     memcpy(buffer + size, scanner->strings, scanner->length * sizeof(uint16_t));
@@ -344,14 +388,16 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
     Scanner *scanner = (Scanner *)payload;
     scanner->depth = 0;
     scanner->surplus_dollars = 0;
+    scanner->after_short_template = 0;
     memset(scanner->frames, 0, sizeof(scanner->frames));
     scanner->length = 0;
-    if (length >= 2 * sizeof(uint32_t)) {
+    if (length >= 2 * sizeof(uint32_t) + 1) {
         unsigned size = 0;
         memcpy(&scanner->depth, buffer, sizeof(uint32_t));
         size += sizeof(uint32_t);
         memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
         size += sizeof(uint32_t);
+        scanner->after_short_template = (uint8_t)buffer[size++];
         memcpy(scanner->frames, buffer + size, frame_bytes(scanner->depth));
         size += frame_bytes(scanner->depth);
         scanner->length = (length - size) / sizeof(uint16_t);
@@ -457,6 +503,7 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
                     if (run == dollar_count) {
                         lexer->mark_end(lexer);
                         lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+                        scanner->after_short_template = lexer->lookahead != '{';
                     } else {
                         scanner->surplus_dollars = run - dollar_count - 1;
                     }
@@ -526,12 +573,18 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    bool after_short_template = scanner->after_short_template;
+    scanner->after_short_template = 0;
     if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
         lexer->mark_end(lexer);
         lexer->result_symbol = TOP_LEVEL_STATEMENT_END;
         scanner->depth = 0;
         memset(scanner->frames, 0, sizeof(scanner->frames));
         return true;
+    }
+    if (valid_symbols[KEYWORD_REFERENCE] && !error_recovery) {
+        scanner->after_short_template = after_short_template;
+        return scan_template_keyword(lexer);
     }
     if (!error_recovery && valid_symbols[CONTEXT_END] && !in_statements(scanner)) {
         lexer->mark_end(lexer);
@@ -551,6 +604,26 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     }
     if (valid_symbols[MULTI_DOLLAR_STRING_CONTENT] && !error_recovery && scanner->length > 0) {
         return scan_multi_dollar_string_part(scanner, lexer);
+    }
+    // After a keyword reference in a multi-dollar string, the string goes on: lexing its next part, which is not valid
+    // there, lets error recovery insert the missing end of the reference and keep the string, instead of leaving the
+    // string open to the end of the input. A reference in a string nested in an interpolation is not in it. Where the
+    // part scan leaves the next part to the grammar (an escape sequence, a line break, or the end of the input), an
+    // empty part serves instead.
+    if (valid_symbols[KEYWORD_REFERENCE_END] && after_short_template && !error_recovery && scanner->length > 0) {
+        if (!scan_multi_dollar_string_part(scanner, lexer)) {
+            lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+        } else if (lexer->result_symbol == MULTI_DOLLAR_INTERPOLATION_START && scanner->after_short_template) {
+            // Error recovery cannot also recover from a second reference right after this one, so the next one is
+            // content: the string has an error already.
+            if (scan_template_keyword(lexer)) {
+                lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+                scanner->after_short_template = 0;
+            } else {
+                lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+            }
+        }
+        return true;
     }
     bool can_start_multi_dollar_string =
         !error_recovery && (valid_symbols[MULTI_DOLLAR_STRING_START] || valid_symbols[MULTI_DOLLAR_MULTILINE_STRING_START]);

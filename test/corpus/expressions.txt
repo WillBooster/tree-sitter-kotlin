@@ -1060,6 +1060,142 @@ val c = $$"$$this $this"
         (this_expression))
       (string_content))))
 
+=========================================
+Names starting with a hard keyword in string templates
+=========================================
+
+val a = "$asdf $inner $isX $nullable $format $value $classé $is٣"
+val b = """$doIt $classes"""
+val c = $$"$$trueish $$while_"
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier)))))
+
+=========================================
+A hard keyword after a dollar in a string template
+:error
+=========================================
+
+val a = "x $class y"
+
+---
+
+=========================================
+A hard keyword before a symbol in a string template
+:error
+=========================================
+
+val a = "$class🙂"
+
+---
+
+=========================================
+Declarations after a hard keyword in a raw or multi-dollar string template
+=========================================
+
+val a = $$"x $$class y"
+val b = """$class"""
+val c = $$"""o $${ """y $class""" } t"""
+val d = $$"$$class\u0041"
+val e = $$"$$class$$class"
+val f = 2
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (identifier)
+        (MISSING "keyword_reference_end"))
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (interpolation
+        (identifier)
+        (MISSING "keyword_reference_end"))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)
+      (interpolation
+        (multiline_string_literal
+          (string_content)
+          (interpolation
+            (identifier)
+            (MISSING "keyword_reference_end"))))
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (ERROR
+        (identifier))
+      (escape_sequence)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (ERROR
+        (identifier)
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)))
+
 ==================================
 Multi-dollar string interpolation
 ==================================
