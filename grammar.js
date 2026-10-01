@@ -121,6 +121,10 @@ module.exports = grammar({
     $._top_level_statement_end,
     // empty: it ends a context list of types among modifiers, except directly in a statement list (see `modifiers`)
     $._context_end,
+    // a hard keyword other than `this` right after the `$` of a string template (see `_template_name`)
+    $._keyword_reference,
+    // never scanned: see `_template_name`
+    $._keyword_reference_end,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -861,7 +865,10 @@ module.exports = grammar({
     _template_name: ($) =>
       choice(
         alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
-        alias(token.immediate(prec(2, 'this')), $.this_expression)
+        alias(token.immediate(prec(2, 'this')), $.this_expression),
+        // As in Kotlin, another hard keyword after `$` is an error: the scanner lexes it, and the grammar then expects
+        // `_keyword_reference_end`, which is never scanned. The alias keeps a name required in `interpolation`.
+        seq(alias($._keyword_reference, $.identifier), $._keyword_reference_end)
       ),
 
     // In a string prefixed with n dollars (Kotlin 2.1), exactly n dollars start an interpolation; the scanner

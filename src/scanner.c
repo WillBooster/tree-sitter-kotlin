@@ -34,6 +34,8 @@ enum TokenType {
     CLOSE_BRACES,
     TOP_LEVEL_STATEMENT_END,
     CONTEXT_END,
+    KEYWORD_REFERENCE,
+    KEYWORD_REFERENCE_END,
 };
 
 #define MAX_WORD_SIZE 16
@@ -269,6 +271,36 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     }
     skip_whitespace_and_comments(lexer, true);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
+}
+
+// Kotlin's hard keywords other than `this`, which a string template cannot reference.
+static const char *const TEMPLATE_KEYWORDS[] = {
+    "as",  "break", "class", "continue", "do",     "else",    "false",  "for",       "fun",    "if",
+    "in",  "interface", "is", "null",   "object", "package", "return", "super",     "throw",  "true",
+    "try", "typealias", "typeof", "val", "var",   "when",    "while",
+};
+
+// Scans a hard keyword other than `this` right after the `$` of a template, as a whole identifier.
+static bool scan_template_keyword(TSLexer *lexer) {
+    char word[MAX_WORD_SIZE] = {0};
+    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_identifier_part(lexer->lookahead); i++) {
+        if (lexer->lookahead > 0x7f) {
+            return false;
+        }
+        word[i] = (char)lexer->lookahead;
+        advance(lexer);
+    }
+    if (is_identifier_part(lexer->lookahead)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
+        if (strcmp(word, TEMPLATE_KEYWORDS[i]) == 0) {
+            lexer->mark_end(lexer);
+            lexer->result_symbol = KEYWORD_REFERENCE;
+            return true;
+        }
+    }
+    return false;
 }
 
 // Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
@@ -532,6 +564,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         scanner->depth = 0;
         memset(scanner->frames, 0, sizeof(scanner->frames));
         return true;
+    }
+    if (valid_symbols[KEYWORD_REFERENCE] && !error_recovery) {
+        return scan_template_keyword(lexer);
     }
     if (!error_recovery && valid_symbols[CONTEXT_END] && !in_statements(scanner)) {
         lexer->mark_end(lexer);

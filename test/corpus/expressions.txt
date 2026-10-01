@@ -1060,6 +1060,66 @@ val c = $$"$$this $this"
         (this_expression))
       (string_content))))
 
+=========================================
+Names starting with a hard keyword in string templates
+=========================================
+
+val a = "$asdf $inner $isX $nullable $format $value"
+val b = """$doIt $classes"""
+val c = $$"$$trueish $$while_"
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (identifier)))))
+
+=========================================
+A hard keyword after a dollar in a string template
+:error
+=========================================
+
+val a = "x $class y"
+
+---
+
 ==================================
 Multi-dollar string interpolation
 ==================================
