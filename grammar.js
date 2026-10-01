@@ -16,7 +16,6 @@ const PREC = {
   AS: 12,
   CALL: 13,
   UNARY: 14,
-  DELEGATION: 15,
 };
 
 // oxlint-disable-next-line unicorn/prefer-module -- This package is CommonJS, so tree-sitter loads grammar.js as CommonJS.
@@ -108,6 +107,10 @@ module.exports = grammar({
     'val',
     // never scanned: it tells the scanner where a primary constructor may start
     $._primary_constructor_position,
+    // empty: it ends a delegation expression in a class header before `{` (see `explicit_delegation`)
+    $._delegation_end,
+    // empty: it ends a call's arguments (see `value_arguments`)
+    $._arguments_end,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -309,9 +312,9 @@ module.exports = grammar({
 
     property_delegate: ($) => seq('by', $.expression),
 
-    // Above PREC.CALL so that, as in Kotlin, a `{` after the delegation expression starts the class body instead of a
-    // trailing lambda. The last operand of an operator expression still takes the lambda (#29).
-    explicit_delegation: ($) => prec(PREC.DELEGATION, seq($.type, 'by', $.expression)),
+    // As in Kotlin, a `{` after the delegation expression starts the class body, never a trailing lambda, also after the
+    // last operand of an operator (`B by a ?: b { … }`): the scanner ends the expression before it.
+    explicit_delegation: ($) => seq($.type, 'by', $.expression, optional($._delegation_end)),
 
     getter: ($) =>
       prec.right(
@@ -410,7 +413,10 @@ module.exports = grammar({
         optional($.class_body)
       ),
 
-    value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), ')'),
+    // Whether a call takes a trailing lambda depends on the token after its arguments, which the lookahead of the
+    // scanned `_arguments_end` reaches, so an edit there makes incremental parsing reparse the call instead of reusing a
+    // call without the lambda.
+    value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), ')', $._arguments_end),
 
     value_argument: ($) => seq(optional(seq($._identifier, '=')), optional('*'), $.expression),
 
@@ -636,8 +642,10 @@ module.exports = grammar({
 
     infix_expression: ($) => prec.left(PREC.INFIX, seq($.expression, $.identifier, $.expression)),
 
+    // Right-associative so that a trailing lambda after arguments belongs to the same call (`f(x) { … }`), as in
+    // Kotlin, instead of calling the result of `f(x)`.
     call_expression: ($) =>
-      prec.left(
+      prec.right(
         PREC.CALL,
         seq(
           $.expression,

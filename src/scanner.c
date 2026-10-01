@@ -27,6 +27,8 @@ enum TokenType {
     DOLLAR,
     VAL,
     PRIMARY_CONSTRUCTOR_POSITION,
+    DELEGATION_END,
+    ARGUMENTS_END,
 };
 
 #define MAX_WORD_SIZE 16
@@ -500,48 +502,41 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     }
 
-    if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI]) {
-        lexer->result_symbol = valid_symbols[SEMI] ? SEMI : CLASS_MEMBER_SEMI;
+    // An empty token after a call's arguments whose lookahead reaches the next token: whether the call takes a trailing
+    // lambda depends on that token, so an edit up to it must reparse the call instead of reusing it.
+    if (valid_symbols[ARGUMENTS_END] && !error_recovery) {
         lexer->mark_end(lexer);
-        bool saw_newline = false;
-        for (;;) {
-            if (lexer->eof(lexer)) {
-                return true;
-            }
+        lexer->result_symbol = ARGUMENTS_END;
+        skip_whitespace_and_comments(lexer, true);
+        return true;
+    }
 
-            if (lexer->lookahead == ';') {
-                advance(lexer);
-                lexer->mark_end(lexer);
-                return true;
-            }
-
-            if (!iswspace(lexer->lookahead)) {
-                break;
-            }
-
-            if (lexer->lookahead == '\n') {
-                skip(lexer);
-                saw_newline = true;
-                break;
-            }
-
-            if (lexer->lookahead == '\r') {
-                skip(lexer);
-
-                if (lexer->lookahead == '\n') {
-                    skip(lexer);
-                }
-
-                saw_newline = true;
-                break;
-            }
-
+    bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
+    bool saw_newline = false;
+    if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI] || can_end_delegation) {
+        // Both tokens are empty and end where the previous token does.
+        lexer->mark_end(lexer);
+        while (iswspace(lexer->lookahead)) {
+            saw_newline = saw_newline || lexer->lookahead == '\n' || lexer->lookahead == '\r';
             skip(lexer);
         }
+        // As in Kotlin, a `{` right after a delegation expression in a class header starts the class body, never a
+        // trailing lambda of the expression.
+        if (can_end_delegation && lexer->lookahead == '{') {
+            lexer->result_symbol = DELEGATION_END;
+            return true;
+        }
+    }
 
-        // Skip whitespace and comments
-        while (iswspace(lexer->lookahead)) {
-            skip(lexer);
+    if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI]) {
+        lexer->result_symbol = valid_symbols[SEMI] ? SEMI : CLASS_MEMBER_SEMI;
+        if (lexer->eof(lexer)) {
+            return true;
+        }
+        if (lexer->lookahead == ';') {
+            advance(lexer);
+            lexer->mark_end(lexer);
+            return true;
         }
         if (lexer->lookahead == '/') {
             goto comment;
@@ -562,10 +557,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 // A string after an expression that may end here, e.g. `return $$"…"`.
                 case '$':
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
-                case ';':
-                    advance(lexer);
-                    lexer->mark_end(lexer);
-                    return true;
                 // A class member may end on the line that closes its body (`class A { val x = 1 }`).
                 case '}':
                     return valid_symbols[CLASS_MEMBER_SEMI] && !valid_symbols[SEMI];
