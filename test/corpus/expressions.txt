@@ -1142,7 +1142,8 @@ Declarations after a hard keyword in a raw or multi-dollar string template
 val a = $$"x $$class y"
 val b = """$class"""
 val c = $$"""o $${ """y $class""" } t"""
-val d = 2
+val d = $$"$$class\u0041"
+val e = 2
 
 ---
 
@@ -1175,6 +1176,13 @@ val d = 2
             (identifier)
             (MISSING "keyword_reference_end"))))
       (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (ERROR
+        (identifier))
+      (escape_sequence)))
   (property_declaration
     (variable_declaration
       (identifier))

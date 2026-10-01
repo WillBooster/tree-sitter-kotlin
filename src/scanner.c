@@ -602,12 +602,19 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
         return true;
     }
+    if (valid_symbols[MULTI_DOLLAR_STRING_CONTENT] && !error_recovery && scanner->length > 0) {
+        return scan_multi_dollar_string_part(scanner, lexer);
+    }
     // After a keyword reference in a multi-dollar string, the string goes on: lexing its next part, which is not valid
     // there, lets error recovery insert the missing end of the reference and keep the string, instead of leaving the
-    // string open to the end of the input. A reference in a string nested in an interpolation is not in it.
-    if ((valid_symbols[MULTI_DOLLAR_STRING_CONTENT] || (valid_symbols[KEYWORD_REFERENCE_END] && after_short_template)) &&
-        !error_recovery && scanner->length > 0) {
-        return scan_multi_dollar_string_part(scanner, lexer);
+    // string open to the end of the input. A reference in a string nested in an interpolation is not in it. Where the
+    // part scan leaves the next part to the grammar (an escape sequence, a line break, or the end of the input), an
+    // empty part serves instead.
+    if (valid_symbols[KEYWORD_REFERENCE_END] && after_short_template && !error_recovery && scanner->length > 0) {
+        if (!scan_multi_dollar_string_part(scanner, lexer)) {
+            lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
+        }
+        return true;
     }
     bool can_start_multi_dollar_string =
         !error_recovery && (valid_symbols[MULTI_DOLLAR_STRING_START] || valid_symbols[MULTI_DOLLAR_MULTILINE_STRING_START]);
