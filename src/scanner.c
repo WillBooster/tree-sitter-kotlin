@@ -591,7 +591,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
         return true;
     }
-    if (valid_symbols[MULTI_DOLLAR_STRING_CONTENT] && !error_recovery && scanner->length > 0) {
+    // After a keyword reference, the string goes on: lexing its next part, which is not valid there, lets error recovery
+    // insert the missing end of the reference and keep the string, instead of leaving the string open to the end of the
+    // input.
+    if ((valid_symbols[MULTI_DOLLAR_STRING_CONTENT] || valid_symbols[KEYWORD_REFERENCE_END]) && !error_recovery &&
+        scanner->length > 0) {
         return scan_multi_dollar_string_part(scanner, lexer);
     }
     bool can_start_multi_dollar_string =

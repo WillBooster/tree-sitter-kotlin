@@ -1135,6 +1135,30 @@ val a = "$class🙂"
 
 ---
 
+=========================================
+Declarations after a hard keyword in a multi-dollar string template
+=========================================
+
+val a = $$"x $$class y"
+val b = 2
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (identifier)
+        (MISSING _keyword_reference_end))
+      (string_content)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)))
+
 ==================================
 Multi-dollar string interpolation
 ==================================
