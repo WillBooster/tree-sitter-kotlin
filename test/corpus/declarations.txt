@@ -436,6 +436,12 @@ class F : B by a + b.c(1) {
   val z = 1
 }
 
+class G : () -> Unit by fun() {
+  println()
+} {
+  val z = 1
+}
+
 val o = object : B by Foo.create() {
   val z = 2
 }
@@ -490,6 +496,27 @@ val o = object : B by Foo.create() {
               (value_arguments
                 (value_argument
                   (number_literal))))))))
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))))
+  (class_declaration
+    (identifier)
+    (delegation_specifiers
+      (delegation_specifier
+        (explicit_delegation
+          (function_type
+            (function_type_parameters)
+            (user_type
+              (identifier)))
+          (anonymous_function
+            (function_value_parameters)
+            (function_body
+              (block
+                (call_expression
+                  (identifier)
+                  (value_arguments))))))))
     (class_body
       (property_declaration
         (variable_declaration
