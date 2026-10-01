@@ -952,6 +952,18 @@ fun f() {
   context(a) { b }
   val c = context.getString(1)
   context = 2
+  context(a)
+  val d = 1
+  run {
+    context(a)
+    fun g() {}
+  }
+  context(a: A)
+  fun h() {}
+  class L {
+    context(A)
+    fun i() {}
+  }
 }
 
 enum class E { context, b }
@@ -985,7 +997,53 @@ enum class F { a, context(1), @Anno context, b }
                 (number_literal)))))
         (assignment
           (identifier)
-          (number_literal)))))
+          (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (identifier))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (identifier)
+          (annotated_lambda
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))
+              (function_declaration
+                (identifier)
+                (function_value_parameters)
+                (function_body
+                  (block))))))
+        (function_declaration
+          (modifiers
+            (context_parameters
+              (parameter
+                (identifier)
+                (user_type
+                  (identifier)))))
+          (identifier)
+          (function_value_parameters)
+          (function_body
+            (block)))
+        (class_declaration
+          (identifier)
+          (class_body
+            (function_declaration
+              (modifiers
+                (context_parameters
+                  (user_type
+                    (identifier))))
+              (identifier)
+              (function_value_parameters)
+              (function_body
+                (block))))))))
   (class_declaration
     (modifiers
       (class_modifier))

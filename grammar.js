@@ -68,10 +68,12 @@ module.exports = grammar({
     [$.member_modifier, $._reserved_identifier],
 
     [$.context_parameters, $._reserved_identifier],
-    [$.modifiers, $.function_type],
+    [$._modifier_context_parameters, $._reserved_identifier],
+    [$.context_parameters, $._modifier_context_parameters, $._reserved_identifier],
+    [$._context_entry, $._modifier_context_parameters],
+    [$._modifier_context_parameters],
     [$.secondary_constructor, $._reserved_identifier],
     [$.enum_entry, $.modifiers],
-    [$.modifiers, $.anonymous_function],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -111,6 +113,14 @@ module.exports = grammar({
     $._delegation_end,
     // the `)` that ends a call's arguments (see `value_arguments`)
     $._arguments_end,
+    // empty: they tell the scanner when a statement list or the member list of a class body opens in braces, and when
+    // either closes (see `frames` in the scanner)
+    $._open_statements,
+    $._open_members,
+    $._close_braces,
+    $._top_level_statement_end,
+    // empty: it ends a context list of types among modifiers, except directly in a statement list (see `modifiers`)
+    $._context_end,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -170,7 +180,9 @@ module.exports = grammar({
         repeat($.file_annotation),
         optional($.package_header),
         repeat($.import),
-        repeat(seq($.statement, $._semi))
+        // The scanner clears its brace frames after each top-level statement, so that a brace that error recovery
+        // consumed affects no later statement.
+        repeat(seq($.statement, $._semi, $._top_level_statement_end))
       ),
 
     file_annotation: ($) =>
@@ -344,7 +356,7 @@ module.exports = grammar({
 
     function_body: ($) => choice($.block, seq('=', $.expression)),
 
-    block: ($) => seq('{', optional($._statements), '}'),
+    block: ($) => seq('{', $._open_statements, optional($._statements), '}', $._close_braces),
 
     for_statement: ($) =>
       prec.right(
@@ -388,7 +400,8 @@ module.exports = grammar({
 
     _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
-    class_body: ($) => seq('{', repeat(seq($.class_member_declaration, $._class_member_semi)), '}'),
+    class_body: ($) =>
+      seq('{', $._open_members, repeat(seq($.class_member_declaration, $._class_member_semi)), '}', $._close_braces),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
@@ -398,9 +411,11 @@ module.exports = grammar({
     enum_class_body: ($) =>
       seq(
         '{',
+        $._open_members,
         optionalCommaSep1($.enum_entry),
         optional(seq(';', repeat(seq($.class_member_declaration, $._class_member_semi)))),
-        '}'
+        '}',
+        $._close_braces
       ),
 
     // Only annotations can modify an enum entry, and with the full modifier list a `context` after an annotation would
@@ -440,7 +455,7 @@ module.exports = grammar({
               $.inheritance_modifier,
               $.parameter_modifier,
               $.platform_modifier,
-              $.context_parameters
+              alias($._modifier_context_parameters, $.context_parameters)
             )
           )
         )
@@ -518,13 +533,27 @@ module.exports = grammar({
       ),
 
     // Context parameters (`context(scope: Scope)`, Kotlin 2.2) and the older context receivers (`context(Scope)`).
-    context_parameters: ($) =>
+    context_parameters: ($) => seq('context', '(', commaSep1($._context_entry), optional(','), ')'),
+
+    _context_entry: ($) => choice(seq(optional($.parameter_modifiers), $.parameter), $.type),
+
+    // Directly in a statement list, Kotlin reads `context(…)` with only types as a call, e.g. before a local declaration
+    // on the next line, so the scanner ends such a list among modifiers only elsewhere. A list with a named parameter
+    // cannot be a call.
+    _modifier_context_parameters: ($) =>
       seq(
         'context',
         '(',
-        commaSep1(choice(seq(optional($.parameter_modifiers), $.parameter), $.type)),
-        optional(','),
-        ')'
+        choice(
+          seq(commaSep1($.type), optional(','), ')', $._context_end),
+          seq(
+            repeat(seq($.type, ',')),
+            seq(optional($.parameter_modifiers), $.parameter),
+            repeat(seq(',', $._context_entry)),
+            optional(','),
+            ')'
+          )
+        )
       ),
 
     function_type_parameters: ($) => seq('(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
@@ -662,7 +691,14 @@ module.exports = grammar({
     annotated_lambda: ($) => seq(repeat($.annotation), optional($.label), $.lambda_literal),
 
     lambda_literal: ($) =>
-      seq('{', optional(seq(optional($.lambda_parameters), '->')), optionalSep1($.statement, $._semi), '}'),
+      seq(
+        '{',
+        $._open_statements,
+        optional(seq(optional($.lambda_parameters), '->')),
+        optionalSep1($.statement, $._semi),
+        '}',
+        $._close_braces
+      ),
 
     lambda_parameters: ($) => seq(commaSep1($._lambda_parameter), optional(',')),
 
@@ -724,7 +760,8 @@ module.exports = grammar({
 
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
-    when_expression: ($) => seq('when', optional($.when_subject), '{', repeat($.when_entry), '}'),
+    when_expression: ($) =>
+      seq('when', optional($.when_subject), '{', $._open_statements, repeat($.when_entry), '}', $._close_braces),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),

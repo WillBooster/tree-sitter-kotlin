@@ -29,6 +29,11 @@ enum TokenType {
     PRIMARY_CONSTRUCTOR_POSITION,
     DELEGATION_END,
     ARGUMENTS_END,
+    OPEN_STATEMENTS,
+    OPEN_MEMBERS,
+    CLOSE_BRACES,
+    TOP_LEVEL_STATEMENT_END,
+    CONTEXT_END,
 };
 
 #define MAX_WORD_SIZE 16
@@ -266,15 +271,54 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
+// Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
+#define MAX_FRAMES 256
+
 typedef struct {
+    // How many braces that hold statements (blocks, lambdas, and `when` bodies) or members (class bodies) enclose the
+    // position.
+    uint32_t depth;
     // The leading dollars of a run that the last string content token did not cover although they are content, since
     // the run ends in an interpolation (see `scan_multi_dollar_string_part`).
     uint32_t surplus_dollars;
+    // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
+    // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
+    uint8_t frames[MAX_FRAMES / 8];
     // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
     // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
     unsigned length;
-    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - sizeof(uint32_t)) / sizeof(uint16_t)];
+    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2 * sizeof(uint32_t) - MAX_FRAMES / 8) / sizeof(uint16_t)];
 } Scanner;
+
+static unsigned frame_bytes(uint32_t depth) { return ((depth < MAX_FRAMES ? depth : MAX_FRAMES) + 7) / 8; }
+
+static bool in_statements(const Scanner *scanner) {
+    uint32_t i = scanner->depth - 1;
+    return scanner->depth > 0 && (i >= MAX_FRAMES || (scanner->frames[i / 8] >> (i % 8)) & 1);
+}
+
+static void push_frame(Scanner *scanner, bool statements) {
+    uint32_t i = scanner->depth;
+    if (i < MAX_FRAMES) {
+        scanner->frames[i / 8] |= (uint8_t)((unsigned)statements << (i % 8));
+    }
+    if (scanner->depth < UINT32_MAX) {
+        scanner->depth++;
+    }
+}
+
+// Clears the popped frame's bit, since tree-sitter compares serialized states byte by byte: the bits above the depth
+// must be zero for equal states to serialize equally.
+static void pop_frame(Scanner *scanner) {
+    if (scanner->depth == 0) {
+        return;
+    }
+    scanner->depth--;
+    uint32_t i = scanner->depth;
+    if (i < MAX_FRAMES) {
+        scanner->frames[i / 8] &= (uint8_t)~(1u << (i % 8));
+    }
+}
 
 #define MULTILINE_FLAG 0x8000
 #define MAX_DOLLAR_COUNT 0x7fff
@@ -285,19 +329,33 @@ void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payloa
 
 unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) {
     Scanner *scanner = (Scanner *)payload;
-    memcpy(buffer, &scanner->surplus_dollars, sizeof(uint32_t));
-    memcpy(buffer + sizeof(uint32_t), scanner->strings, scanner->length * sizeof(uint16_t));
-    return sizeof(uint32_t) + scanner->length * sizeof(uint16_t);
+    unsigned size = 0;
+    memcpy(buffer, &scanner->depth, sizeof(uint32_t));
+    size += sizeof(uint32_t);
+    memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
+    size += sizeof(uint32_t);
+    memcpy(buffer + size, scanner->frames, frame_bytes(scanner->depth));
+    size += frame_bytes(scanner->depth);
+    memcpy(buffer + size, scanner->strings, scanner->length * sizeof(uint16_t));
+    return size + scanner->length * sizeof(uint16_t);
 }
 
 void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
     Scanner *scanner = (Scanner *)payload;
+    scanner->depth = 0;
     scanner->surplus_dollars = 0;
+    memset(scanner->frames, 0, sizeof(scanner->frames));
     scanner->length = 0;
-    if (length >= sizeof(uint32_t)) {
-        memcpy(&scanner->surplus_dollars, buffer, sizeof(uint32_t));
-        scanner->length = (length - sizeof(uint32_t)) / sizeof(uint16_t);
-        memcpy(scanner->strings, buffer + sizeof(uint32_t), length - sizeof(uint32_t));
+    if (length >= 2 * sizeof(uint32_t)) {
+        unsigned size = 0;
+        memcpy(&scanner->depth, buffer, sizeof(uint32_t));
+        size += sizeof(uint32_t);
+        memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
+        size += sizeof(uint32_t);
+        memcpy(scanner->frames, buffer + size, frame_bytes(scanner->depth));
+        size += frame_bytes(scanner->depth);
+        scanner->length = (length - size) / sizeof(uint16_t);
+        memcpy(scanner->strings, buffer + size, length - size);
     }
 }
 
@@ -468,6 +526,29 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
+        lexer->mark_end(lexer);
+        lexer->result_symbol = TOP_LEVEL_STATEMENT_END;
+        scanner->depth = 0;
+        memset(scanner->frames, 0, sizeof(scanner->frames));
+        return true;
+    }
+    if (!error_recovery && valid_symbols[CONTEXT_END] && !in_statements(scanner)) {
+        lexer->mark_end(lexer);
+        lexer->result_symbol = CONTEXT_END;
+        return true;
+    }
+    if (!error_recovery && (valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_MEMBERS] || valid_symbols[CLOSE_BRACES])) {
+        lexer->mark_end(lexer);
+        if (valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_MEMBERS]) {
+            lexer->result_symbol = valid_symbols[OPEN_STATEMENTS] ? OPEN_STATEMENTS : OPEN_MEMBERS;
+            push_frame(scanner, valid_symbols[OPEN_STATEMENTS]);
+        } else {
+            lexer->result_symbol = CLOSE_BRACES;
+            pop_frame(scanner);
+        }
+        return true;
+    }
     if (valid_symbols[MULTI_DOLLAR_STRING_CONTENT] && !error_recovery && scanner->length > 0) {
         return scan_multi_dollar_string_part(scanner, lexer);
     }
@@ -687,6 +768,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {
+                    // A local property has no accessors, as in Kotlin, so after one `get` or `set` starts a statement.
+                    if (valid_symbols[SEMI] && in_statements(scanner)) {
+                        return true;
+                    }
                     // During error recovery, scanning a parameter list to its end on every attempt would make recovery
                     // quadratic in the input length.
                     return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer, index == 4));
