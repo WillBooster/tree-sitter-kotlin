@@ -118,6 +118,7 @@ module.exports = grammar({
     $._open_statements,
     $._open_members,
     $._close_braces,
+    $._top_level_statement_end,
     // empty: it ends a context list of types among modifiers, except directly in a statement list (see `modifiers`)
     $._context_end,
   ],
@@ -179,7 +180,9 @@ module.exports = grammar({
         repeat($.file_annotation),
         optional($.package_header),
         repeat($.import),
-        repeat(seq($.statement, $._semi))
+        // The scanner clears its brace frames after each top-level statement, so that a brace that error recovery
+        // consumed affects no later statement.
+        repeat(seq($.statement, $._semi, $._top_level_statement_end))
       ),
 
     file_annotation: ($) =>

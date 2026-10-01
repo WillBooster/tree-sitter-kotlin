@@ -32,6 +32,7 @@ enum TokenType {
     OPEN_STATEMENTS,
     OPEN_MEMBERS,
     CLOSE_BRACES,
+    TOP_LEVEL_STATEMENT_END,
     CONTEXT_END,
 };
 
@@ -525,6 +526,13 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
+        lexer->mark_end(lexer);
+        lexer->result_symbol = TOP_LEVEL_STATEMENT_END;
+        scanner->depth = 0;
+        memset(scanner->frames, 0, sizeof(scanner->frames));
+        return true;
+    }
     if (!error_recovery && valid_symbols[CONTEXT_END] && !in_statements(scanner)) {
         lexer->mark_end(lexer);
         lexer->result_symbol = CONTEXT_END;

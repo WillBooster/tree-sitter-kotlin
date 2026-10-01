@@ -56,6 +56,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_semi"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_top_level_statement_end"
               }
             ]
           }
@@ -7338,6 +7342,10 @@
     {
       "type": "SYMBOL",
       "name": "_close_braces"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_top_level_statement_end"
     },
     {
       "type": "SYMBOL",
