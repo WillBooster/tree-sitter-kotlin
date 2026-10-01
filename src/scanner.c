@@ -104,24 +104,31 @@ static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "fun", "val", "var", "class", "interface", "object", "typealias",
 };
 
-// Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
-static bool is_letter(int32_t c) {
-    if (c < 0x80) {
-        return iswalpha(c);
-    }
+static bool in_ranges(int32_t c, const uint32_t ranges[][2], size_t count) {
     size_t low = 0;
-    size_t high = sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]);
+    size_t high = count;
     while (low < high) {
         size_t middle = (low + high) / 2;
-        if ((uint32_t)c < LETTER_RANGES[middle][0]) {
+        if ((uint32_t)c < ranges[middle][0]) {
             high = middle;
-        } else if ((uint32_t)c > LETTER_RANGES[middle][1]) {
+        } else if ((uint32_t)c > ranges[middle][1]) {
             low = middle + 1;
         } else {
             return true;
         }
     }
     return false;
+}
+
+// Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
+static bool is_letter(int32_t c) {
+    return c < 0x80 ? iswalpha(c) : in_ranges(c, LETTER_RANGES, sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]));
+}
+
+// Tells a character that continues a name in a string template (`[\p{L}_\p{Nd}]`).
+static bool is_template_name_part(int32_t c) {
+    return c < 0x80 ? iswalnum(c) || c == '_'
+                    : in_ranges(c, NAME_PART_RANGES, sizeof(NAME_PART_RANGES) / sizeof(NAME_PART_RANGES[0]));
 }
 
 static inline bool is_identifier_start(int32_t c) { return is_letter(c) || c == '_'; }
@@ -283,14 +290,14 @@ static const char *const TEMPLATE_KEYWORDS[] = {
 // Scans a hard keyword other than `this` right after the `$` of a template, as a whole identifier.
 static bool scan_template_keyword(TSLexer *lexer) {
     char word[MAX_WORD_SIZE] = {0};
-    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_identifier_part(lexer->lookahead); i++) {
+    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_template_name_part(lexer->lookahead); i++) {
         if (lexer->lookahead > 0x7f) {
             return false;
         }
         word[i] = (char)lexer->lookahead;
         advance(lexer);
     }
-    if (is_identifier_part(lexer->lookahead)) {
+    if (is_template_name_part(lexer->lookahead)) {
         return false;
     }
     for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
