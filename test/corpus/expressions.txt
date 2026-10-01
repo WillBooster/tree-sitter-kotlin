@@ -858,6 +858,40 @@ val f = 1
       (identifier))
     (number_literal)))
 
+=========================================
+This in string templates
+=========================================
+
+val a = "$this $thisX"
+val b = """$this"""
+val c = $$"$$this $this"
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (interpolation
+        (this_expression))
+      (string_content)
+      (interpolation
+        (identifier))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (interpolation
+        (this_expression))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (string_literal
+      (interpolation
+        (this_expression))
+      (string_content))))
+
 ==================================
 Multi-dollar string interpolation
 ==================================

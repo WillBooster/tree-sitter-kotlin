@@ -5825,21 +5825,8 @@
               "value": "$"
             },
             {
-              "type": "ALIAS",
-              "content": {
-                "type": "IMMEDIATE_TOKEN",
-                "content": {
-                  "type": "PREC",
-                  "value": 2,
-                  "content": {
-                    "type": "PATTERN",
-                    "value": "[\\p{L}_][\\p{L}_\\p{Nd}]*",
-                    "flags": "u"
-                  }
-                }
-              },
-              "named": true,
-              "value": "identifier"
+              "type": "SYMBOL",
+              "name": "_template_name"
             }
           ]
         },
@@ -5862,6 +5849,44 @@
         }
       ]
     },
+    "_template_name": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "IMMEDIATE_TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 2,
+              "content": {
+                "type": "PATTERN",
+                "value": "[\\p{L}_][\\p{L}_\\p{Nd}]*",
+                "flags": "u"
+              }
+            }
+          },
+          "named": true,
+          "value": "identifier"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "IMMEDIATE_TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 2,
+              "content": {
+                "type": "STRING",
+                "value": "this"
+              }
+            }
+          },
+          "named": true,
+          "value": "this_expression"
+        }
+      ]
+    },
     "_multi_dollar_interpolation": {
       "type": "SEQ",
       "members": [
@@ -5873,21 +5898,8 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "ALIAS",
-              "content": {
-                "type": "IMMEDIATE_TOKEN",
-                "content": {
-                  "type": "PREC",
-                  "value": 2,
-                  "content": {
-                    "type": "PATTERN",
-                    "value": "[\\p{L}_][\\p{L}_\\p{Nd}]*",
-                    "flags": "u"
-                  }
-                }
-              },
-              "named": true,
-              "value": "identifier"
+              "type": "SYMBOL",
+              "name": "_template_name"
             },
             {
               "type": "SEQ",
