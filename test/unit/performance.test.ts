@@ -24,16 +24,31 @@ test('uses a Wasm build built from the current parser', () => {
   ).toBe(false);
 });
 
-// Consumers parse files being edited, so recovering from many errors must stay linear. Linear recovery
-// takes about 0.2 s here; a scanner that read to the end of the input on each attempt took 50 s. The timeout
-// exceeds Vitest's 5 s default so that a slow run fails on the elapsed time it reports, not on the timeout.
-test('recovers from an error on each of 10,000 lines in linear time', { timeout: 60_000 }, () => {
-  const start = performance.now();
-  const tree = parser.parse('$ a\n'.repeat(10_000));
-  const elapsed = performance.now() - start;
-  if (!tree) throw new Error('The parser returned no tree');
-  const { hasError } = tree.rootNode;
-  tree.delete();
-  expect(hasError).toBe(true);
-  expect(elapsed).toBeLessThan(3000);
+// Consumers parse files being edited, so recovering from many errors must stay linear: ten times the lines take
+// about ten times as long, against a hundred times for quadratic recovery. The ratio catches a cost that grows faster
+// than the input even on a slow CI runner; it would pass a parser that is uniformly slower, so the larger parse also has
+// a generous ceiling, about 25 times the 0.2 s of CPU time it takes here. The parses are timed in the CPU time of this
+// test file's process (see `pool` in vitest.config.mts), not in wall-clock time, which the test files running
+// alongside inflate unevenly. Each size keeps its fastest run to filter out the remaining noise, such as garbage
+// collection.
+test('recovers from an error on each line in linear time', { timeout: 60_000 }, () => {
+  const tenThousandLines = fastestParseCpuTime(10_000);
+  expect(tenThousandLines / fastestParseCpuTime(1000)).toBeLessThan(30);
+  // process.cpuUsage reports microseconds.
+  expect(tenThousandLines).toBeLessThan(5_000_000);
 });
+
+function fastestParseCpuTime(lines: number): number {
+  let fastest = Infinity;
+  for (let run = 0; run < 3; run++) {
+    const start = process.cpuUsage();
+    const tree = parser.parse('$ a\n'.repeat(lines));
+    const { system, user } = process.cpuUsage(start);
+    fastest = Math.min(fastest, system + user);
+    if (!tree) throw new Error('The parser returned no tree');
+    const { hasError } = tree.rootNode;
+    tree.delete();
+    expect(hasError).toBe(true);
+  }
+  return fastest;
+}

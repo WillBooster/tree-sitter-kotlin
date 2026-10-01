@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest';
 import { spawn } from 'node:child_process';
+import path from 'node:path';
+
+const repositoryRoot = path.resolve(import.meta.dirname, '../..');
 
 // Leaves time to kill the command and report its output before Vitest's own test timeout.
 const KillMargin = 10_000;
@@ -17,9 +20,12 @@ export function testCommand(
     name,
     async () => {
       const child = spawn(command[0], command.slice(1), {
-        cwd: `${import.meta.dirname}/../..`,
+        cwd: repositoryRoot,
         detached: true,
-        env: { ...process.env, ...options.env },
+        // The CLI caches compiled parsers by language name in a directory shared by every checkout and reuses one that is
+        // newer than the sources, so another checkout's parser could be tested instead of this one, also through a
+        // TREE_SITTER_LIBDIR set in the environment.
+        env: { ...process.env, TREE_SITTER_LIBDIR: `${repositoryRoot}/.tmp/tree-sitter-lib`, ...options.env },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let output = '';
