@@ -299,10 +299,23 @@ static bool in_statements(const Scanner *scanner) {
 static void push_frame(Scanner *scanner, bool statements) {
     uint32_t i = scanner->depth;
     if (i < MAX_FRAMES) {
-        scanner->frames[i / 8] = (uint8_t)((scanner->frames[i / 8] & ~(1u << (i % 8))) | ((unsigned)statements << (i % 8)));
+        scanner->frames[i / 8] |= (uint8_t)((unsigned)statements << (i % 8));
     }
     if (scanner->depth < UINT32_MAX) {
         scanner->depth++;
+    }
+}
+
+// Clears the popped frame's bit, since tree-sitter compares serialized states byte by byte: the bits above the depth
+// must be zero for equal states to serialize equally.
+static void pop_frame(Scanner *scanner) {
+    if (scanner->depth == 0) {
+        return;
+    }
+    scanner->depth--;
+    uint32_t i = scanner->depth;
+    if (i < MAX_FRAMES) {
+        scanner->frames[i / 8] &= (uint8_t)~(1u << (i % 8));
     }
 }
 
@@ -330,6 +343,7 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
     Scanner *scanner = (Scanner *)payload;
     scanner->depth = 0;
     scanner->surplus_dollars = 0;
+    memset(scanner->frames, 0, sizeof(scanner->frames));
     scanner->length = 0;
     if (length >= 2 * sizeof(uint32_t)) {
         unsigned size = 0;
@@ -523,9 +537,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             push_frame(scanner, valid_symbols[OPEN_STATEMENTS]);
         } else {
             lexer->result_symbol = CLOSE_BRACES;
-            if (scanner->depth > 0) {
-                scanner->depth--;
-            }
+            pop_frame(scanner);
         }
         return true;
     }
