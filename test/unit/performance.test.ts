@@ -28,9 +28,14 @@ test('uses a Wasm build built from the current parser', () => {
 // about ten times as long, against a hundred times for quadratic recovery. The ratio, unlike an absolute limit,
 // holds on slow CI runners. The parses are timed in the CPU time of this test file's process (see `pool` in
 // vitest.config.mts), not in wall-clock time, which the test files running alongside inflate unevenly. Each size
-// keeps its fastest run to filter out the remaining noise, such as garbage collection.
+// keeps its fastest run to filter out the remaining noise, such as garbage collection. The ratio alone would pass a
+// parser that is uniformly slower, so the larger parse also has a ceiling, about 25 times the 0.2 s of CPU time it
+// takes here.
 test('recovers from an error on each line in linear time', { timeout: 60_000 }, () => {
-  expect(fastestParseCpuTime(10_000) / fastestParseCpuTime(1000)).toBeLessThan(30);
+  const tenThousandLines = fastestParseCpuTime(10_000);
+  expect(tenThousandLines / fastestParseCpuTime(1000)).toBeLessThan(30);
+  // process.cpuUsage reports microseconds.
+  expect(tenThousandLines).toBeLessThan(5_000_000);
 });
 
 function fastestParseCpuTime(lines: number): number {

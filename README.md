@@ -99,7 +99,7 @@ cargo test
   `script/parse-examples`. After a grammar change or a moved pin alters that list, `script/parse-examples` rewrites
   it; review its diff before committing;
 - a performance check (`test/unit/performance.test.ts`) that recovering from an error on each line takes linear time
-  (ten times the lines take about ten times the CPU time), since consumers parse files while they are being edited.
+  (ten times the lines take about ten times the CPU time, under a ceiling), since consumers parse files while they are being edited.
   It loads the Wasm build through @willbooster/web-tree-sitter, which `bun run build/ci` rebuilds after regenerating
   the parser;
 - a check that comments containing NUL characters parse (`test/unit/nulCharacters.test.ts`);

@@ -38,8 +38,8 @@ clone() {
 }
 
 cd "$(dirname "$0")/.."
-# The CLI caches compiled parsers by language name in a directory shared by every checkout, so another checkout's
-# parser could be used instead of this one.
+# This script rebuilds the parser on every run (--grammar-path implies --rebuild), so in the CLI's default cache, which
+# every checkout shares by language name, it would leave a parser newer than other checkouts' sources for them to reuse.
 export TREE_SITTER_LIBDIR="$PWD/.tmp/tree-sitter-lib"
 
 clone intellij-rust https://github.com/intellij-rust/intellij-rust c6657c02bb62075bf7b7ceb84d000f93dda34dc1
