@@ -759,6 +759,70 @@ fun j(block: context(C) () -> Unit, k: suspend context(C) () -> Unit, l: @A cont
             (block)))))))
 
 ==============================
+Context lists on class members
+==============================
+
+class A {
+  context(Foo)
+  fun f() {}
+  context(Bar) private val x = 1
+
+  private
+  context(b: Bar)
+  fun g() {}
+}
+
+interface I { context(Baz) suspend fun h() }
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (modifiers
+          (context_parameters
+            (user_type
+              (identifier))))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (property_declaration
+        (modifiers
+          (context_parameters
+            (user_type
+              (identifier)))
+          (visibility_modifier))
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (function_declaration
+        (modifiers
+          (visibility_modifier)
+          (context_parameters
+            (parameter
+              (identifier)
+              (user_type
+                (identifier)))))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (modifiers
+          (context_parameters
+            (user_type
+              (identifier)))
+          (function_modifier))
+        (identifier)
+        (function_value_parameters)))))
+
+==============================
 Context as a name
 ==============================
 
