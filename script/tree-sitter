@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# Runs the tree-sitter CLI that script/fork-cli provides with the given arguments.
+
+set -euo pipefail
+
+cli=$("$(dirname "$0")/fork-cli")
+exec "$cli" "$@"

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Prints the version of the WillBooster/tree-sitter runtime (the willbooster-tree-sitter crate) that Cargo.lock locks,
+# which the Rust tests, the fuzz job, and the incremental check run on; fails unless Cargo.lock locks exactly one.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+versions=$(awk '/^name = "willbooster-tree-sitter"$/ { getline; gsub(/version = |"/, ""); print }' Cargo.lock)
+if [[ $(grep -c . <<< "$versions") != 1 ]]; then
+  echo 'Cargo.lock must lock exactly one willbooster-tree-sitter' >&2
+  exit 1
+fi
+echo "$versions"

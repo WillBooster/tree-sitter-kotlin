@@ -30,6 +30,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run test/ci-setup
       - run: bun run build/ci
+      # The packages ship the committed src/, so it must be what grammar.js generates. `git add -N` makes files that
+      # generation adds but nobody committed show up in the diff too.
+      - run: git add --intent-to-add -- src/ && git diff --exit-code -- src/
       - run: bun run test/ci
   # Runs the parser under libFuzzer with AddressSanitizer and UndefinedBehaviorSanitizer, seeded with the
   # input of each corpus case. A grammar change alters which tokens the scanner is asked for, so it runs
@@ -44,8 +47,8 @@ jobs:
           persist-credentials: false
       - id: runtime
         run: |
-          version=$(awk '/^name = "willbooster-tree-sitter"$/ { getline; gsub(/version = |"/, ""); print }' Cargo.lock)
-          echo "ref=v${version:?Cargo.lock locks no willbooster-tree-sitter}" >> "$GITHUB_OUTPUT"
+          version=$(script/runtime-version)
+          echo "ref=v$version" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7.0.1
         with:
           repository: WillBooster/tree-sitter

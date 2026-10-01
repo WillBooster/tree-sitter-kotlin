@@ -1,13 +1,13 @@
-import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 import { expect, test } from 'vitest';
 
 import packageJson from '../../package.json';
 
-// The Wasm tests run on @willbooster/web-tree-sitter, and the Rust tests and the fuzz job on the willbooster-tree-sitter
-// crate that Cargo.lock locks. Both are the same runtime, released together, so they must be tested at one version.
+// The Wasm tests run on @willbooster/web-tree-sitter, and the Rust tests, the fuzz job, and the incremental check on
+// the willbooster-tree-sitter crate that Cargo.lock locks (read by script/runtime-version). Both are the same runtime,
+// released together, so they must be tested at one version.
 test('locks the same runtime version in package.json and Cargo.lock', () => {
-  const cargoLock = fs.readFileSync(`${import.meta.dirname}/../../Cargo.lock`, 'utf8');
-  const crateVersion = /^name = "willbooster-tree-sitter"\nversion = "([^"]+)"$/m.exec(cargoLock)?.[1];
+  const crateVersion = execFileSync(`${import.meta.dirname}/../../script/runtime-version`, { encoding: 'utf8' }).trim();
   expect(crateVersion).toBe(packageJson.devDependencies['@willbooster/web-tree-sitter']);
 });
