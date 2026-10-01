@@ -413,10 +413,7 @@ module.exports = grammar({
         optional($.class_body)
       ),
 
-    // Whether a call takes a trailing lambda depends on the token after its arguments, which the lookahead of the
-    // scanned `)` reaches, so an edit there makes incremental parsing reparse the call instead of reusing a call without
-    // the lambda.
-    value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), alias($._arguments_end, ')')),
+    value_arguments: ($) => valueArguments($, '('),
 
     value_argument: ($) => seq(optional(seq($._identifier, '=')), optional('*'), $.expression),
 
@@ -480,7 +477,15 @@ module.exports = grammar({
     use_site_target: () =>
       seq(choice('field', 'property', 'get', 'set', 'receiver', 'param', 'setparam', 'delegate'), ':'),
 
-    _unescaped_annotation: ($) => choice($.constructor_invocation, $.type),
+    // As in Kotlin, a `(` right after an annotation's name always starts its arguments; lexing it as a separate immediate
+    // token keeps an annotated parenthesized expression from being read there. After whitespace, Kotlin's reading
+    // depends on the context, so both readings remain.
+    _unescaped_annotation: ($) =>
+      choice($.constructor_invocation, alias($._annotation_invocation, $.constructor_invocation), $.type),
+
+    _annotation_invocation: ($) => seq($.type, alias($._annotation_arguments, $.value_arguments)),
+
+    _annotation_arguments: ($) => valueArguments($, alias(token.immediate('('), '(')),
 
     type: ($) =>
       choice($.user_type, $.nullable_type, $.function_type, $.non_nullable_type, $.parenthesized_type, 'dynamic'),
@@ -963,4 +968,18 @@ function commaSep1(rule) {
  */
 function optionalCommaSep1(rule) {
   return optional(seq(rule, repeat(seq(',', rule)), optional(',')));
+}
+
+/**
+ * Creates the arguments of a call or an annotation. Whether a call takes a trailing lambda depends on the token after
+ * its arguments, which the lookahead of the scanned `)` reaches, so an edit there makes incremental parsing reparse the
+ * call instead of reusing a call without the lambda.
+ *
+ * @param {GrammarSymbols<string>} $
+ * @param {RuleOrLiteral} open
+ *
+ * @returns {SeqRule}
+ */
+function valueArguments($, open) {
+  return seq(open, optionalCommaSep1($.value_argument), alias($._arguments_end, ')'));
 }

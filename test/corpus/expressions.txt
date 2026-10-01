@@ -472,6 +472,72 @@ fun `hello world`() = true
       (identifier))))
 
 ==========================
+Arguments right after an annotation name before an expression
+==========================
+
+fun f() {
+  run {
+    @Suppress("X")
+    g(x)
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (call_expression
+          (identifier)
+          (annotated_lambda
+            (lambda_literal
+              (annotated_expression
+                (annotation
+                  (constructor_invocation
+                    (user_type
+                      (identifier))
+                    (value_arguments
+                      (value_argument
+                        (string_literal
+                          (string_content))))))
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier))))))))))))
+
+==========================
+Arguments right after an annotation name after a comment
+==========================
+
+class A
+// x
+@Suppress("unused")
+internal class B
+
+---
+
+(source_file
+  (class_declaration
+    (identifier))
+  (line_comment)
+  (class_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content))))))
+      (visibility_modifier))
+    (identifier)))
+
+==========================
 Complex Types
 ==========================
 
