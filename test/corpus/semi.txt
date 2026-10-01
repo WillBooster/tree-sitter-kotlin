@@ -927,7 +927,22 @@ fun f() {
   get("/a") { 1 }
   val v = 1
   get /* note */ ("a")
+  val w = 1
+  set(x) { println(it) }
+  var z = 1
+  get() { 1 }
+  class L {
+    var y = 1
+      set(v) { field = v }
+  }
+  val o = object {
+    val p: Int
+      get() = 1
+  }
 }
+
+var q = 1
+  set(v) { run { field = v } }
 
 ---
 
@@ -1002,7 +1017,75 @@ fun f() {
           (value_arguments
             (value_argument
               (string_literal
-                (string_content)))))))))
+                (string_content)))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (identifier)))
+          (annotated_lambda
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier)))))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments)
+          (annotated_lambda
+            (lambda_literal
+              (number_literal))))
+        (class_declaration
+          (identifier)
+          (class_body
+            (property_declaration
+              (variable_declaration
+                (identifier))
+              (number_literal)
+              (setter
+                (identifier)
+                (function_body
+                  (block
+                    (assignment
+                      (identifier)
+                      (identifier))))))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (object_literal
+            (class_body
+              (property_declaration
+                (variable_declaration
+                  (identifier)
+                  (user_type
+                    (identifier)))
+                (getter
+                  (function_body
+                    (number_literal))))))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (setter
+      (identifier)
+      (function_body
+        (block
+          (call_expression
+            (identifier)
+            (annotated_lambda
+              (lambda_literal
+                (assignment
+                  (identifier)
+                  (identifier))))))))))
 
 ==================================
 A nullable type before a comment on the next line
