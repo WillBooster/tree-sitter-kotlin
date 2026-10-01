@@ -70,6 +70,7 @@ module.exports = grammar({
 
     [$.context_parameters, $._reserved_identifier],
     [$.modifiers, $.function_type],
+    [$.secondary_constructor, $._reserved_identifier],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -395,7 +396,7 @@ module.exports = grammar({
         '}'
       ),
 
-    enum_entry: ($) => seq(optional($.modifiers), $.identifier, optional($.value_arguments), optional($.class_body)),
+    enum_entry: ($) => seq(optional($.modifiers), $._identifier, optional($.value_arguments), optional($.class_body)),
 
     value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), ')'),
 
@@ -485,8 +486,8 @@ module.exports = grammar({
 
     function_type: ($) =>
       seq(
-        optional($.context_parameters),
         optional($.type_modifiers),
+        optional($.context_parameters),
         optional(seq($._receiver_type, '.')),
         $.function_type_parameters,
         '->',
@@ -495,7 +496,13 @@ module.exports = grammar({
 
     // Context parameters (`context(scope: Scope)`, Kotlin 2.2) and the older context receivers (`context(Scope)`).
     context_parameters: ($) =>
-      seq('context', '(', optionalCommaSep1(choice(seq(optional($.parameter_modifiers), $.parameter), $.type)), ')'),
+      seq(
+        'context',
+        '(',
+        commaSep1(choice(seq(optional($.parameter_modifiers), $.parameter), $.type)),
+        optional(','),
+        ')'
+      ),
 
     function_type_parameters: ($) => seq('(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
 

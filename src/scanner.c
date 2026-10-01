@@ -585,7 +585,20 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             }
             if (iswalpha(lexer->lookahead)) {
                 // Modifiers not followed by a declaration, as in `open = 1` or `sealed = 1`, start a statement of their own.
-                skipped_modifiers = skip_modifier_words(lexer, scanned_word, true);
+                // A context parameter list (`context(…)`) may stand among the modifiers.
+                for (;;) {
+                    skipped_modifiers = skip_modifier_words(lexer, scanned_word, true) || skipped_modifiers;
+                    if (strncmp(scanned_word, "context", MAX_WORD_SIZE) != 0 ||
+                        !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') {
+                        break;
+                    }
+                    skip(lexer);
+                    if (!skip_to_closing_bracket(lexer, '(', ')', 0) || !skip_whitespace_and_comments(lexer, true)) {
+                        break;
+                    }
+                    memset(scanned_word, 0, MAX_WORD_SIZE);
+                    skipped_modifiers = true;
+                }
                 if ((!scanned_word[0] && lexer->lookahead == '@') ||
                     scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
                     return false;
