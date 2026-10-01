@@ -480,7 +480,16 @@ module.exports = grammar({
     use_site_target: () =>
       seq(choice('field', 'property', 'get', 'set', 'receiver', 'param', 'setparam', 'delegate'), ':'),
 
-    _unescaped_annotation: ($) => choice($.constructor_invocation, $.type),
+    // As in Kotlin, a `(` right after an annotation's name always starts its arguments; lexing it as a separate immediate
+    // token keeps an annotated parenthesized expression from being read there. After whitespace, Kotlin's reading
+    // depends on the context, so both readings remain.
+    _unescaped_annotation: ($) =>
+      choice($.constructor_invocation, alias($._annotation_invocation, $.constructor_invocation), $.type),
+
+    _annotation_invocation: ($) => seq($.type, alias($._annotation_arguments, $.value_arguments)),
+
+    _annotation_arguments: ($) =>
+      seq(alias(token.immediate('('), '('), optionalCommaSep1($.value_argument), alias($._arguments_end, ')')),
 
     type: ($) =>
       choice($.user_type, $.nullable_type, $.function_type, $.non_nullable_type, $.parenthesized_type, 'dynamic'),
