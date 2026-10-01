@@ -1136,12 +1136,13 @@ val a = "$class🙂"
 ---
 
 =========================================
-Declarations after a hard keyword in a multi-dollar or raw string template
+Declarations after a hard keyword in a raw or multi-dollar string template
 =========================================
 
 val a = $$"x $$class y"
 val b = """$class"""
-val c = 2
+val c = $$"""o $${ """y $class""" } t"""
+val d = 2
 
 ---
 
@@ -1162,6 +1163,18 @@ val c = 2
       (interpolation
         (identifier)
         (MISSING "keyword_reference_end"))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (multiline_string_literal
+      (string_content)
+      (interpolation
+        (multiline_string_literal
+          (string_content)
+          (interpolation
+            (identifier)
+            (MISSING "keyword_reference_end"))))
+      (string_content)))
   (property_declaration
     (variable_declaration
       (identifier))
