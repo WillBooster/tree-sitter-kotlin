@@ -6316,8 +6316,13 @@
               "value": "identifier"
             },
             {
-              "type": "SYMBOL",
-              "name": "_keyword_reference_end"
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_keyword_reference_end"
+              },
+              "named": false,
+              "value": "keyword_reference_end"
             }
           ]
         }

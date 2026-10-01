@@ -867,8 +867,9 @@ module.exports = grammar({
         alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
         alias(token.immediate(prec(2, 'this')), $.this_expression),
         // As in Kotlin, another hard keyword after `$` is an error: the scanner lexes it, and the grammar then expects
-        // `_keyword_reference_end`, which is never scanned. The alias keeps a name required in `interpolation`.
-        seq(alias($._keyword_reference, $.identifier), $._keyword_reference_end)
+        // `_keyword_reference_end`, which is never scanned. The first alias keeps a name required in `interpolation`; the
+        // second makes the end visible when error recovery inserts it as missing, which a hidden token would not be.
+        seq(alias($._keyword_reference, $.identifier), alias($._keyword_reference_end, 'keyword_reference_end'))
       ),
 
     // In a string prefixed with n dollars (Kotlin 2.1), exactly n dollars start an interpolation; the scanner
