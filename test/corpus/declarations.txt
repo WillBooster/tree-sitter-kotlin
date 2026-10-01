@@ -591,6 +591,311 @@ fun g() = 1
       (number_literal))))
 
 ==============================
+Context parameters and context receivers
+==============================
+
+context(scope: CoroutineScope)
+private suspend fun f() = 1
+
+context(_: Foo, b: Bar,) fun g() {}
+
+context(Foo)
+val Bar.x: Int get() = 1
+
+context(@Annotated users: UserRepository, @A Foo) fun h() = users
+
+private
+context(a: A) @Ann
+internal fun i() = 1
+
+val m = context(a: A) fun () {}
+
+fun j(block: context(C) () -> Unit, k: suspend context(C) () -> Unit, l: @A context(C) () -> Unit) {
+  context(x: Foo) fun local() {}
+}
+
+
+---
+
+(source_file
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier))))
+      (visibility_modifier)
+      (function_modifier))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (number_literal)))
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier)))
+        (parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block)))
+  (property_declaration
+    (modifiers
+      (context_parameters
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (getter
+      (function_body
+        (number_literal))))
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (parameter_modifiers
+          (annotation
+            (user_type
+              (identifier))))
+        (parameter
+          (identifier)
+          (user_type
+            (identifier)))
+        (user_type
+          (type_modifiers
+            (annotation
+              (user_type
+                (identifier))))
+          (identifier))))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (identifier)))
+  (function_declaration
+    (modifiers
+      (visibility_modifier)
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier))))
+      (annotation
+        (user_type
+          (identifier)))
+      (visibility_modifier))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (number_literal)))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (anonymous_function
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier))))
+      (function_value_parameters)
+      (function_body
+        (block))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (function_type
+          (context_parameters
+            (user_type
+              (identifier)))
+          (function_type_parameters)
+          (user_type
+            (identifier))))
+      (parameter
+        (identifier)
+        (function_type
+          (type_modifiers)
+          (context_parameters
+            (user_type
+              (identifier)))
+          (function_type_parameters)
+          (user_type
+            (identifier))))
+      (parameter
+        (identifier)
+        (function_type
+          (type_modifiers
+            (annotation
+              (user_type
+                (identifier))))
+          (context_parameters
+            (user_type
+              (identifier)))
+          (function_type_parameters)
+          (user_type
+            (identifier)))))
+    (function_body
+      (block
+        (function_declaration
+          (modifiers
+            (context_parameters
+              (parameter
+                (identifier)
+                (user_type
+                  (identifier)))))
+          (identifier)
+          (function_value_parameters)
+          (function_body
+            (block)))))))
+
+==============================
+Context lists on class members
+==============================
+
+class A {
+  context(Foo)
+  fun f() {}
+  context(Bar) private val x = 1
+
+  private
+  context(b: Bar)
+  fun g() {}
+}
+
+interface I { context(Baz) suspend fun h() }
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (modifiers
+          (context_parameters
+            (user_type
+              (identifier))))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (property_declaration
+        (modifiers
+          (context_parameters
+            (user_type
+              (identifier)))
+          (visibility_modifier))
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (function_declaration
+        (modifiers
+          (visibility_modifier)
+          (context_parameters
+            (parameter
+              (identifier)
+              (user_type
+                (identifier)))))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (modifiers
+          (context_parameters
+            (user_type
+              (identifier)))
+          (function_modifier))
+        (identifier)
+        (function_value_parameters)))))
+
+==============================
+Context as a name
+==============================
+
+fun f() {
+  context(a) { b }
+  val c = context.getString(1)
+  context = 2
+}
+
+enum class E { context, b }
+enum class F { a, context(1), @Anno context, b }
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (call_expression
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (identifier))))
+          (annotated_lambda
+            (lambda_literal
+              (identifier))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (call_expression
+            (navigation_expression
+              (identifier)
+              (identifier))
+            (value_arguments
+              (value_argument
+                (number_literal)))))
+        (assignment
+          (identifier)
+          (number_literal)))))
+  (class_declaration
+    (modifiers
+      (class_modifier))
+    (identifier)
+    (enum_class_body
+      (enum_entry
+        (identifier))
+      (enum_entry
+        (identifier))))
+  (class_declaration
+    (modifiers
+      (class_modifier))
+    (identifier)
+    (enum_class_body
+      (enum_entry
+        (identifier))
+      (enum_entry
+        (identifier)
+        (value_arguments
+          (value_argument
+            (number_literal))))
+      (enum_entry
+        (modifiers
+          (annotation
+            (user_type
+              (identifier))))
+        (identifier))
+      (enum_entry
+        (identifier)))))
+
+==============================
 Unfinished annotation at the end of input
 :error
 ==============================

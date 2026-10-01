@@ -68,6 +68,11 @@ module.exports = grammar({
     [$.visibility_modifier, $._reserved_identifier],
     [$.member_modifier, $._reserved_identifier],
 
+    [$.context_parameters, $._reserved_identifier],
+    [$.modifiers, $.function_type],
+    [$.secondary_constructor, $._reserved_identifier],
+    [$.enum_entry, $.modifiers],
+    [$.modifiers, $.anonymous_function],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -385,6 +390,8 @@ module.exports = grammar({
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
 
+    _annotations: ($) => repeat1($.annotation),
+
     enum_class_body: ($) =>
       seq(
         '{',
@@ -393,7 +400,15 @@ module.exports = grammar({
         '}'
       ),
 
-    enum_entry: ($) => seq(optional($.modifiers), $.identifier, optional($.value_arguments), optional($.class_body)),
+    // Only annotations can modify an enum entry, and with the full modifier list a `context` after an annotation would
+    // start a context parameter list instead of naming the entry.
+    enum_entry: ($) =>
+      seq(
+        optional(alias($._annotations, $.modifiers)),
+        $._identifier,
+        optional($.value_arguments),
+        optional($.class_body)
+      ),
 
     value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), ')'),
 
@@ -421,7 +436,8 @@ module.exports = grammar({
               $.visibility_modifier,
               $.inheritance_modifier,
               $.parameter_modifier,
-              $.platform_modifier
+              $.platform_modifier,
+              $.context_parameters
             )
           )
         )
@@ -481,7 +497,24 @@ module.exports = grammar({
     type_projection: ($) => choice(seq(repeat($.variance_modifier), $.type), '*'),
 
     function_type: ($) =>
-      seq(optional($.type_modifiers), optional(seq($._receiver_type, '.')), $.function_type_parameters, '->', $.type),
+      seq(
+        optional($.type_modifiers),
+        optional($.context_parameters),
+        optional(seq($._receiver_type, '.')),
+        $.function_type_parameters,
+        '->',
+        $.type
+      ),
+
+    // Context parameters (`context(scope: Scope)`, Kotlin 2.2) and the older context receivers (`context(Scope)`).
+    context_parameters: ($) =>
+      seq(
+        'context',
+        '(',
+        commaSep1(choice(seq(optional($.parameter_modifiers), $.parameter), $.type)),
+        optional(','),
+        ')'
+      ),
 
     function_type_parameters: ($) => seq('(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
 
@@ -625,6 +658,7 @@ module.exports = grammar({
     anonymous_function: ($) =>
       prec.right(
         seq(
+          optional($.context_parameters),
           'fun',
           optional(seq($.type, '.')),
           $.function_value_parameters,
@@ -861,7 +895,8 @@ module.exports = grammar({
           'set',
           'suspend',
           'tailrec',
-          'value'
+          'value',
+          'context'
         ),
         $.identifier
       ),

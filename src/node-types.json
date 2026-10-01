@@ -333,6 +333,10 @@
       "required": true,
       "types": [
         {
+          "type": "context_parameters",
+          "named": true
+        },
+        {
           "type": "function_body",
           "named": true
         },
@@ -871,6 +875,29 @@
     }
   },
   {
+    "type": "context_parameters",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "parameter",
+          "named": true
+        },
+        {
+          "type": "parameter_modifiers",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "continue_expression",
     "named": true,
     "fields": {
@@ -1231,6 +1258,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "context_parameters",
+          "named": true
+        },
         {
           "type": "function_type_parameters",
           "named": true
@@ -1596,6 +1627,10 @@
         },
         {
           "type": "class_modifier",
+          "named": true
+        },
+        {
+          "type": "context_parameters",
           "named": true
         },
         {
@@ -2964,6 +2999,10 @@
   },
   {
     "type": "constructor",
+    "named": false
+  },
+  {
+    "type": "context",
     "named": false
   },
   {
