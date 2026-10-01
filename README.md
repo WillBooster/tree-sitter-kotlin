@@ -98,15 +98,21 @@ cargo test
   `script/known-failures.txt`. The first run clones them. The example repositories are pinned to commits in
   `script/parse-examples`. After a grammar change or a moved pin alters that list, `script/parse-examples` rewrites
   it; review its diff before committing;
-- a performance check (`test/unit/performance.test.ts`) that recovering from an error on each of 10,000 lines takes
-  linear time, since consumers parse files while they are being edited. It loads the Wasm build through
-  @willbooster/web-tree-sitter, which `bun run build/ci` rebuilds after regenerating the parser;
+- a performance check (`test/unit/performance.test.ts`) that recovering from an error on each line takes linear time
+  (ten times the lines take about ten times the CPU time), since consumers parse files while they are being edited.
+  It loads the Wasm build through @willbooster/web-tree-sitter, which `bun run build/ci` rebuilds after regenerating
+  the parser;
+- a check that comments containing NUL characters parse (`test/unit/nulCharacters.test.ts`);
+- a check that `package.json` and `Cargo.lock` test the same runtime version (`test/unit/runtimeVersion.test.ts`);
 - checks that the Wasm build parses Kotlin through @willbooster/web-tree-sitter in Chromium
-  (`test/unit/browser.test.ts`) and in Cloudflare Workers with and without
-  Node.js compatibility (`test/unit/workers.test.ts`).
+  (`test/unit/browser.test.ts`) and in Cloudflare Workers with and without Node.js compatibility
+  (`test/unit/workers.test.ts`).
 
-CI also runs these tests on Linux arm64 and macOS, where the Rust binding compiles the parser natively, and fuzzes the parser with libFuzzer and sanitizers
-(`.github/workflows/robustness.yml`).
+The tests and `script/parse-examples` compile the parser into `.tmp/tree-sitter-lib` rather than the CLI's cache shared
+by every checkout.
+
+CI also runs these tests on Linux arm64 and macOS, where the Rust binding compiles the parser natively, and fuzzes the
+parser with libFuzzer and sanitizers (`.github/workflows/robustness.yml`).
 
 ### References
 
