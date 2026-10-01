@@ -2549,6 +2549,10 @@
               {
                 "type": "SYMBOL",
                 "name": "platform_modifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "context_parameters"
               }
             ]
           }
@@ -3158,6 +3162,18 @@
           "members": [
             {
               "type": "SYMBOL",
+              "name": "context_parameters"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
               "name": "type_modifiers"
             },
             {
@@ -3197,6 +3213,86 @@
         {
           "type": "SYMBOL",
           "name": "type"
+        }
+      ]
+    },
+    "context_parameters": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "context"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "parameter"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "type"
+                    }
+                  ]
+                },
+                {
+                  "type": "REPEAT",
+                  "content": {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "STRING",
+                        "value": ","
+                      },
+                      {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "parameter"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "type"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": ","
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": ")"
         }
       ]
     },
@@ -6541,6 +6637,10 @@
           {
             "type": "STRING",
             "value": "value"
+          },
+          {
+            "type": "STRING",
+            "value": "context"
           }
         ]
       },
@@ -6743,6 +6843,14 @@
     [
       "member_modifier",
       "_reserved_identifier"
+    ],
+    [
+      "context_parameters",
+      "_reserved_identifier"
+    ],
+    [
+      "modifiers",
+      "function_type"
     ],
     [
       "qualified_identifier"

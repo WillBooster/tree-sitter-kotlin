@@ -68,6 +68,8 @@ module.exports = grammar({
     [$.visibility_modifier, $._reserved_identifier],
     [$.member_modifier, $._reserved_identifier],
 
+    [$.context_parameters, $._reserved_identifier],
+    [$.modifiers, $.function_type],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
@@ -421,7 +423,8 @@ module.exports = grammar({
               $.visibility_modifier,
               $.inheritance_modifier,
               $.parameter_modifier,
-              $.platform_modifier
+              $.platform_modifier,
+              $.context_parameters
             )
           )
         )
@@ -481,7 +484,17 @@ module.exports = grammar({
     type_projection: ($) => choice(seq(repeat($.variance_modifier), $.type), '*'),
 
     function_type: ($) =>
-      seq(optional($.type_modifiers), optional(seq($._receiver_type, '.')), $.function_type_parameters, '->', $.type),
+      seq(
+        optional($.context_parameters),
+        optional($.type_modifiers),
+        optional(seq($._receiver_type, '.')),
+        $.function_type_parameters,
+        '->',
+        $.type
+      ),
+
+    // Context parameters (`context(scope: Scope)`, Kotlin 2.2) and the older context receivers (`context(Scope)`).
+    context_parameters: ($) => seq('context', '(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
 
     function_type_parameters: ($) => seq('(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
 
@@ -861,7 +874,8 @@ module.exports = grammar({
           'set',
           'suspend',
           'tailrec',
-          'value'
+          'value',
+          'context'
         ),
         $.identifier
       ),

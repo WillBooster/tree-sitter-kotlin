@@ -591,6 +591,116 @@ fun g() = 1
       (number_literal))))
 
 ==============================
+Context parameters and context receivers
+==============================
+
+context(scope: CoroutineScope)
+private suspend fun f() = 1
+
+context(_: Foo, b: Bar,) fun g() {}
+
+context(Foo)
+val Bar.x: Int get() = 1
+
+fun h(block: context(C) () -> Unit) {
+  context(a) { b }
+  val c = context.getString(1)
+  context = 2
+  context(Foo) fun local() {}
+}
+
+---
+
+(source_file
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier))))
+      (visibility_modifier)
+      (function_modifier))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (number_literal)))
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (parameter
+          (identifier)
+          (user_type
+            (identifier)))
+        (parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block)))
+  (property_declaration
+    (modifiers
+      (context_parameters
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (getter
+      (function_body
+        (number_literal))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (function_type
+          (context_parameters
+            (user_type
+              (identifier)))
+          (function_type_parameters)
+          (user_type
+            (identifier)))))
+    (function_body
+      (block
+        (call_expression
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (identifier))))
+          (annotated_lambda
+            (lambda_literal
+              (identifier))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (call_expression
+            (navigation_expression
+              (identifier)
+              (identifier))
+            (value_arguments
+              (value_argument
+                (number_literal)))))
+        (assignment
+          (identifier)
+          (number_literal))
+        (function_declaration
+          (modifiers
+            (context_parameters
+              (user_type
+                (identifier))))
+          (identifier)
+          (function_value_parameters)
+          (function_body
+            (block)))))))
+
+==============================
 Unfinished annotation at the end of input
 :error
 ==============================
