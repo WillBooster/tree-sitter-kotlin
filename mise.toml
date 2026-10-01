@@ -1,3 +1,10 @@
 [tools]
 node = "24.21.0"
 bun = "1.4.2"
+# script/fork-cli builds the CLI with the `wasm` feature when no released binary runs here; wasmtime's build runs cmake.
+cmake = "4.4.3"
+
+[env]
+# The tree-sitter CLI caches compiled parsers by language name in a directory that every checkout shares, so commands
+# run in this checkout use a cache of its own.
+TREE_SITTER_LIBDIR = "{{config_root}}/.tmp/tree-sitter-lib"

@@ -5,12 +5,15 @@ const browserTests = 'test/unit/browser.test.ts';
 
 export default defineConfig({
   test: {
+    // tsconfig.json declares the `vitest/globals` types, so the runner must provide those globals.
+    globals: true,
     projects: [
       {
         test: {
           name: 'node',
           include: ['test/unit/**/*.test.ts'],
           exclude: [browserTests],
+          globalSetup: ['test/unit/forkCli.setup.ts'],
         },
       },
       // Vite resolves the runtime package with the `browser` export condition, as bundlers do for web apps.

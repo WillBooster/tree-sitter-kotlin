@@ -11,9 +11,9 @@
     },
     "resolveJsonModule": true,
     "rootDir": ".",
-    "types": ["bun"]
+    "types": ["bun", "vitest/globals"]
   },
   "exclude": ["test/fixtures"],
   "extends": "@tsconfig/bun/tsconfig.json",
-  "include": ["*.config.ts", "*.config.mts", "scripts/**/*", "src/**/*", "test/**/*"]
+  "include": ["*.config.mts", "*.config.ts", "scripts/**/*", "src/**/*", "test/**/*"]
 }

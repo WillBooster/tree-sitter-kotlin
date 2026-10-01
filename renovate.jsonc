@@ -3,15 +3,15 @@
   "extends": ["github>WillBooster/willbooster-configs:renovate.jsonc"],
   "packageRules": [
     {
-      // @willbooster/web-tree-sitter 1.x is built from tree-sitter 0.27 and must load the Wasm build that
-      // tree-sitter-cli emits.
+      // tree-sitter-cli provides only the DSL types that type-check grammar.js. The CLI of WillBooster/tree-sitter
+      // 1.x, which generates the parser, takes tree-sitter 0.27's DSL.
       "matchPackageNames": ["tree-sitter-cli"],
       "allowedVersions": "0.27.x",
     },
     {
-      // The Wasm build that tree-sitter-cli emits must load in @willbooster/web-tree-sitter, and the Rust tests and
-      // the fuzz job run on willbooster-tree-sitter, the same runtime, so they are updated together.
-      "matchPackageNames": ["tree-sitter-cli", "@willbooster/web-tree-sitter", "willbooster-tree-sitter"],
+      // The Wasm tests run on @willbooster/web-tree-sitter, and the Rust tests, the fuzz job, and the CLI that
+      // script/fork-cli provides on willbooster-tree-sitter, the same runtime, so they are updated together.
+      "matchPackageNames": ["@willbooster/web-tree-sitter", "willbooster-tree-sitter"],
       "groupName": "tree-sitter",
     },
     {
