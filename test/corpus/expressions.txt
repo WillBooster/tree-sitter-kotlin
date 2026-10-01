@@ -472,7 +472,7 @@ fun `hello world`() = true
       (identifier))))
 
 ==========================
-Arguments right after an annotation name
+Arguments right after an annotation name before an expression
 ==========================
 
 fun f() {
@@ -481,11 +481,6 @@ fun f() {
     g(x)
   }
 }
-
-class A
-// x
-@Suppress("unused")
-internal class B
 
 ---
 
@@ -512,7 +507,20 @@ internal class B
                   (identifier)
                   (value_arguments
                     (value_argument
-                      (identifier)))))))))))
+                      (identifier))))))))))))
+
+==========================
+Arguments right after an annotation name after a comment
+==========================
+
+class A
+// x
+@Suppress("unused")
+internal class B
+
+---
+
+(source_file
   (class_declaration
     (identifier))
   (line_comment)
