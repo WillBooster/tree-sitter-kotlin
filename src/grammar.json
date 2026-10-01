@@ -6799,6 +6799,10 @@
     },
     {
       "type": "SYMBOL",
+      "name": "line_comment"
+    },
+    {
+      "type": "SYMBOL",
       "name": "_not_is"
     },
     {

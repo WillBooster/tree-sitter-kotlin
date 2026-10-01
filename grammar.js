@@ -82,6 +82,8 @@ module.exports = grammar({
     $._semi,
     $._class_member_semi,
     $.block_comment,
+    // also lexed by the scanner, since the generated lexer stops at a NUL character
+    $.line_comment,
     $._not_is,
     $._in,
     $._q_dot,
