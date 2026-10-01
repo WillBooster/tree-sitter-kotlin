@@ -1486,6 +1486,10 @@
         {
           "type": "identifier",
           "named": true
+        },
+        {
+          "type": "this_expression",
+          "named": true
         }
       ]
     }

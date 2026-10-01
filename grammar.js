@@ -769,23 +769,20 @@ module.exports = grammar({
         )
       ),
 
-    interpolation: ($) =>
+    interpolation: ($) => choice(seq('$', $._template_name), seq('${', $.expression, '}')),
+
+    // Immediate so that it outranks the string content that would otherwise absorb the name. As in Kotlin, `$this`
+    // refers to `this`: a string token wins over the name pattern of the same length.
+    _template_name: ($) =>
       choice(
-        // Immediate so that it outranks the string content that would otherwise absorb the name.
-        seq('$', alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier)),
-        seq('${', $.expression, '}')
+        alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
+        alias(token.immediate(prec(2, 'this')), $.this_expression)
       ),
 
     // In a string prefixed with n dollars (Kotlin 2.1), exactly n dollars start an interpolation; the scanner
     // returns them as one token only where they do.
     _multi_dollar_interpolation: ($) =>
-      seq(
-        $._multi_dollar_interpolation_start,
-        choice(
-          alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
-          seq(token.immediate('{'), $.expression, '}')
-        )
-      ),
+      seq($._multi_dollar_interpolation_start, choice($._template_name, seq(token.immediate('{'), $.expression, '}'))),
 
     character_literal: ($) => seq("'", choice(token.immediate(prec(1, /[^'\\\r\n]/)), $.escape_sequence), "'"),
 
