@@ -494,7 +494,8 @@ module.exports = grammar({
       ),
 
     // Context parameters (`context(scope: Scope)`, Kotlin 2.2) and the older context receivers (`context(Scope)`).
-    context_parameters: ($) => seq('context', '(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
+    context_parameters: ($) =>
+      seq('context', '(', optionalCommaSep1(choice(seq(optional($.parameter_modifiers), $.parameter), $.type)), ')'),
 
     function_type_parameters: ($) => seq('(', optionalCommaSep1(choice($.parameter, $.type)), ')'),
 

@@ -701,6 +701,45 @@ fun h(block: context(C) () -> Unit) {
             (block)))))))
 
 ==============================
+Annotated context parameters and receivers
+==============================
+
+context(@Annotated users: UserRepository) fun foo() = users
+context(@A Foo) fun bar() = 1
+
+---
+
+(source_file
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (parameter_modifiers
+          (annotation
+            (user_type
+              (identifier))))
+        (parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (identifier)))
+  (function_declaration
+    (modifiers
+      (context_parameters
+        (user_type
+          (type_modifiers
+            (annotation
+              (user_type
+                (identifier))))
+          (identifier))))
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (number_literal))))
+
+==============================
 Unfinished annotation at the end of input
 :error
 ==============================

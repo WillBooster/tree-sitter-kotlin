@@ -883,6 +883,10 @@
           "named": true
         },
         {
+          "type": "parameter_modifiers",
+          "named": true
+        },
+        {
           "type": "type",
           "named": true
         }
