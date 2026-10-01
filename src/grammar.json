@@ -2410,12 +2410,13 @@
           ]
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_arguments_end"
+          },
+          "named": false,
           "value": ")"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_arguments_end"
         }
       ]
     },

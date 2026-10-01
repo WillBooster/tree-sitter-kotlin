@@ -109,7 +109,7 @@ module.exports = grammar({
     $._primary_constructor_position,
     // empty: it ends a delegation expression in a class header before `{` (see `explicit_delegation`)
     $._delegation_end,
-    // empty: it ends a call's arguments (see `value_arguments`)
+    // the `)` that ends a call's arguments (see `value_arguments`)
     $._arguments_end,
   ],
 
@@ -414,9 +414,9 @@ module.exports = grammar({
       ),
 
     // Whether a call takes a trailing lambda depends on the token after its arguments, which the lookahead of the
-    // scanned `_arguments_end` reaches, so an edit there makes incremental parsing reparse the call instead of reusing a
-    // call without the lambda.
-    value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), ')', $._arguments_end),
+    // scanned `)` reaches, so an edit there makes incremental parsing reparse the call instead of reusing a call without
+    // the lambda.
+    value_arguments: ($) => seq('(', optionalCommaSep1($.value_argument), alias($._arguments_end, ')')),
 
     value_argument: ($) => seq(optional(seq($._identifier, '=')), optional('*'), $.expression),
 

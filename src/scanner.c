@@ -502,15 +502,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     }
 
-    // An empty token after a call's arguments whose lookahead reaches the next token: whether the call takes a trailing
-    // lambda depends on that token, so an edit up to it must reparse the call instead of reusing it.
-    if (valid_symbols[ARGUMENTS_END] && !error_recovery) {
-        lexer->mark_end(lexer);
-        lexer->result_symbol = ARGUMENTS_END;
-        skip_whitespace_and_comments(lexer, true);
-        return true;
-    }
-
     bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
     bool saw_newline = false;
     if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI] || can_end_delegation) {
@@ -759,6 +750,17 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
     while (iswspace(lexer->lookahead)) {
         skip(lexer);
+    }
+
+    // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing
+    // lambda depends on that token, so an edit up to it must reparse the call instead of reusing it. Ending the
+    // arguments with one token also lets error recovery insert it as missing when the `)` is absent.
+    if (valid_symbols[ARGUMENTS_END] && !error_recovery && lexer->lookahead == ')') {
+        advance(lexer);
+        lexer->mark_end(lexer);
+        lexer->result_symbol = ARGUMENTS_END;
+        skip_whitespace_and_comments(lexer, true);
+        return true;
     }
 
     if (lexer->lookahead == '$' && can_start_multi_dollar_string) {

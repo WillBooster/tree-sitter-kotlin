@@ -846,6 +846,29 @@ fun f() {
               (number_literal))))))))
 
 =========================================
+A call without its closing parenthesis at the end of input
+=========================================
+
+val x = a.b(c, d
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (call_expression
+      (navigation_expression
+        (identifier)
+        (identifier))
+      (value_arguments
+        (value_argument
+          (identifier))
+        (value_argument
+          (identifier))
+        (MISSING ")")))))
+
+=========================================
 String interpolation
 =========================================
 
