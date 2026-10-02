@@ -1,0 +1,3 @@
+# The NUL characters that nul_characters.txt tests make git treat it as binary, which would hide its diffs. Kept here
+# because the root .gitattributes is generated.
+nul_characters.txt diff
