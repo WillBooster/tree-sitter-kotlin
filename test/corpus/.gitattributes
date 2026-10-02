@@ -1,0 +1,3 @@
+# The NUL characters that nul_characters.txt tests make git treat it as binary, which would hide its diffs. Kept here
+# because wbfy regenerates the root .gitattributes.
+nul_characters.txt diff

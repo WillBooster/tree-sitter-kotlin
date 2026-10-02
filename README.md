@@ -107,8 +107,6 @@ the download fails or the release has no binary that runs here.
   (ten times the lines take about ten times the CPU time, under a ceiling), since consumers parse files while they are
   being edited. It loads the Wasm build through @willbooster/web-tree-sitter, which `bun run build/ci` rebuilds after
   regenerating the parser;
-- a check that comments, strings, escapes, string templates, character literals, and shebang lines containing NUL
-  characters parse (`test/unit/nulCharacters.test.ts`);
 - a check that `package.json` and `Cargo.lock` test the same runtime version (`test/unit/runtimeVersion.test.ts`);
 - checks that the Wasm build parses Kotlin through @willbooster/web-tree-sitter in Chromium
   (`test/unit/browser.test.ts`) and in Cloudflare Workers with and without Node.js compatibility
