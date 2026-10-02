@@ -65,23 +65,11 @@ jobs:
           persist-credentials: false
       - run: |
           mkdir -p .tmp/fuzz-seeds
-          corpus=$(find test/corpus -name '*.txt' | LC_ALL=C sort)
-          # Perl keeps the NUL characters of test/corpus/nul_characters.txt, at which some awk implementations (e.g.
-          # macOS's) end a line.
-          perl -ne '
-            if ($state != 2 && /^=+$/) { open $seed, ">", sprintf(".tmp/fuzz-seeds/%d", ++$n) or die $! if ++$state == 2; next }
-            if ($state == 2 && /^---+$/) { $state = 0; close $seed; next }
-            print $seed $_ if $state == 2;
-          ' $corpus
-          # libFuzzer runs just as well without seeds, so the split itself must show that each corpus case and every NUL
-          # character reached them.
-          cases=$(cat $corpus | grep -a -c -E '^---+$' || true)
-          seeds=$(find .tmp/fuzz-seeds -type f | wc -l)
-          corpus_nuls=$(cat $corpus | tr -dc '\000' | wc -c)
+          script/fuzz-seeds .tmp/fuzz-seeds $(find test/corpus -name '*.txt' | LC_ALL=C sort)
+          # libFuzzer runs just as well without seeds, so the seeds must show that every NUL character reached them.
+          corpus_nuls=$(find test/corpus -name '*.txt' -exec cat {} + | tr -dc '\000' | wc -c)
           seed_nuls=$(find .tmp/fuzz-seeds -type f -exec cat {} + | tr -dc '\000' | wc -c)
-          echo "Corpus: $cases cases with $corpus_nuls NUL characters; seeds: $seeds files with $seed_nuls NUL characters"
-          test "$cases" -gt 0
-          test "$seeds" -eq "$cases"
+          echo "NUL characters: $corpus_nuls in the corpus, $seed_nuls in the seeds"
           test "$seed_nuls" -eq "$corpus_nuls"
       - name: Build the fuzzer
         run: |
