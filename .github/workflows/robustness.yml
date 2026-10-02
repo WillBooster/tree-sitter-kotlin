@@ -75,10 +75,14 @@ jobs:
           ' $corpus
           # libFuzzer runs just as well without seeds, so the split itself must show that each corpus case and every NUL
           # character reached them.
-          cases=$(cat $corpus | grep -a -c -E '^---+$')
+          cases=$(cat $corpus | grep -a -c -E '^---+$' || true)
+          seeds=$(find .tmp/fuzz-seeds -type f | wc -l)
+          corpus_nuls=$(cat $corpus | tr -dc '\000' | wc -c)
+          seed_nuls=$(find .tmp/fuzz-seeds -type f -exec cat {} + | tr -dc '\000' | wc -c)
+          echo "Corpus: $cases cases with $corpus_nuls NUL characters; seeds: $seeds files with $seed_nuls NUL characters"
           test "$cases" -gt 0
-          test "$(ls .tmp/fuzz-seeds | wc -l)" -eq "$cases"
-          test "$(cat .tmp/fuzz-seeds/* | tr -dc '\000' | wc -c)" -eq "$(cat $corpus | tr -dc '\000' | wc -c)"
+          test "$seeds" -eq "$cases"
+          test "$seed_nuls" -eq "$corpus_nuls"
       - name: Build the fuzzer
         run: |
           jq '.. | select((.type? == "STRING" or (.type? == "ALIAS" and .named? == false)) and .value? != "") | .value' \
