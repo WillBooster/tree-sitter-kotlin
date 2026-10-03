@@ -2647,6 +2647,16 @@
             "named": true
           }
         ]
+      },
+      "guard": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
       }
     }
   },

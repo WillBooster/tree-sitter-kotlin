@@ -1348,3 +1348,79 @@ val c = T::class.java
       (navigation_expression
         (identifier))
       (identifier))))
+
+================================================================================
+When entry guards
+================================================================================
+
+fun describe(x: Any): String = when (x) {
+    is String if x.isEmpty() -> "empty"
+    is String if (x.length > 2 && x.startsWith("a")) -> "long"
+    is Int -> "integer"
+    else if x == true -> "true"
+    else -> "other"
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (function_body
+      (when_expression
+        (when_subject
+          (identifier))
+        (when_entry
+          (type_test
+            (user_type
+              (identifier)))
+          (call_expression
+            (navigation_expression
+              (identifier)
+              (identifier))
+            (value_arguments))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (type_test
+            (user_type
+              (identifier)))
+          (parenthesized_expression
+            (binary_expression
+              (binary_expression
+                (navigation_expression
+                  (identifier)
+                  (identifier))
+                (number_literal))
+              (call_expression
+                (navigation_expression
+                  (identifier)
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content)))))))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (type_test
+            (user_type
+              (identifier)))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (binary_expression
+            (identifier)
+            (identifier))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (string_literal
+            (string_content)))))))
