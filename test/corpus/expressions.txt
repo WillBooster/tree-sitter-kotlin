@@ -1424,3 +1424,185 @@ fun describe(x: Any): String = when (x) {
         (when_entry
           (string_literal
             (string_content)))))))
+
+================================================================================
+Guarded else entries after if-expression bodies
+================================================================================
+
+fun describe(x: Int) {
+    when (x) {
+        1 -> if (x > 0) println(x)
+        else if x > 2 -> if (x > 3) println(x)
+        else if (x > 4) -> if (x > 5) println(x)
+        else if (x > 6) && listOf(x).any { it > 7 } -> println(x)
+        else -> println("other")
+    }
+    when (x) {
+        1 -> if (x > 0) println(x)
+        else if (x > 1) listOf(x).map { y -> y + 1 }
+        -2 -> println("negative")
+        else -> println("other")
+    }
+    if (x > 0) println(x)
+    else if (x > 1) println(x)
+    else println("other")
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))))
+          (when_entry
+            (binary_expression
+              (identifier)
+              (number_literal))
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))))
+          (when_entry
+            (parenthesized_expression
+              (binary_expression
+                (identifier)
+                (number_literal)))
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))))
+          (when_entry
+            (binary_expression
+              (parenthesized_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal)))
+              (call_expression
+                (navigation_expression
+                  (call_expression
+                    (identifier)
+                    (value_arguments
+                      (value_argument
+                        (identifier))))
+                  (identifier))
+                (annotated_lambda
+                  (lambda_literal
+                    (binary_expression
+                      (identifier)
+                      (number_literal))))))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier)))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content)))))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))
+              (if_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal))
+                (call_expression
+                  (navigation_expression
+                    (call_expression
+                      (identifier)
+                      (value_arguments
+                        (value_argument
+                          (identifier))))
+                    (identifier))
+                  (annotated_lambda
+                    (lambda_literal
+                      (lambda_parameters
+                        (variable_declaration
+                          (identifier)))
+                      (binary_expression
+                        (identifier)
+                        (number_literal))))))))
+          (when_entry
+            (unary_expression
+              (number_literal))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content))))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content)))))))
+        (if_expression
+          (binary_expression
+            (identifier)
+            (number_literal))
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (identifier))))
+          (if_expression
+            (binary_expression
+              (identifier)
+              (number_literal))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier))))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content)))))))))))
