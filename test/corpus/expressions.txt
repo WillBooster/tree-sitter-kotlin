@@ -1426,14 +1426,14 @@ fun describe(x: Any): String = when (x) {
             (string_content)))))))
 
 ================================================================================
-Guarded else entries after if-expression bodies
+Guarded else entries after completed bodies
 ================================================================================
 
 fun describe(x: Int) {
     when (x) {
-        1 -> if (x > 0) if (x > 1) println(x)
-        else if x > 2 -> if (x > 3) println(x)
-        else if (x > 4) -> if (x > 5) println(x)
+        1 -> { if (x > 0) if (x > 1) println(x) }
+        else if x > 2 -> if (x > 3) println(x) else println(-1)
+        else if (x > 4) -> { if (x > 5) println(x) }
         else if (x > 6) && listOf(x).any { it > 7 } -> println(x)
         else -> println("other")
     }
@@ -1465,19 +1465,20 @@ fun describe(x: Int) {
             (identifier))
           (when_entry
             (number_literal)
-            (if_expression
-              (binary_expression
-                (identifier)
-                (number_literal))
+            (block
               (if_expression
                 (binary_expression
                   (identifier)
                   (number_literal))
-                (call_expression
-                  (identifier)
-                  (value_arguments
-                    (value_argument
-                      (identifier)))))))
+                (if_expression
+                  (binary_expression
+                    (identifier)
+                    (number_literal))
+                  (call_expression
+                    (identifier)
+                    (value_arguments
+                      (value_argument
+                        (identifier))))))))
           (when_entry
             (binary_expression
               (identifier)
@@ -1490,21 +1491,28 @@ fun describe(x: Int) {
                 (identifier)
                 (value_arguments
                   (value_argument
-                    (identifier))))))
+                    (identifier))))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (unary_expression
+                      (number_literal)))))))
           (when_entry
             (parenthesized_expression
               (binary_expression
                 (identifier)
                 (number_literal)))
-            (if_expression
-              (binary_expression
-                (identifier)
-                (number_literal))
-              (call_expression
-                (identifier)
-                (value_arguments
-                  (value_argument
-                    (identifier))))))
+            (block
+              (if_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal))
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier)))))))
           (when_entry
             (binary_expression
               (parenthesized_expression
