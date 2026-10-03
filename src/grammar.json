@@ -5611,6 +5611,15 @@
               {
                 "type": "SYMBOL",
                 "name": "statement"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_when_if_expression"
+                },
+                "named": true,
+                "value": "if_expression"
               }
             ]
           }
@@ -5626,6 +5635,53 @@
               "type": "BLANK"
             }
           ]
+        }
+      ]
+    },
+    "_when_if_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "if"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "condition",
+          "content": {
+            "type": "SYMBOL",
+            "name": "expression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        },
+        {
+          "type": "FIELD",
+          "name": "consequence",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_control_structure_body"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_when_if_expression"
+                },
+                "named": true,
+                "value": "if_expression"
+              }
+            ]
+          }
         }
       ]
     },
@@ -7056,6 +7112,10 @@
     [
       "if_expression",
       "parenthesized_expression"
+    ],
+    [
+      "if_expression",
+      "_when_if_expression"
     ],
     [
       "class_body",

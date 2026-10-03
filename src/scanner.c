@@ -280,74 +280,6 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
-static bool scan_when_else_rest(TSLexer *lexer) {
-    if (!skip_whitespace_and_comments(lexer, true)) {
-        return false;
-    }
-    if (lexer->lookahead == '-') {
-        skip(lexer);
-        return lexer->lookahead == '>';
-    }
-    if (!scan_word(lexer, "if") || is_identifier_part(lexer->lookahead)) {
-        return false;
-    }
-    if (!skip_whitespace_and_comments(lexer, true)) {
-        return false;
-    }
-    // An ordinary else-if requires parentheses. Otherwise this is a when guard.
-    if (lexer->lookahead != '(') {
-        return true;
-    }
-    skip(lexer);
-    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) {
-        return false;
-    }
-    bool continuation = false;
-    while (!lexer->eof(lexer)) {
-        int32_t c = lexer->lookahead;
-        if (c == ';' || c == '}' || c == ')' || c == ']') {
-            return false;
-        }
-        if (c == '\n' || c == '\r') {
-            skip_whitespace_and_comments(lexer, true);
-            c = lexer->lookahead;
-            if (!continuation && c == '-') {
-                skip(lexer);
-                return lexer->lookahead == '>';
-            }
-            if (!continuation && c != '&' && c != '|' && c != '.' && c != '?' && c != '*' && c != '/' && c != '%' &&
-                c != '<' && c != '>' && c != '=') {
-                return false;
-            }
-        }
-        if (c == '/') {
-            if (!skip_whitespace_and_comments(lexer, false)) {
-                continuation = true;
-            }
-            continue;
-        }
-        skip(lexer);
-        if (c == '-' && lexer->lookahead == '>') {
-            return true;
-        }
-        if (c == '(' || c == '[' || c == '{') {
-            if (!skip_to_closing_bracket(lexer, c, c == '(' ? ')' : c == '[' ? ']' : '}', 0)) {
-                return false;
-            }
-            continuation = false;
-        } else if (c == '"' || c == '\'' || c == '`') {
-            if (!skip_literal_rest(lexer, c, 0)) {
-                return false;
-            }
-            continuation = false;
-        } else if (!iswspace(c)) {
-            continuation = c == '&' || c == '|' || c == '.' || c == '?' || c == '+' || c == '-' || c == '*' || c == '%' ||
-                           c == '<' || c == '>' || c == '=' || c == '!';
-        }
-    }
-    return false;
-}
-
 // Kotlin's hard keywords other than `this`, which a string template cannot reference.
 static const char *const TEMPLATE_KEYWORDS[] = {
     "as",  "break", "class", "continue", "do",     "else",    "false",  "for",       "fun",    "if",
@@ -894,8 +826,18 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         return true;
                     }
                 }
+                // Ordinarily, we should not insert a semicolon if there is an `else` on the next line,
+                // except for when it's a 'when entry', which has a `->` after the `else`.
                 else if (index == 0) {
-                    return scan_when_else_rest(lexer);
+                    while (iswspace(lexer->lookahead)) {
+                        skip(lexer);
+                    }
+                    if (lexer->lookahead == '-') {
+                        skip(lexer);
+                        if (lexer->lookahead == '>') {
+                            return true;
+                        }
+                    }
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {

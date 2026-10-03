@@ -1431,7 +1431,7 @@ Guarded else entries after if-expression bodies
 
 fun describe(x: Int) {
     when (x) {
-        1 -> if (x > 0) println(x)
+        1 -> if (x > 0) if (x > 1) println(x)
         else if x > 2 -> if (x > 3) println(x)
         else if (x > 4) -> if (x > 5) println(x)
         else if (x > 6) && listOf(x).any { it > 7 } -> println(x)
@@ -1439,12 +1439,12 @@ fun describe(x: Int) {
     }
     when (x) {
         1 -> if (x > 0) println(x)
-        else if (x > 1) listOf(x).map { y -> y + 1 }
+        else if (x > 1) println(x) 2 -> println("two")
         -2 -> println("negative")
         else -> println("other")
     }
     if (x > 0) println(x)
-    else if (x > 1) println(x)
+    else if (x > 1) listOf(x).map { y -> y + 1 }
     else println("other")
 }
 
@@ -1469,11 +1469,15 @@ fun describe(x: Int) {
               (binary_expression
                 (identifier)
                 (number_literal))
-              (call_expression
-                (identifier)
-                (value_arguments
-                  (value_argument
-                    (identifier))))))
+              (if_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal))
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier)))))))
           (when_entry
             (binary_expression
               (identifier)
@@ -1551,21 +1555,18 @@ fun describe(x: Int) {
                   (identifier)
                   (number_literal))
                 (call_expression
-                  (navigation_expression
-                    (call_expression
-                      (identifier)
-                      (value_arguments
-                        (value_argument
-                          (identifier))))
-                    (identifier))
-                  (annotated_lambda
-                    (lambda_literal
-                      (lambda_parameters
-                        (variable_declaration
-                          (identifier)))
-                      (binary_expression
-                        (identifier)
-                        (number_literal))))))))
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier)))))))
+          (when_entry
+            (number_literal)
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content))))))
           (when_entry
             (unary_expression
               (number_literal))
@@ -1596,10 +1597,21 @@ fun describe(x: Int) {
               (identifier)
               (number_literal))
             (call_expression
-              (identifier)
-              (value_arguments
-                (value_argument
-                  (identifier))))
+              (navigation_expression
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier))))
+                (identifier))
+              (annotated_lambda
+                (lambda_literal
+                  (lambda_parameters
+                    (variable_declaration
+                      (identifier)))
+                  (binary_expression
+                    (identifier)
+                    (number_literal)))))
             (call_expression
               (identifier)
               (value_arguments

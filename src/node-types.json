@@ -1411,6 +1411,10 @@
             "named": true
           },
           {
+            "type": "if_expression",
+            "named": true
+          },
+          {
             "type": "while_statement",
             "named": true
           }
@@ -2622,6 +2626,10 @@
         "types": [
           {
             "type": "block",
+            "named": true
+          },
+          {
+            "type": "if_expression",
             "named": true
           },
           {
