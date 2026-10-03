@@ -23,6 +23,7 @@ module.exports = grammar({
   name: 'kotlin',
 
   conflicts: ($) => [
+    [$.if_expression, $.parenthesized_expression],
     [$.class_body, $.enum_class_body],
 
     [$.binary_expression, $.call_expression],
@@ -773,6 +774,7 @@ module.exports = grammar({
     when_entry: ($) =>
       seq(
         choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else'),
+        optional(seq('if', field('guard', $.expression))),
         '->',
         field('body', choice($.block, $.statement)),
         optional($._semi)

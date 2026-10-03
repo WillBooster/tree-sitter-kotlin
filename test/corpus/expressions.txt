@@ -1348,3 +1348,281 @@ val c = T::class.java
       (navigation_expression
         (identifier))
       (identifier))))
+
+================================================================================
+When entry guards
+================================================================================
+
+fun describe(x: Any): String = when (x) {
+    is String if x.isEmpty() -> "empty"
+    is String if (x.length > 2 && x.startsWith("a")) -> "long"
+    is Int -> "integer"
+    else if x == true -> "true"
+    else -> "other"
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (function_body
+      (when_expression
+        (when_subject
+          (identifier))
+        (when_entry
+          (type_test
+            (user_type
+              (identifier)))
+          (call_expression
+            (navigation_expression
+              (identifier)
+              (identifier))
+            (value_arguments))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (type_test
+            (user_type
+              (identifier)))
+          (parenthesized_expression
+            (binary_expression
+              (binary_expression
+                (navigation_expression
+                  (identifier)
+                  (identifier))
+                (number_literal))
+              (call_expression
+                (navigation_expression
+                  (identifier)
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content)))))))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (type_test
+            (user_type
+              (identifier)))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (binary_expression
+            (identifier)
+            (identifier))
+          (string_literal
+            (string_content)))
+        (when_entry
+          (string_literal
+            (string_content)))))))
+
+================================================================================
+Guarded else entries after completed bodies
+================================================================================
+
+fun describe(x: Int) {
+    when (x) {
+        1 -> { if (x > 0) if (x > 1) println(x) }
+        else if x > 2 -> if (x > 3) println(x) else println(-1)
+        else if (x > 4) -> { if (x > 5) println(x) }
+        else if (x > 6) && listOf(x).any { it > 7 } -> println(x)
+        else -> println("other")
+    }
+    when (x) {
+        1 -> if (x > 0) println(x)
+        else if (x > 1) println(x) 2 -> println("two")
+        -2 -> println("negative")
+        else -> println("other")
+    }
+    if (x > 0) println(x)
+    else if (x > 1) listOf(x).map { y -> y + 1 }
+    else println("other")
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (block
+              (if_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal))
+                (if_expression
+                  (binary_expression
+                    (identifier)
+                    (number_literal))
+                  (call_expression
+                    (identifier)
+                    (value_arguments
+                      (value_argument
+                        (identifier))))))))
+          (when_entry
+            (binary_expression
+              (identifier)
+              (number_literal))
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (unary_expression
+                      (number_literal)))))))
+          (when_entry
+            (parenthesized_expression
+              (binary_expression
+                (identifier)
+                (number_literal)))
+            (block
+              (if_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal))
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier)))))))
+          (when_entry
+            (binary_expression
+              (parenthesized_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal)))
+              (call_expression
+                (navigation_expression
+                  (call_expression
+                    (identifier)
+                    (value_arguments
+                      (value_argument
+                        (identifier))))
+                  (identifier))
+                (annotated_lambda
+                  (lambda_literal
+                    (binary_expression
+                      (identifier)
+                      (number_literal))))))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier)))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content)))))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))
+              (if_expression
+                (binary_expression
+                  (identifier)
+                  (number_literal))
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier)))))))
+          (when_entry
+            (number_literal)
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content))))))
+          (when_entry
+            (unary_expression
+              (number_literal))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content))))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content)))))))
+        (if_expression
+          (binary_expression
+            (identifier)
+            (number_literal))
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (identifier))))
+          (if_expression
+            (binary_expression
+              (identifier)
+              (number_literal))
+            (call_expression
+              (navigation_expression
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier))))
+                (identifier))
+              (annotated_lambda
+                (lambda_literal
+                  (lambda_parameters
+                    (variable_declaration
+                      (identifier)))
+                  (binary_expression
+                    (identifier)
+                    (number_literal)))))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content)))))))))))
