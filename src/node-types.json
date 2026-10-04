@@ -1602,6 +1602,10 @@
           "named": true
         },
         {
+          "type": "type",
+          "named": true
+        },
+        {
           "type": "variable_declaration",
           "named": true
         }

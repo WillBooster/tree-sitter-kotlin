@@ -1626,3 +1626,103 @@ fun describe(x: Int) {
                 (value_argument
                   (string_literal
                     (string_content)))))))))))
+
+================================================================================
+Typed destructuring lambda parameters
+================================================================================
+
+fun transform(values: List<Pair<Int, Int>>): List<Int> = values.map { (a, b): Pair<Int, Int> -> a + b }
+fun ordinary(values: List<Pair<Int, Int>>): List<Int> = values.map { (a, b) -> a + b }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier)
+                (type_arguments
+                  (type_projection
+                    (user_type
+                      (identifier)))
+                  (type_projection
+                    (user_type
+                      (identifier))))))))))
+    (user_type
+      (identifier)
+      (type_arguments
+        (type_projection
+          (user_type
+            (identifier)))))
+    (function_body
+      (call_expression
+        (navigation_expression
+          (identifier)
+          (identifier))
+        (annotated_lambda
+          (lambda_literal
+            (lambda_parameters
+              (multi_variable_declaration
+                (variable_declaration
+                  (identifier))
+                (variable_declaration
+                  (identifier)))
+              (user_type
+                (identifier)
+                (type_arguments
+                  (type_projection
+                    (user_type
+                      (identifier)))
+                  (type_projection
+                    (user_type
+                      (identifier))))))
+            (binary_expression
+              (identifier)
+              (identifier)))))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier)
+                (type_arguments
+                  (type_projection
+                    (user_type
+                      (identifier)))
+                  (type_projection
+                    (user_type
+                      (identifier))))))))))
+    (user_type
+      (identifier)
+      (type_arguments
+        (type_projection
+          (user_type
+            (identifier)))))
+    (function_body
+      (call_expression
+        (navigation_expression
+          (identifier)
+          (identifier))
+        (annotated_lambda
+          (lambda_literal
+            (lambda_parameters
+              (multi_variable_declaration
+                (variable_declaration
+                  (identifier))
+                (variable_declaration
+                  (identifier))))
+            (binary_expression
+              (identifier)
+              (identifier))))))))
