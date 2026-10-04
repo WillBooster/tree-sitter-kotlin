@@ -1,10 +1,14 @@
+import path from 'node:path';
+
 import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
+
+const wasmPath = path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm');
 
 test('groups a destructuring annotation with its complete lambda parameter', async () => {
   await Parser.init();
   const parser = new Parser();
-  const language = await Language.load('tree-sitter-kotlin.wasm');
+  const language = await Language.load(wasmPath);
   parser.setLanguage(language);
   const query = new Query(language, '(lambda_parameters) @parameters');
   try {
@@ -31,7 +35,7 @@ test('groups a destructuring annotation with its complete lambda parameter', asy
 test('keeps declarations after an unfinished destructuring annotation', async () => {
   await Parser.init();
   const parser = new Parser();
-  const language = await Language.load('tree-sitter-kotlin.wasm');
+  const language = await Language.load(wasmPath);
   parser.setLanguage(language);
   const query = new Query(language, '(property_declaration) @property');
   try {
@@ -62,7 +66,7 @@ test('keeps declarations after an unfinished destructuring annotation', async ()
 test('keeps statements after an unfinished destructuring annotation before subsequent statements', async () => {
   await Parser.init();
   const parser = new Parser();
-  parser.setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
+  parser.setLanguage(await Language.load(wasmPath));
   try {
     for (const [statement, kind] of [
       ['val inner = 1', 'property_declaration'],
