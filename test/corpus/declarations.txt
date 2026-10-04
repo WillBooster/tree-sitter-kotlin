@@ -1252,3 +1252,61 @@ class Separated { val x = 1; var y = 2; fun f() = x }
         (function_value_parameters)
         (function_body
           (identifier))))))
+
+================================================================================
+Trailing comments after class members
+================================================================================
+
+class End { fun f() {} /* retained */ }
+class Expressions { fun f() = 1 /* inside */ + 2 fun g() = 1 /* inside */ fun_value 2 }
+class Next {
+  fun f() = 1 // retained
+  fun g() = 2
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (block_comment)))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (binary_expression
+            (number_literal)
+            (block_comment)
+            (number_literal))))
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (infix_expression
+            (number_literal)
+            (block_comment)
+            (identifier)
+            (number_literal))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))
+      (line_comment)
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal))))))

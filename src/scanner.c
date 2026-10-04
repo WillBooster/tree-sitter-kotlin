@@ -670,9 +670,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
     if (!error_recovery && valid_symbols[SAME_LINE_MEMBER_END] && scanner->depth > 0 && !in_statements(scanner)) {
         lexer->mark_end(lexer);
-        if (!skip_whitespace_and_comments(lexer, false)) {
-            return false;
-        }
+        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') skip(lexer);
         if (iswalpha(lexer->lookahead)) {
             char scanned_word[16] = {0};
             if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {

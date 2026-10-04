@@ -213,8 +213,7 @@ module.exports = grammar({
           optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
           optional(seq(':', $.delegation_specifiers)),
           optional($.type_constraints),
-          optional(choice($.class_body, $.enum_class_body)),
-          optional($._same_line_member_end)
+          optional(choice($.class_body, $.enum_class_body))
         )
       ),
 
@@ -225,8 +224,7 @@ module.exports = grammar({
           'object',
           field('name', $.identifier),
           optional(seq(':', $.delegation_specifiers)),
-          optional($.class_body),
-          optional($._same_line_member_end)
+          optional($.class_body)
         )
       ),
 
@@ -257,11 +255,10 @@ module.exports = grammar({
         'object',
         optional(field('name', $.identifier)),
         optional(seq(':', $.delegation_specifiers)),
-        optional($.class_body),
-        optional($._same_line_member_end)
+        optional($.class_body)
       ),
 
-    anonymous_initializer: ($) => seq('init', $.block, optional($._same_line_member_end)),
+    anonymous_initializer: ($) => seq('init', $.block),
 
     secondary_constructor: ($) =>
       seq(
@@ -269,8 +266,7 @@ module.exports = grammar({
         'constructor',
         $.function_value_parameters,
         optional(seq(':', $.constructor_delegation_call)),
-        optional($.block),
-        optional($._same_line_member_end)
+        optional($.block)
       ),
 
     constructor_delegation_call: ($) => seq(choice('this', 'super'), $.value_arguments),
@@ -311,8 +307,7 @@ module.exports = grammar({
           $.function_value_parameters,
           optional(seq(':', $.type)),
           optional($.type_constraints),
-          optional($.function_body),
-          optional($._same_line_member_end)
+          optional($.function_body)
         )
       ),
 
@@ -412,8 +407,24 @@ module.exports = grammar({
 
     _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
-    class_body: ($) =>
-      seq('{', $._open_members, repeat(seq($.class_member_declaration, $._class_member_semi)), '}', $._close_braces),
+    class_body: ($) => seq('{', $._open_members, repeat($._class_member_with_separator), '}', $._close_braces),
+
+    _class_member_with_separator: ($) =>
+      choice(
+        seq($.class_member_declaration, $._class_member_semi),
+        seq(
+          choice(
+            $.class_declaration,
+            $.object_declaration,
+            $.function_declaration,
+            $.companion_object,
+            $.anonymous_initializer,
+            $.secondary_constructor
+          ),
+          $._same_line_member_end,
+          $._class_member_semi
+        )
+      ),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
@@ -425,7 +436,7 @@ module.exports = grammar({
         '{',
         $._open_members,
         optionalCommaSep1($.enum_entry),
-        optional(seq(';', repeat(seq($.class_member_declaration, $._class_member_semi)))),
+        optional(seq(';', repeat($._class_member_with_separator))),
         '}',
         $._close_braces
       ),
