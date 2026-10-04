@@ -280,7 +280,17 @@ test('keeps annotated trailing lambdas in property initializer queries', () => {
       '(property_declaration (expression) @initializer) (call_expression (annotated_lambda) @lambda) @call'
     );
     try {
-      for (const annotation of ['@A', '@A /* comment */\n@B', '@A("' + 'x'.repeat(3000) + '")']) {
+      for (const annotation of [
+        '@A',
+        '@A /* comment */\n@B',
+        '@`for`',
+        '@Foo.`for`',
+        '@A.`B`',
+        '@A\n@`B`',
+        '@A("' + 'x'.repeat(3000) + '")',
+        '@A("' + 'x'.repeat(100_000) + '")',
+        '@A\n' + '// explanation note\n'.repeat(200),
+      ]) {
         const initializer = `Runnable\n${annotation}\n{ println() }`;
         for (const [prefix, suffix] of [
           ['val r = ', ''],
@@ -459,6 +469,211 @@ fun f(): Int {
     completed?.delete();
     fresh?.delete();
     validTree?.delete();
+    parser.delete();
+  }
+});
+
+test('keeps property declarations around long annotation prefixes', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(property_declaration (variable_declaration (identifier) @name))');
+  try {
+    const repeated = Array.from(
+      { length: 20 },
+      (_, index) =>
+        `@LongMark("Use the replacement API member ${index} instead, which keeps the migration guide links and notes current.")`
+    ).join('\n');
+    const longName = 'A'.repeat(3000);
+    for (const [declaration, annotations] of [
+      ['@Repeatable\nannotation class LongMark(val reason: String)', repeated],
+      ['', '@Suppress("unused")\n' + ('// explanation note '.repeat(6) + '\n').repeat(30)],
+      [`annotation class ${longName}`, `@${longName}`],
+    ]) {
+      const source = `${declaration}\nval x = 1\n${annotations}\nval y = 2`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(false);
+        expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual(['x', 'y']);
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('keeps declarations queryable before trailing use-site annotation groups', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(
+    language,
+    '(class_declaration name: (identifier) @class) (property_declaration (variable_declaration (identifier) @property))'
+  );
+  try {
+    for (const [source, expected] of [
+      ['class Foo\n@get:[A B]', ['Foo']],
+      ['class Foo {\nval x = 1\n@get:[A B]\n}', ['Foo', 'x']],
+      ['val x = 1\n@field:[A B]', ['x']],
+    ] as const) {
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError).toBe(true);
+        expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual(expected);
+      } finally {
+        tree.delete();
+      }
+    }
+    const source = 'val x = 1\n@field:[A B]';
+    const addition = '\nval y = 2';
+    const tree = parser.parse(source)!;
+    let completed: ReturnType<Parser['parse']> | undefined;
+    let fresh: ReturnType<Parser['parse']> | undefined;
+    try {
+      tree.edit(
+        new Edit({
+          startIndex: source.length,
+          oldEndIndex: source.length,
+          newEndIndex: source.length + addition.length,
+          startPosition: { row: 1, column: 12 },
+          oldEndPosition: { row: 1, column: 12 },
+          newEndPosition: { row: 2, column: 9 },
+        })
+      );
+      completed = parser.parse(source + addition, tree)!;
+      fresh = parser.parse(source + addition)!;
+      expect(completed.rootNode.toString()).toBe(fresh.rootNode.toString());
+      expect(fresh.rootNode.hasError).toBe(false);
+      expect(query.captures(completed.rootNode).map(({ node }) => node.text)).toEqual(['x', 'y']);
+    } finally {
+      tree.delete();
+      completed?.delete();
+      fresh?.delete();
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('keeps long annotated calls on their operands across declaration edits', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      `
+      (call_expression (expression) @callee (annotated_lambda) @lambda) @call
+      (call_expression (primary_expression) @primary (annotated_lambda))
+      (call_expression (value_arguments) @arguments (annotated_lambda))
+      (property_declaration (variable_declaration (identifier) @property))
+    `
+    );
+    try {
+      const annotation = `@A("${'x'.repeat(3000)}")`;
+      const body = '{ println() }';
+      for (const [initializer, target, callee, argumentsText] of [
+        ['f(1)', 'f(1)', 'f', ['(1)']],
+        ['obj.f(1)', 'obj.f(1)', 'obj.f', ['(1)']],
+        ['a + Runnable', 'Runnable', 'Runnable', []],
+        ['-Runnable', 'Runnable', 'Runnable', []],
+        ['a ?: Runnable', 'Runnable', 'Runnable', []],
+      ] as const) {
+        const source = `class C { val r = ${initializer}\n${annotation}\n${body}\n}`;
+        const tree = parser.parse(source)!;
+        let edited: ReturnType<Parser['parse']> | undefined;
+        let fresh: ReturnType<Parser['parse']> | undefined;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          const captures = query.captures(tree.rootNode);
+          for (const name of ['callee', 'primary']) {
+            expect(captures.filter((capture) => capture.name === name).map(({ node }) => node.text)).toEqual([callee]);
+          }
+          expect(captures.filter(({ name }) => name === 'arguments').map(({ node }) => node.text)).toEqual(
+            argumentsText
+          );
+          const call = captures.find(({ name }) => name === 'call')!.node;
+          const lambda = captures.find(({ name }) => name === 'lambda')!.node;
+          expect(call.text).toBe(`${target}\n${annotation}\n${body}`);
+          expect(call.startIndex).toBe(source.indexOf(target));
+          expect(lambda.text).toBe(`${annotation}\n${body}`);
+          expect(lambda.startIndex).toBe(source.indexOf(annotation));
+          expect(lambda.endIndex).toBe(call.endIndex);
+          const replacement = 'val y = 2';
+          const index = source.indexOf(body);
+          tree.edit(
+            new Edit({
+              startIndex: index,
+              oldEndIndex: index + body.length,
+              newEndIndex: index + replacement.length,
+              startPosition: { row: 2, column: 0 },
+              oldEndPosition: { row: 2, column: body.length },
+              newEndPosition: { row: 2, column: replacement.length },
+            })
+          );
+          const changedSource = source.slice(0, index) + replacement + source.slice(index + body.length);
+          edited = parser.parse(changedSource, tree)!;
+          fresh = parser.parse(changedSource)!;
+          expect(edited.rootNode.hasError).toBe(false);
+          expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
+          const captureValues = (
+            root: typeof tree.rootNode
+          ): { name: string; text: string; start: number; end: number }[] =>
+            query.captures(root).map(({ name, node }) => ({
+              name,
+              text: node.text,
+              start: node.startIndex,
+              end: node.endIndex,
+            }));
+          expect(captureValues(edited.rootNode)).toEqual(captureValues(fresh.rootNode));
+          expect(
+            query
+              .captures(edited.rootNode)
+              .filter(({ name }) => name === 'property')
+              .map(({ node }) => node.text)
+          ).toEqual(['r', 'y']);
+        } finally {
+          tree.delete();
+          edited?.delete();
+          fresh?.delete();
+        }
+      }
+    } finally {
+      query.delete();
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
+test('retains annotation and accessor ranges beyond recovery lookahead', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      '(getter (modifiers) @modifiers) @accessor (setter (modifiers) @modifiers) @accessor'
+    );
+    try {
+      const annotation = `@A("${'x'.repeat(3000)}")`;
+      for (const accessor of ['get() = field', 'set(value) { field = value }']) {
+        const source = `annotation class A(val text: String)\nclass C { var x = 1\n${annotation}\n${accessor}\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          const captures = query.captures(tree.rootNode);
+          const modifiers = captures.find(({ name }) => name === 'modifiers')!.node;
+          const node = captures.find(({ name }) => name === 'accessor')!.node;
+          expect(modifiers.text).toBe(annotation);
+          expect(modifiers.startIndex).toBe(source.indexOf(annotation));
+          expect(node.text).toBe(`${annotation}\n${accessor}`);
+          expect(node.startIndex).toBe(modifiers.startIndex);
+          expect(node.endIndex).toBe(source.indexOf(accessor) + accessor.length);
+        } finally {
+          tree.delete();
+        }
+      }
+    } finally {
+      query.delete();
+    }
+  } finally {
     parser.delete();
   }
 });

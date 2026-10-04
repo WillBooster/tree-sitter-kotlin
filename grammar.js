@@ -24,6 +24,19 @@ module.exports = grammar({
   name: 'kotlin',
 
   conflicts: ($) => [
+    [$._accessor_modifiers, $.annotated_lambda],
+    [$.call_expression, $.if_expression],
+    [$.call_expression, $.return_expression],
+    [$.property_declaration, $.navigation_expression],
+    [$.property_declaration, $.unary_expression],
+    [$.property_declaration, $.index_expression],
+    [$.call_expression],
+    [$.infix_expression, $.call_expression],
+    [$.range_expression, $.call_expression],
+    [$.in_expression, $.call_expression],
+    [$.unary_expression, $.call_expression],
+    [$.property_declaration, $.call_expression],
+    [$.call_expression, $.throw_expression],
     [$._loop_prefix, $.modifiers, $.type_modifiers],
     [$.modifiers, $.type_modifiers],
     [$._loop_prefix, $.type_modifiers],
@@ -45,8 +58,6 @@ module.exports = grammar({
     [$.user_type],
     [$._simple_user_type, $.primary_expression],
     [$.type, $._receiver_type],
-
-    [$.modifiers, $.annotated_lambda],
 
     [$.delegation_specifier, $.type_modifiers],
     [$._loop_prefix, $.labeled_expression],
@@ -78,7 +89,6 @@ module.exports = grammar({
     [$.enum_entry, $.modifiers],
     [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
-    [$._spaced_annotation_invocation, $._unescaped_annotation],
     [$.nullable_type],
     [$.non_nullable_type],
     [$.function_type],
@@ -134,6 +144,8 @@ module.exports = grammar({
     $._separated_member_start,
     $._unseparated_member_start,
     $._expression_annotation_start,
+    $._property_annotation_position,
+    $._property_annotation_separator,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -198,8 +210,20 @@ module.exports = grammar({
         repeat(seq($.statement, $._statement_semi, $._top_level_statement_end))
       ),
 
-    _statement_semi: ($) => choice($._semi, $._primary_constructor_position),
-    _member_semi: ($) => choice($._class_member_semi, $._primary_constructor_position),
+    _statement_semi: ($) =>
+      choice(
+        $._semi,
+        $._primary_constructor_position,
+        $._property_annotation_position,
+        $._property_annotation_separator
+      ),
+    _member_semi: ($) =>
+      choice(
+        $._class_member_semi,
+        $._primary_constructor_position,
+        $._property_annotation_position,
+        $._property_annotation_separator
+      ),
 
     file_annotation: ($) =>
       seq(
@@ -244,17 +268,25 @@ module.exports = grammar({
       ),
 
     property_declaration: ($) =>
-      seq(
-        optional($.modifiers),
-        choice('val', 'var'),
-        optional($._separated_member_start),
-        optional($.type_parameters),
-        optional(seq($._receiver_type, optional('.'))),
-        choice($.variable_declaration, $.multi_variable_declaration),
-        optional($.type_constraints),
-        optional(choice(seq('=', $.expression), $.property_delegate)),
-        optional(';'),
-        optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
+      prec(
+        PREC.CALL,
+        seq(
+          optional($.modifiers),
+          choice('val', 'var'),
+          optional($._separated_member_start),
+          optional($.type_parameters),
+          optional(seq($._receiver_type, optional('.'))),
+          choice($.variable_declaration, $.multi_variable_declaration),
+          optional($.type_constraints),
+          optional(choice(seq('=', $.expression), $.property_delegate)),
+          optional(';'),
+          optional(
+            choice(
+              seq(accessorRule($, $.getter), optional(accessorRule($, $.setter))),
+              seq(accessorRule($, $.setter), optional(accessorRule($, $.getter)))
+            )
+          )
+        )
       ),
 
     type_alias: ($) =>
@@ -367,13 +399,19 @@ module.exports = grammar({
 
     getter: ($) =>
       prec.right(
-        seq(optional($.modifiers), 'get', optional(seq('(', ')', optional(seq(':', $.type)), $.function_body)))
+        PREC.CALL + 1,
+        seq(
+          optional(alias($._accessor_modifiers, $.modifiers)),
+          'get',
+          optional(seq('(', ')', optional(seq(':', $.type)), $.function_body))
+        )
       ),
 
     setter: ($) =>
       prec.right(
+        PREC.CALL + 1,
         seq(
-          optional($.modifiers),
+          optional(alias($._accessor_modifiers, $.modifiers)),
           'set',
           optional(
             seq(
@@ -479,26 +517,9 @@ module.exports = grammar({
     // Modifiers before a declaration may also read as an annotated expression statement (`@A (b)`) or, for modifier
     // keywords that `_reserved_identifier` accepts, as names, and both readings parse, so the one in which they modify
     // the declaration takes dynamic precedence, as in Kotlin.
-    modifiers: ($) =>
-      prec.dynamic(
-        1,
-        prec.right(
-          repeat1(
-            choice(
-              seq(optional($._primary_constructor_position), $.annotation),
-              $.class_modifier,
-              $.member_modifier,
-              $.function_modifier,
-              $.property_modifier,
-              $.visibility_modifier,
-              $.inheritance_modifier,
-              $.parameter_modifier,
-              $.platform_modifier,
-              alias($._modifier_context_parameters, $.context_parameters)
-            )
-          )
-        )
-      ),
+    modifiers: ($) => modifierRule($, seq(optional($._primary_constructor_position), $.annotation)),
+
+    _accessor_modifiers: ($) => modifierRule($, $.annotation),
 
     class_modifier: () => choice('enum', 'sealed', 'annotation', 'data', 'inner', 'value'),
 
@@ -533,14 +554,7 @@ module.exports = grammar({
     // token keeps an annotated parenthesized expression from being read there. After whitespace, Kotlin's reading
     // depends on the context, so both readings remain.
     _unescaped_annotation: ($) =>
-      choice(
-        $.constructor_invocation,
-        alias($._spaced_annotation_invocation, $.constructor_invocation),
-        alias($._annotation_invocation, $.constructor_invocation),
-        $.type
-      ),
-
-    _spaced_annotation_invocation: ($) => seq($.type, $._primary_constructor_position, $.value_arguments),
+      choice($.constructor_invocation, alias($._annotation_invocation, $.constructor_invocation), $.type),
 
     _annotation_invocation: ($) => seq($.type, alias($._annotation_arguments, $.value_arguments)),
 
@@ -656,9 +670,12 @@ module.exports = grammar({
 
     unary_expression: ($) =>
       choice(
-        prec.right(
-          PREC.PREFIX,
-          seq(field('operator', choice('++', '--', '+', '-', '!')), field('argument', $.expression))
+        withPropertyAnnotationBoundary(
+          $,
+          prec.right(
+            PREC.PREFIX,
+            seq(field('operator', choice('++', '--', '+', '-', '!')), field('argument', $.expression))
+          )
         ),
         prec.left(PREC.POSTFIX, seq(field('argument', $.expression), field('operator', choice('++', '--', '!!'))))
       ),
@@ -668,6 +685,7 @@ module.exports = grammar({
     labeled_expression: ($) => seq($.label, $.expression),
 
     binary_expression: ($) => {
+      /** @type {[string, number][]} */
       const table = [
         ['+', PREC.ADD],
         ['-', PREC.ADD],
@@ -689,21 +707,17 @@ module.exports = grammar({
 
       return choice(
         ...table.map(([operator, precedence]) => {
-          return prec.left(
-            precedence,
-            seq(
-              field('left', $.expression),
-              // @ts-ignore
-              field('operator', operator),
-              field('right', $.expression)
-            )
-          );
+          const operands = seq(field('left', $.expression), field('operator', operator), field('right', $.expression));
+          return withPropertyAnnotationBoundary($, prec.left(precedence, operands));
         })
       );
     },
 
     in_expression: ($) =>
-      prec.left(PREC.IN, seq(field('left', $.expression), choice('in', '!in'), field('right', $.expression))),
+      withPropertyAnnotationBoundary(
+        $,
+        prec.left(PREC.IN, seq(field('left', $.expression), choice('in', '!in'), field('right', $.expression)))
+      ),
 
     is_expression: ($) =>
       prec.left(
@@ -716,21 +730,62 @@ module.exports = grammar({
 
     spread_expression: ($) => prec(PREC.SPREAD, seq('*', $.expression)),
 
-    range_expression: ($) => prec.left(PREC.RANGE, seq($.expression, choice('..', '..<'), $.expression)),
+    range_expression: ($) =>
+      withPropertyAnnotationBoundary($, prec.left(PREC.RANGE, seq($.expression, choice('..', '..<'), $.expression))),
 
-    infix_expression: ($) => prec.left(PREC.INFIX, seq($.expression, $.identifier, $.expression)),
+    infix_expression: ($) =>
+      withPropertyAnnotationBoundary($, prec.left(PREC.INFIX, seq($.expression, $.identifier, $.expression))),
 
-    // Right-associative so that a trailing lambda after arguments belongs to the same call (`f(x) { … }`), as in
-    // Kotlin, instead of calling the result of `f(x)`.
     call_expression: ($) =>
-      prec.right(
-        PREC.CALL,
-        seq(
-          $.expression,
-          optional($.type_arguments),
-          choice($.value_arguments, seq(optional($.value_arguments), $.annotated_lambda))
+      choice(
+        prec.right(
+          PREC.CALL,
+          seq(
+            $.expression,
+            optional($.type_arguments),
+            choice($.value_arguments, seq(optional($.value_arguments), $.annotated_lambda))
+          )
+        ),
+        prec.dynamic(
+          -1,
+          prec(
+            PREC.CALL,
+            seq(
+              prec.right(PREC.CALL, seq($.expression, optional($.type_arguments), $.value_arguments)),
+              $._property_annotation_position
+            )
+          )
+        ),
+        prec.dynamic(
+          2,
+          prec(
+            PREC.CALL,
+            seq(
+              $.expression,
+              optional($.type_arguments),
+              $.value_arguments,
+              $._property_annotation_position,
+              $._property_annotation_separator,
+              alias($._boundary_annotated_lambda, $.annotated_lambda)
+            )
+          )
+        ),
+        prec.dynamic(
+          1,
+          prec(
+            PREC.CALL,
+            seq(
+              $.expression,
+              optional($.type_arguments),
+              $._property_annotation_position,
+              $._property_annotation_separator,
+              alias($._boundary_annotated_lambda, $.annotated_lambda)
+            )
+          )
         )
       ),
+
+    _boundary_annotated_lambda: ($) => seq(repeat1($.annotation), optional($.label), $.lambda_literal),
 
     annotated_lambda: ($) => seq(repeat($.annotation), optional($.label), $.lambda_literal),
 
@@ -776,20 +831,23 @@ module.exports = grammar({
       ),
 
     if_expression: ($) =>
-      prec.right(
-        seq(
-          'if',
-          '(',
-          field('condition', $.expression),
-          ')',
-          choice(
-            field('consequence', $._control_structure_body),
-            ';',
-            seq(
-              optional(field('consequence', $._control_structure_body)),
-              optional(';'),
-              'else',
-              choice(field('alternative', $._control_structure_body), ';')
+      withPropertyAnnotationBoundary(
+        $,
+        prec.right(
+          seq(
+            'if',
+            '(',
+            field('condition', $.expression),
+            ')',
+            choice(
+              field('consequence', $._control_structure_body),
+              ';',
+              seq(
+                optional(field('consequence', $._control_structure_body)),
+                optional(';'),
+                'else',
+                choice(field('alternative', $._control_structure_body), ';')
+              )
             )
           )
         )
@@ -805,7 +863,10 @@ module.exports = grammar({
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) =>
-      seq('when', optional($.when_subject), '{', $._open_statements, repeat($.when_entry), '}', $._close_braces),
+      withPropertyAnnotationBoundary(
+        $,
+        seq('when', optional($.when_subject), '{', $._open_statements, repeat($.when_entry), '}', $._close_braces)
+      ),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),
@@ -826,16 +887,22 @@ module.exports = grammar({
     type_test: ($) => seq(choice('is', alias($._not_is, '!is')), $.type),
 
     try_expression: ($) =>
-      seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block)),
+      withPropertyAnnotationBoundary(
+        $,
+        seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block))
+      ),
 
     catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
 
     finally_block: ($) => seq('finally', $.block),
 
     return_expression: ($) =>
-      prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
+      withPropertyAnnotationBoundary(
+        $,
+        prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression)))
+      ),
 
-    throw_expression: ($) => seq('throw', $.expression),
+    throw_expression: ($) => withPropertyAnnotationBoundary($, seq('throw', $.expression)),
 
     continue_expression: ($) => choice('continue', seq('continue@', field('label', $.identifier))),
 
@@ -1089,4 +1156,57 @@ function annotationRule($, start) {
  */
 function annotationStart($) {
   return choice('@', alias($._expression_annotation_start, '@'));
+}
+
+/**
+ * @param {GrammarSymbols<string>} $
+ * @param {RuleOrLiteral} annotation
+ * @returns {PrecDynamicRule}
+ */
+function modifierRule($, annotation) {
+  return prec.dynamic(
+    1,
+    prec.right(
+      repeat1(
+        choice(
+          annotation,
+          $.class_modifier,
+          $.member_modifier,
+          $.function_modifier,
+          $.property_modifier,
+          $.visibility_modifier,
+          $.inheritance_modifier,
+          $.parameter_modifier,
+          $.platform_modifier,
+          alias($._modifier_context_parameters, $.context_parameters)
+        )
+      )
+    )
+  );
+}
+
+/**
+ * @param {GrammarSymbols<string>} $
+ * @param {RuleOrLiteral} accessor
+ * @returns {SeqRule}
+ */
+function accessorRule($, accessor) {
+  return seq(
+    optional(
+      choice(
+        $._primary_constructor_position,
+        seq(prec(PREC.CALL, $._property_annotation_position), $._property_annotation_separator)
+      )
+    ),
+    accessor
+  );
+}
+
+/**
+ * @param {GrammarSymbols<string>} $
+ * @param {RuleOrLiteral} rule
+ * @returns {ChoiceRule}
+ */
+function withPropertyAnnotationBoundary($, rule) {
+  return choice(rule, prec.dynamic(-1, prec(PREC.CALL, seq(rule, $._property_annotation_position))));
 }

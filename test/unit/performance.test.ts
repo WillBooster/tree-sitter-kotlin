@@ -38,10 +38,15 @@ test('recovers from an error on each line in linear time', { timeout: 60_000 }, 
   expectLinearRecovery('$ a\n'.repeat(2000), '$ a\n'.repeat(20_000));
 });
 
-test('recovers from unfinished annotations in linear time', { timeout: 60_000 }, () => {
-  for (const suffix of ['(', '({']) {
-    expectLinearRecovery(`class X\n@A${suffix}\n`.repeat(1000), `class X\n@A${suffix}\n`.repeat(10_000));
-  }
+test('recovers from unfinished annotation arguments in linear time', { timeout: 60_000 }, () => {
+  expectLinearRecovery('class X\n@A(\n'.repeat(1000), 'class X\n@A(\n'.repeat(10_000));
+});
+
+test('recovers from unfinished annotation lambdas in linear time', { timeout: 60_000 }, () => {
+  expectLinearRecovery('class X\n@A({\n'.repeat(1000), 'class X\n@A({\n'.repeat(10_000));
+});
+
+test('recovers from unfinished property annotations in linear time', { timeout: 60_000 }, () => {
   expectLinearRecovery('val a = 1\n@A(\n'.repeat(2000) + ')\n', 'val a = 1\n@A(\n'.repeat(20_000) + ')\n');
 });
 

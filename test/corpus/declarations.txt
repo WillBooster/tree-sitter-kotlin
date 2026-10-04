@@ -1438,3 +1438,57 @@ class C { fun f() = 1 private fun g() = 2 }
         (function_value_parameters)
         (function_body
           (number_literal))))))
+
+================================================================================
+Nested classes with annotated newline primary constructors
+================================================================================
+
+class O {
+    class Inner
+    @Inject constructor(val a: Int)
+    val y = 1
+}
+fun f() {
+    class Inner
+    @Inject constructor(val a: Int)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (class_declaration
+        (identifier)
+        (primary_constructor
+          (modifiers
+            (annotation
+              (user_type
+                (identifier))))
+          (class_parameters
+            (class_parameter
+              (identifier)
+              (user_type
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (class_declaration
+          (identifier)
+          (primary_constructor
+            (modifiers
+              (annotation
+                (user_type
+                  (identifier))))
+            (class_parameters
+              (class_parameter
+                (identifier)
+                (user_type
+                  (identifier))))))))))
