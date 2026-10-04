@@ -4020,12 +4020,12 @@
       ]
     },
     "unary_expression": {
-      "type": "PREC_LEFT",
-      "value": 14,
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "PREC_RIGHT",
+          "value": 13,
+          "content": {
             "type": "SEQ",
             "members": [
               {
@@ -4066,8 +4066,12 @@
                 }
               }
             ]
-          },
-          {
+          }
+        },
+        {
+          "type": "PREC_LEFT",
+          "value": 14,
+          "content": {
             "type": "SEQ",
             "members": [
               {
@@ -4101,8 +4105,8 @@
               }
             ]
           }
-        ]
-      }
+        }
+      ]
     },
     "annotated_expression": {
       "type": "SEQ",
@@ -4852,7 +4856,7 @@
     },
     "call_expression": {
       "type": "PREC_RIGHT",
-      "value": 13,
+      "value": 14,
       "content": {
         "type": "SEQ",
         "members": [
@@ -5211,7 +5215,7 @@
     },
     "index_expression": {
       "type": "PREC",
-      "value": 13,
+      "value": 14,
       "content": {
         "type": "SEQ",
         "members": [
@@ -6122,7 +6126,7 @@
     },
     "navigation_expression": {
       "type": "PREC",
-      "value": 13,
+      "value": 14,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -7225,6 +7229,11 @@
       "enum_class_body"
     ],
     [
+      "binary_expression",
+      "call_expression"
+    ],
+    [
+      "unary_expression",
       "binary_expression",
       "call_expression"
     ],
