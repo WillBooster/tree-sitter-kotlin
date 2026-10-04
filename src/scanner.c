@@ -865,21 +865,38 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
                 if (valid_symbols[CONSTRUCTOR] || valid_symbols[GET] || valid_symbols[SET]) {
-                    bool saw_paren = false;
-                    while (!lexer->eof(lexer) && (saw_paren ? lexer->lookahead != '\n' : !iswspace(lexer->lookahead))) {
-                        skip(lexer);
-                        if (lexer->lookahead == '(') {
-                            saw_paren = true;
+                    skip(lexer);
+                    for (;;) {
+                        if (!skip_whitespace_and_comments(lexer, true)) {
+                            return true;
                         }
-                        if (lexer->lookahead == ')') {
-                            saw_paren = false;
+                        while (!lexer->eof(lexer)) {
+                            if (is_identifier_part(lexer->lookahead)) {
+                                skip(lexer);
+                            } else if (lexer->lookahead == '`') {
+                                skip(lexer);
+                                if (!skip_literal_rest(lexer, '`', 0)) {
+                                    return true;
+                                }
+                            } else {
+                                break;
+                            }
                         }
-                    }
-                    while (iswspace(lexer->lookahead)) {
+                        if (!skip_whitespace_and_comments(lexer, true)) {
+                            return true;
+                        }
+                        if (lexer->lookahead != '.' && lexer->lookahead != ':') {
+                            break;
+                        }
                         skip(lexer);
                     }
-                    if (lexer->lookahead == '/') {
-                        return true;
+                    if (lexer->lookahead == '(' || lexer->lookahead == '[') {
+                        int32_t open = lexer->lookahead;
+                        skip(lexer);
+                        if (!skip_to_closing_bracket(lexer, open, open == '(' ? ')' : ']', 0) ||
+                            !skip_whitespace_and_comments(lexer, true)) {
+                            return true;
+                        }
                     }
                     goto _switch;
                 }

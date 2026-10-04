@@ -1147,3 +1147,202 @@ fun f() {
             (line_comment)
             (number_literal)))))))
 
+
+================================================================================
+Annotated continuations with comments and quoted arguments
+================================================================================
+
+@Target(AnnotationTarget.CONSTRUCTOR, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER)
+annotation class A(val value: String = "")
+class Comment
+    @A/*(*/ constructor()
+class Modified
+    @A/* nested /* ( */ comment */ internal constructor()
+class Quoted
+    @A("( )") internal constructor()
+class Nested
+    @A(("(" + ")")) internal constructor()
+class Multiline
+    @A(
+        "( )"
+    ) internal constructor()
+class Methods {
+    @A/*(*/ fun f() {}
+    val value: Int
+        @A("( )") get() = 1
+}
+
+object Holder { annotation class B }
+class Qualified
+    @Holder./*(*/B constructor()
+class Grouped
+    @[A] internal constructor()
+annotation class `Name( )`
+class Named
+    @`Name( )` internal constructor()
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier)))
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier)))
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier))))))
+      (class_modifier))
+    name: (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier))
+          (string_literal)))))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (user_type
+            (identifier))))
+      (block_comment)
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)))
+        (block_comment)
+        (visibility_modifier))
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (constructor_invocation
+            (user_type
+              (identifier))
+            (value_arguments
+              (value_argument
+                (string_literal
+                  (string_content))))))
+        (visibility_modifier))
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (constructor_invocation
+            (user_type
+              (identifier))
+            (value_arguments
+              (value_argument
+                (parenthesized_expression
+                  (binary_expression
+                    left: (string_literal
+                      (string_content))
+                    right: (string_literal
+                      (string_content))))))))
+        (visibility_modifier))
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (constructor_invocation
+            (user_type
+              (identifier))
+            (value_arguments
+              (value_argument
+                (string_literal
+                  (string_content))))))
+        (visibility_modifier))
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (function_declaration
+        (modifiers
+          (annotation
+            (user_type
+              (identifier))))
+        (block_comment)
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (property_declaration
+        (variable_declaration
+          (identifier)
+          (user_type
+            (identifier)))
+        (getter
+          (modifiers
+            (annotation
+              (constructor_invocation
+                (user_type
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content)))))))
+          (function_body
+            (number_literal))))))
+  (object_declaration
+    name: (identifier)
+    (class_body
+      (class_declaration
+        (modifiers
+          (class_modifier))
+        name: (identifier))))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)
+            (block_comment)
+            (identifier))))
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)))
+        (visibility_modifier))
+      (class_parameters)))
+  (class_declaration
+    (modifiers
+      (class_modifier))
+    name: (identifier))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)))
+        (visibility_modifier))
+      (class_parameters))))
