@@ -1310,3 +1310,52 @@ class Next {
         (function_value_parameters)
         (function_body
           (number_literal))))))
+
+=========================================
+Functional interfaces among class members
+=========================================
+
+class Outer {
+  fun first() {} fun interface Callback { fun call() } fun last() {}
+  public fun interface Named { fun value(): Int }
+}
+fun interface TopLevel { fun call() }
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (class_declaration
+        (identifier)
+        (class_body
+          (function_declaration
+            (identifier)
+            (function_value_parameters))))
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (class_declaration
+        (modifiers
+          (visibility_modifier))
+        (identifier)
+        (class_body
+          (function_declaration
+            (identifier)
+            (function_value_parameters)
+            (user_type
+              (identifier)))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)))))

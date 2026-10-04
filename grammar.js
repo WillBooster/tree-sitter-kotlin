@@ -209,7 +209,7 @@ module.exports = grammar({
       prec.right(
         seq(
           optional($.modifiers),
-          choice('class', seq(optional('fun'), 'interface')),
+          choice('class', seq(optional(seq('fun', optional($._unseparated_member_start))), 'interface')),
           optional($._unseparated_member_start),
           field('name', $.identifier),
           optional($.type_parameters),
