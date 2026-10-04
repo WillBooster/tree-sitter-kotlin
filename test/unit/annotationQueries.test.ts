@@ -10,6 +10,13 @@ const incompleteHeaders = [
   'class Foo\n@A(run { class Local; 1 }) constructor',
   'class Foo\n@A\ninternal constructor',
   'class Foo\n@A private constructor\nval x = 1',
+  'class Foo\n@A(1)\ninternal constructor',
+  'class Foo\n@A(run { class Local; 1 }) private constructor',
+  'class Foo\n@Foo<Int> internal constructor',
+  'class Foo\n@pkg.A private constructor',
+  'class Foo\n@`A name` private constructor',
+  'class Foo\n@A\n(1)\ninternal constructor',
+  'class Foo\n@A\n(run { class Local; 1 }) private constructor',
 ];
 
 test('keeps annotated class headers queryable while completing their constructors', () => {
@@ -54,6 +61,21 @@ test('an explicit semicolon separates annotations from constructor and getter at
     expect(tree.rootNode.descendantsOfType('class_declaration')).toHaveLength(1);
     expect(tree.rootNode.descendantsOfType('primary_constructor')).toHaveLength(0);
     expect(tree.rootNode.descendantsOfType('getter')).toHaveLength(0);
+    tree.delete();
+  }
+  parser.delete();
+});
+
+test('parses complete annotation arguments beyond the optional recovery lookahead', () => {
+  const parser = new Parser();
+  parser.setLanguage(language);
+  for (const spacing of [' ', ' '.repeat(3000)]) {
+    const source = `class Foo\n@A("${'class X ( ) <> '.repeat(10_000)}")${spacing}internal constructor()`;
+    const tree = parser.parse(source)!;
+    expect(tree.rootNode.hasError).toBe(false);
+    const constructor = tree.rootNode.descendantsOfType('primary_constructor');
+    expect(constructor).toHaveLength(1);
+    expect(constructor[0]!.text).toBe(source.slice(source.indexOf('@A')));
     tree.delete();
   }
   parser.delete();

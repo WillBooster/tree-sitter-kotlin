@@ -258,6 +258,92 @@ static bool skip_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting) {
     return true;
 }
 
+#define ANNOTATION_RECOVERY_LOOKAHEAD 2048
+
+typedef struct {
+    TSLexer lexer;
+    TSLexer *source;
+    unsigned remaining;
+    bool exhausted;
+} AnnotationRecoveryProbe;
+
+static void advance_annotation_probe(TSLexer *lexer, bool skip_character) {
+    AnnotationRecoveryProbe *probe = (AnnotationRecoveryProbe *)lexer;
+    if (probe->remaining == 0) {
+        probe->exhausted = true;
+        lexer->lookahead = 0;
+        return;
+    }
+    probe->remaining--;
+    probe->source->advance(probe->source, skip_character);
+    lexer->lookahead = probe->source->lookahead;
+}
+
+static bool annotation_probe_eof(const TSLexer *lexer) {
+    const AnnotationRecoveryProbe *probe = (const AnnotationRecoveryProbe *)lexer;
+    return probe->exhausted || probe->source->eof(probe->source);
+}
+
+static bool annotation_precedes_bare_constructor(TSLexer *source) {
+    AnnotationRecoveryProbe probe = {
+        .lexer = {.lookahead = source->lookahead,
+                  .advance = advance_annotation_probe,
+                  .eof = annotation_probe_eof},
+        .source = source,
+        .remaining = ANNOTATION_RECOVERY_LOOKAHEAD,
+    };
+    TSLexer *lexer = &probe.lexer;
+    while (lexer->lookahead == '@') {
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == '[') {
+            skip(lexer);
+            if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        } else {
+            for (;;) {
+                if (lexer->lookahead == '`') {
+                    skip(lexer);
+                    if (!skip_literal_rest(lexer, '`', 0)) return false;
+                } else {
+                    if (!is_identifier_start(lexer->lookahead)) return false;
+                    while (is_identifier_part(lexer->lookahead)) skip(lexer);
+                }
+                if (!skip_whitespace_and_comments(lexer, true)) return false;
+                if (lexer->lookahead == '<') {
+                    unsigned depth = 1;
+                    skip(lexer);
+                    while (depth && !lexer->eof(lexer)) {
+                        int32_t c = lexer->lookahead;
+                        if (c == '/') {
+                            if (!skip_whitespace_and_comments(lexer, true)) return false;
+                            continue;
+                        }
+                        skip(lexer);
+                        if (c == '-' && lexer->lookahead == '>') skip(lexer);
+                        else if (c == '<') depth++;
+                        else if (c == '>') depth--;
+                        else if (c == '`' && !skip_literal_rest(lexer, '`', 0)) return false;
+                    }
+                    if (depth || !skip_whitespace_and_comments(lexer, true)) return false;
+                }
+                if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
+                skip(lexer);
+                if (!skip_whitespace_and_comments(lexer, true)) return false;
+            }
+            if (lexer->lookahead == '(') {
+                skip(lexer);
+                if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+            }
+        }
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+    }
+    char word[MAX_WORD_SIZE] = {0};
+    skip_modifier_words(lexer, word, true);
+    if (strncmp(word, "constructor", MAX_WORD_SIZE) != 0 ||
+        !skip_whitespace_and_comments(lexer, true)) return false;
+    return !probe.exhausted && lexer->lookahead != '(';
+}
+
 // Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
 // a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
 // accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
@@ -913,17 +999,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '@':
                 if (!error_recovery && valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) {
                     lexer->mark_end(lexer);
-                    skip(lexer);
-                    while (is_identifier_part(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    if (skip_whitespace_and_comments(lexer, true)) {
-                        char word[MAX_WORD_SIZE] = {0};
-                        skip_modifier_words(lexer, word, true);
-                        if (strncmp(word, "constructor", MAX_WORD_SIZE) == 0 &&
-                            skip_whitespace_and_comments(lexer, true) && lexer->lookahead != '(') {
-                            return true;
-                        }
+                    if (annotation_precedes_bare_constructor(lexer)) {
+                        return true;
                     }
                     lexer->result_symbol = PRIMARY_CONSTRUCTOR_POSITION;
                 }
