@@ -322,7 +322,7 @@ static bool annotation_precedes_bare_constructor(TSLexer *source) {
                         if (c == '-' && lexer->lookahead == '>') skip(lexer);
                         else if (c == '<') depth++;
                         else if (c == '>') depth--;
-                        else if (c == '`' && !skip_literal_rest(lexer, '`', 0)) return false;
+                        else if ((c == '`' || c == '"' || c == '\'') && !skip_literal_rest(lexer, c, 0)) return false;
                     }
                     if (depth || !skip_whitespace_and_comments(lexer, true)) return false;
                 }

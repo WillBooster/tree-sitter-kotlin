@@ -80,3 +80,34 @@ test('parses complete annotation arguments beyond the optional recovery lookahea
   }
   parser.delete();
 });
+
+test('keeps quoted angle characters inside annotation type arguments', () => {
+  const source = `
+@Target(AnnotationTarget.CONSTRUCTOR)
+annotation class Generic<T>
+@Target(AnnotationTarget.TYPE)
+annotation class TypeMark(val value: String)
+@Target(AnnotationTarget.TYPE)
+annotation class CharMark(val value: Char)
+class Constructed
+    @Generic<@TypeMark("> internal constructor") @CharMark('>') String>
+    internal constructor()
+class RawArgument
+    @Generic<@TypeMark("""> internal constructor""") String>
+    internal constructor()
+`;
+  const parser = new Parser();
+  parser.setLanguage(language);
+  const tree = parser.parse(source)!;
+  expect(tree.rootNode.hasError).toBe(false);
+  const query = new Query(language, '(class_declaration name: (identifier) @name (primary_constructor) @constructor)');
+  expect(
+    query
+      .captures(tree.rootNode)
+      .filter(({ name }) => name === 'name')
+      .map(({ node }) => node.text)
+  ).toEqual(['TypeMark', 'CharMark', 'Constructed', 'RawArgument']);
+  query.delete();
+  tree.delete();
+  parser.delete();
+});
