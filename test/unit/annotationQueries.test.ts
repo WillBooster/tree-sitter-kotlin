@@ -81,7 +81,7 @@ test('parses complete annotation arguments beyond the optional recovery lookahea
   parser.delete();
 });
 
-test('keeps quoted angle characters inside annotation type arguments', () => {
+test('keeps literals and comparisons inside annotation type arguments', () => {
   const source = `
 @Target(AnnotationTarget.CONSTRUCTOR)
 annotation class Generic<T>
@@ -89,11 +89,17 @@ annotation class Generic<T>
 annotation class TypeMark(val value: String)
 @Target(AnnotationTarget.TYPE)
 annotation class CharMark(val value: Char)
+const val constructor = 1
+@Target(AnnotationTarget.TYPE)
+annotation class TypeFlag(val value: Boolean)
 class Constructed
     @Generic<@TypeMark("> internal constructor") @CharMark('>') String>
     internal constructor()
 class RawArgument
     @Generic<@TypeMark("""> internal constructor""") String>
+    internal constructor()
+class ComparedArgument
+    @Generic<@TypeFlag(2 > constructor) Int>
     internal constructor()
 `;
   const parser = new Parser();
@@ -106,7 +112,7 @@ class RawArgument
       .captures(tree.rootNode)
       .filter(({ name }) => name === 'name')
       .map(({ node }) => node.text)
-  ).toEqual(['TypeMark', 'CharMark', 'Constructed', 'RawArgument']);
+  ).toEqual(['TypeMark', 'CharMark', 'TypeFlag', 'Constructed', 'RawArgument', 'ComparedArgument']);
   query.delete();
   tree.delete();
   parser.delete();
