@@ -128,6 +128,7 @@ module.exports = grammar({
     $._keyword_reference,
     // never scanned: see `_template_name`
     $._keyword_reference_end,
+    'where',
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
