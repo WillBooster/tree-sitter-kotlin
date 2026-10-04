@@ -40,6 +40,7 @@ enum TokenType {
     WHERE,
     SEPARATED_MEMBER_START,
     UNSEPARATED_MEMBER_START,
+    EXPRESSION_ANNOTATION_START,
 };
 
 #define MAX_WORD_SIZE 16
@@ -265,6 +266,8 @@ typedef struct {
     TSLexer *source;
     unsigned remaining;
     bool exhausted;
+    bool synthetic_at;
+    bool preserve_token_start;
 } AnnotationRecoveryProbe;
 
 static void advance_annotation_probe(TSLexer *lexer, bool skip_character) {
@@ -275,7 +278,12 @@ static void advance_annotation_probe(TSLexer *lexer, bool skip_character) {
         return;
     }
     probe->remaining--;
-    probe->source->advance(probe->source, skip_character);
+    if (probe->synthetic_at) {
+        probe->synthetic_at = false;
+        lexer->lookahead = probe->source->lookahead;
+        return;
+    }
+    probe->source->advance(probe->source, probe->preserve_token_start ? false : skip_character);
     lexer->lookahead = probe->source->lookahead;
 }
 
@@ -284,7 +292,25 @@ static bool annotation_probe_eof(const TSLexer *lexer) {
     return probe->exhausted || probe->source->eof(probe->source);
 }
 
-static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda);
+static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_function);
+static bool scan_named_function_header(TSLexer *lexer);
+static bool skip_annotation_type_arguments(TSLexer *lexer);
+
+static bool scan_expression_annotation_start(TSLexer *source, bool member) {
+    advance(source);
+    source->mark_end(source);
+    AnnotationRecoveryProbe probe = {
+        .lexer = {.lookahead = '@', .advance = advance_annotation_probe, .eof = annotation_probe_eof},
+        .source = source,
+        .remaining = ANNOTATION_RECOVERY_LOOKAHEAD,
+        .synthetic_at = true,
+        .preserve_token_start = true,
+    };
+    bool lambda = false;
+    bool named_function = false;
+    scan_annotation_recovery_boundary(&probe.lexer, member, &lambda, &named_function);
+    return probe.exhausted || !named_function;
+}
 
 static bool annotation_requires_recovery_separator(TSLexer *source, bool member, bool *lambda) {
     AnnotationRecoveryProbe probe = {
@@ -295,72 +321,114 @@ static bool annotation_requires_recovery_separator(TSLexer *source, bool member,
         .remaining = ANNOTATION_RECOVERY_LOOKAHEAD,
     };
     TSLexer *lexer = &probe.lexer;
-    bool boundary = scan_annotation_recovery_boundary(lexer, member, lambda);
+    bool boundary = scan_annotation_recovery_boundary(lexer, member, lambda, NULL);
     if (probe.exhausted) *lambda = true;
     return !probe.exhausted && (boundary || source->eof(source));
 }
 
-static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda) {
+static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_function) {
     bool quoted_name = false;
-    while (lexer->lookahead == '@') {
-        skip(lexer);
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
-        if (lexer->lookahead == '[') {
-            skip(lexer);
-            if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
-        } else {
-            for (;;) {
-                if (lexer->lookahead == '`') {
-                    quoted_name = true;
-                    skip(lexer);
-                    if (!skip_literal_rest(lexer, '`', 0)) return false;
-                } else {
-                    if (!is_identifier_start(lexer->lookahead)) return false;
-                    while (is_identifier_part(lexer->lookahead)) skip(lexer);
-                }
-                if (!skip_whitespace_and_comments(lexer, true)) return false;
-                if (lexer->lookahead == '<') {
-                    unsigned depth = 1;
-                    skip(lexer);
-                    while (depth && !lexer->eof(lexer)) {
-                        int32_t c = lexer->lookahead;
-                        if (c == '/') {
-                            if (!skip_whitespace_and_comments(lexer, true)) return false;
-                            continue;
-                        }
-                        skip(lexer);
-                        if (c == '-' && lexer->lookahead == '>') skip(lexer);
-                        else if (c == '<') depth++;
-                        else if (c == '>') depth--;
-                        else if ((c == '`' || c == '"' || c == '\'') && !skip_literal_rest(lexer, c, 0)) return false;
-                        else if ((c == '(' || c == '[') &&
-                                 !skip_to_closing_bracket(lexer, c, c == '(' ? ')' : ']', 0)) return false;
-                    }
-                    if (depth || !skip_whitespace_and_comments(lexer, true)) return false;
-                }
-                if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
-                skip(lexer);
-                if (!skip_whitespace_and_comments(lexer, true)) return false;
-            }
-            if (lexer->lookahead == '(') {
-                skip(lexer);
-                if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
-            }
-        }
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
-    }
-    if (lexer->eof(lexer) || lexer->lookahead == '}') return true;
-    if (lexer->lookahead == '{' && !quoted_name) { *lambda = true; return false; }
     char word[MAX_WORD_SIZE] = {0};
-    while (scan_words(lexer, MODIFIER_WORDS, word, NULL) ||
-           scan_words(lexer, OTHER_MODIFIER_WORDS, word, NULL)) {
+    for (;;) {
+        while (lexer->lookahead == '@') {
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (lexer->lookahead == '[') {
+                skip(lexer);
+                if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+            } else {
+                for (;;) {
+                    if (lexer->lookahead == '`') {
+                        quoted_name = true;
+                        skip(lexer);
+                        if (!skip_literal_rest(lexer, '`', 0)) return false;
+                    } else {
+                        if (!is_identifier_start(lexer->lookahead)) return false;
+                        while (is_identifier_part(lexer->lookahead)) skip(lexer);
+                    }
+                    if (!skip_whitespace_and_comments(lexer, true)) return false;
+                    if (lexer->lookahead == '<') {
+                        if (!skip_annotation_type_arguments(lexer)) return false;
+                    }
+                    if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
+                    skip(lexer);
+                    if (!skip_whitespace_and_comments(lexer, true)) return false;
+                }
+                if (lexer->lookahead == '(') {
+                    skip(lexer);
+                    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+                }
+            }
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+        }
+        if (lexer->eof(lexer) || lexer->lookahead == '}') return true;
+        if (lexer->lookahead == '{' && !quoted_name) { *lambda = true; return false; }
         memset(word, 0, MAX_WORD_SIZE);
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        while (scan_words(lexer, MODIFIER_WORDS, word, NULL) ||
+               scan_words(lexer, OTHER_MODIFIER_WORDS, word, NULL)) {
+            memset(word, 0, MAX_WORD_SIZE);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+        }
+        if (lexer->lookahead != '@') break;
     }
     if (member) return strncmp(word, "get", MAX_WORD_SIZE) != 0 && strncmp(word, "set", MAX_WORD_SIZE) != 0;
     if (strncmp(word, "constructor", MAX_WORD_SIZE) != 0 ||
         !skip_whitespace_and_comments(lexer, true)) return false;
-    return lexer->lookahead != '(';
+    if (lexer->lookahead == '(') return false;
+    if (named_function && scan_word(lexer, "fun") && !is_identifier_part(lexer->lookahead) &&
+        skip_whitespace_and_comments(lexer, true)) {
+        *named_function = scan_named_function_header(lexer);
+    }
+    return true;
+}
+
+static bool scan_named_function_header(TSLexer *lexer) {
+    if (lexer->lookahead == '<' && !skip_annotation_type_arguments(lexer)) return false;
+    if (lexer->lookahead == '(') {
+        skip(lexer);
+        if (!skip_to_closing_bracket(lexer, '(', ')', 0) ||
+            !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '.') return false;
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+    }
+    for (;;) {
+        if (lexer->lookahead == '`') {
+            skip(lexer);
+            if (!skip_literal_rest(lexer, '`', 0)) return false;
+        } else {
+            if (!is_identifier_start(lexer->lookahead)) return false;
+            while (is_identifier_part(lexer->lookahead)) skip(lexer);
+        }
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == '<' && !skip_annotation_type_arguments(lexer)) return false;
+        if (lexer->lookahead == '?') {
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+        }
+        if (lexer->lookahead != '.') return lexer->lookahead == '(';
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+    }
+}
+
+static bool skip_annotation_type_arguments(TSLexer *lexer) {
+    unsigned depth = 1;
+    skip(lexer);
+    while (depth && !lexer->eof(lexer)) {
+        int32_t c = lexer->lookahead;
+        if (c == '/') {
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            continue;
+        }
+        skip(lexer);
+        if (c == '-' && lexer->lookahead == '>') skip(lexer);
+        else if (c == '<') depth++;
+        else if (c == '>') depth--;
+        else if ((c == '`' || c == '"' || c == '\'') && !skip_literal_rest(lexer, c, 0)) return false;
+        else if ((c == '(' || c == '[') &&
+                 !skip_to_closing_bracket(lexer, c, c == '(' ? ')' : ']', 0)) return false;
+    }
+    return depth == 0 && skip_whitespace_and_comments(lexer, true);
 }
 
 // Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
@@ -1039,6 +1107,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
     while (iswspace(lexer->lookahead)) {
         skip(lexer);
+    }
+
+    if (!error_recovery && valid_symbols[EXPRESSION_ANNOTATION_START] && lexer->lookahead == '@') {
+        if (!scan_expression_annotation_start(lexer, scanner->depth > 0 && !in_statements(scanner))) return false;
+        lexer->result_symbol = EXPRESSION_ANNOTATION_START;
+        return true;
     }
 
     // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing

@@ -19,6 +19,8 @@ const incompleteHeaders = [
   'class Foo\n@`A name` private constructor',
   'class Foo\n@A\n(1)\ninternal constructor',
   'class Foo\n@A\n(run { class Local; 1 }) private constructor',
+  'class Foo\n@A private @B constructor',
+  'class Foo\n@pkg.A<List<Int>> private /* comment */ @B(1) constructor',
 ];
 
 test('keeps annotated class headers queryable while completing their constructors', () => {
@@ -132,6 +134,9 @@ test('keeps completed declarations queryable before trailing annotations', () =>
       '@A(',
       '@A<',
       '@A("unfinished',
+      '@A private @B',
+      '@A internal @B(1)',
+      '@pkg.A<List<Int>> private /* comment */ @B',
     ]) {
       for (const [prefix, suffix, node, expected] of [
         ['class Foo', '', 'class_declaration', ['class Foo']],
@@ -275,7 +280,7 @@ test('keeps annotated trailing lambdas in property initializer queries', () => {
       '(property_declaration (expression) @initializer) (call_expression (annotated_lambda) @lambda) @call'
     );
     try {
-      for (const annotation of ['@A', '@A("' + 'x'.repeat(3000) + '")']) {
+      for (const annotation of ['@A', '@A /* comment */\n@B', '@A("' + 'x'.repeat(3000) + '")']) {
         const initializer = `Runnable\n${annotation}\n{ println() }`;
         for (const [prefix, suffix] of [
           ['val r = ', ''],
@@ -341,6 +346,119 @@ test('keeps annotated trailing lambdas in property initializer queries', () => {
       query.delete();
     }
   } finally {
+    parser.delete();
+  }
+});
+
+test('retains constructor and getter annotations interleaved with modifiers', () => {
+  const source = `@Target(AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY_GETTER)
+annotation class A
+@Target(AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY_GETTER)
+annotation class B(val value: Int)
+class Foo
+@A private @B(1) constructor()
+class Holder {
+ val value: Int
+ @A public @B(1) get() = 1
+}
+`;
+  const parser = new Parser().setLanguage(language);
+  let tree: ReturnType<Parser['parse']> | undefined;
+  let query: Query | undefined;
+  try {
+    tree = parser.parse(source)!;
+    expect(tree.rootNode.hasError).toBe(false);
+    query = new Query(language, '(primary_constructor) @constructor (getter) @getter');
+    expect(
+      query
+        .captures(tree.rootNode)
+        .filter(({ node }) => node.text.startsWith('@A'))
+        .map(({ name, node }) => ({ name, text: node.text }))
+    ).toEqual([
+      { name: 'constructor', text: '@A private @B(1) constructor()' },
+      { name: 'getter', text: '@A public @B(1) get() = 1' },
+    ]);
+  } finally {
+    query?.delete();
+    tree?.delete();
+    parser.delete();
+  }
+});
+
+test('keeps a following named function after an unfinished annotated constructor prefix', () => {
+  const source = 'val x = 1\n@A private constructor\n\nfun z() = 3';
+  const validInfixSource = `@file:[JvmName("AnnotatedInfix") Suppress("unused")]
+@Target(AnnotationTarget.EXPRESSION)
+@Retention(AnnotationRetention.SOURCE)
+annotation class A
+class C {
+ infix fun constructor(f: (Int) -> Int): Int = f(1)
+}
+fun f(): Int {
+ val private = C()
+ return (@A private constructor fun(x: Int): Int = x)
+}
+`;
+  const parser = new Parser().setLanguage(language);
+  let tree: ReturnType<Parser['parse']> | undefined;
+  let completed: ReturnType<Parser['parse']> | undefined;
+  let fresh: ReturnType<Parser['parse']> | undefined;
+  let validTree: ReturnType<Parser['parse']> | undefined;
+  let query: Query | undefined;
+  try {
+    query = new Query(
+      language,
+      '(property_declaration (variable_declaration (identifier) @property)) (function_declaration name: (identifier) @function (function_body) @body) (anonymous_function) @anonymous'
+    );
+    tree = parser.parse(source)!;
+    const capture = (
+      tree: NonNullable<ReturnType<Parser['parse']>>
+    ): { name: string; text: string; start: number; end: number }[] =>
+      query!
+        .captures(tree.rootNode)
+        .map(({ name, node }) => ({ name, text: node.text, start: node.startIndex, end: node.endIndex }));
+    expect(tree.rootNode.hasError).toBe(true);
+    expect(capture(tree)).toEqual([
+      { name: 'property', text: 'x', start: 4, end: 5 },
+      { name: 'function', text: 'z', start: 38, end: 39 },
+      { name: 'body', text: '= 3', start: 42, end: 45 },
+    ]);
+    tree.edit(
+      new Edit({
+        startIndex: 39,
+        oldEndIndex: 39,
+        newEndIndex: 40,
+        startPosition: { row: 3, column: 5 },
+        oldEndPosition: { row: 3, column: 5 },
+        newEndPosition: { row: 3, column: 6 },
+      })
+    );
+    const editedSource = source.slice(0, 39) + 'z' + source.slice(39);
+    completed = parser.parse(editedSource, tree)!;
+    fresh = parser.parse(editedSource)!;
+    expect(completed.rootNode.toString()).toBe(fresh.rootNode.toString());
+    expect(capture(completed)).toEqual([
+      { name: 'property', text: 'x', start: 4, end: 5 },
+      { name: 'function', text: 'zz', start: 38, end: 40 },
+      { name: 'body', text: '= 3', start: 43, end: 46 },
+    ]);
+    validTree = parser.parse(validInfixSource)!;
+    expect(validTree.rootNode.hasError).toBe(false);
+    expect(validTree.rootNode.descendantsOfType('file_annotation').map((node) => node.text)).toEqual([
+      '@file:[JvmName("AnnotatedInfix") Suppress("unused")]\n',
+    ]);
+    expect(
+      query
+        .captures(validTree.rootNode)
+        .filter(({ name }) => name === 'anonymous')
+        .map(({ node }) => node.text)
+    ).toEqual(['fun(x: Int): Int = x']);
+  } finally {
+    query?.delete();
+    tree?.delete();
+    completed?.delete();
+    fresh?.delete();
+    validTree?.delete();
     parser.delete();
   }
 });

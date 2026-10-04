@@ -24,6 +24,13 @@ module.exports = grammar({
   name: 'kotlin',
 
   conflicts: ($) => [
+    [$._loop_prefix, $.modifiers, $.type_modifiers],
+    [$.modifiers, $.type_modifiers],
+    [$._loop_prefix, $.type_modifiers],
+    [$.variable_declaration, $._loop_prefix, $.modifiers, $.type_modifiers],
+    [$.variable_declaration, $.modifiers, $.type_modifiers],
+    [$.type_modifiers, $.when_subject],
+    [$.annotation, $._expression_annotation],
     [$.class_declaration],
     [$.property_declaration],
     [$.if_expression, $.parenthesized_expression],
@@ -40,25 +47,15 @@ module.exports = grammar({
     [$.type, $._receiver_type],
 
     [$.modifiers, $.annotated_lambda],
-    [$.modifiers, $.annotated_expression],
 
     [$.delegation_specifier, $.type_modifiers],
-    [$.annotated_expression, $.type_modifiers],
-    [$.annotated_expression, $.type_modifiers, $.when_subject],
-    [$.annotated_expression, $.type_modifiers, $.modifiers],
-    [$.variable_declaration, $._loop_prefix, $.modifiers, $.type_modifiers, $.annotated_expression],
-    [$._loop_prefix, $.annotated_expression],
-    [$._loop_prefix, $.modifiers, $.type_modifiers, $.annotated_expression],
     [$._loop_prefix, $.labeled_expression],
-    [$._loop_prefix, $.type_modifiers, $.annotated_expression],
     [$.parameter_modifiers, $.type_modifiers],
     [$.function_modifier, $.type_modifiers],
     [$.function_modifier, $._reserved_identifier],
     [$.function_modifier, $.type_modifiers, $._reserved_identifier],
     [$.type_modifiers, $._reserved_identifier],
     [$.variable_declaration, $.type_modifiers],
-    [$.variable_declaration, $.type_modifiers, $.modifiers, $.annotated_expression],
-    [$.variable_declaration, $.type_modifiers, $.annotated_expression],
     [$.variable_declaration],
 
     [$.function_value_parameters, $.function_type_parameters],
@@ -136,6 +133,7 @@ module.exports = grammar({
     'where',
     $._separated_member_start,
     $._unseparated_member_start,
+    $._expression_annotation_start,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -205,7 +203,7 @@ module.exports = grammar({
 
     file_annotation: ($) =>
       seq(
-        '@',
+        annotationStart($),
         'file',
         ':',
         choice(seq('[', repeat1($._unescaped_annotation), ']'), $._unescaped_annotation),
@@ -524,11 +522,9 @@ module.exports = grammar({
 
     type_modifiers: ($) => prec.right(repeat1(choice($.annotation, 'suspend'))),
 
-    annotation: ($) =>
-      choice(
-        seq('@', optional($.use_site_target), $._unescaped_annotation),
-        seq('@', optional($.use_site_target), '[', repeat1($._unescaped_annotation), ']')
-      ),
+    annotation: ($) => annotationRule($, annotationStart($)),
+
+    _expression_annotation: ($) => annotationRule($, alias($._expression_annotation_start, '@')),
 
     use_site_target: () =>
       seq(choice('field', 'property', 'get', 'set', 'receiver', 'param', 'setparam', 'delegate'), ':'),
@@ -667,7 +663,7 @@ module.exports = grammar({
         prec.left(PREC.POSTFIX, seq(field('argument', $.expression), field('operator', choice('++', '--', '!!'))))
       ),
 
-    annotated_expression: ($) => seq($.annotation, $.expression),
+    annotated_expression: ($) => seq(alias($._expression_annotation, $.annotation), $.expression),
 
     labeled_expression: ($) => seq($.label, $.expression),
 
@@ -1072,4 +1068,25 @@ function optionalCommaSep1(rule) {
  */
 function valueArguments($, open) {
   return seq(open, optionalCommaSep1($.value_argument), alias($._arguments_end, ')'));
+}
+
+/**
+ * @param {GrammarSymbols<string>} $
+ * @param {RuleOrLiteral} start
+ * @returns {SeqRule}
+ */
+function annotationRule($, start) {
+  return seq(
+    start,
+    optional($.use_site_target),
+    choice($._unescaped_annotation, seq('[', repeat1($._unescaped_annotation), ']'))
+  );
+}
+
+/**
+ * @param {GrammarSymbols<string>} $
+ * @returns {ChoiceRule}
+ */
+function annotationStart($) {
+  return choice('@', alias($._expression_annotation_start, '@'));
 }
