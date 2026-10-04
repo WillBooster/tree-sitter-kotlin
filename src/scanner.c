@@ -315,10 +315,45 @@ static bool scan_template_keyword(TSLexer *lexer) {
     return false;
 }
 
+typedef struct {
+    TSLexer lexer;
+    TSLexer *source;
+    unsigned remaining;
+} TypeLookahead;
+
+static void advance_type_lookahead(TSLexer *lexer, bool skip);
+static bool type_lookahead_eof(const TSLexer *lexer);
+static bool scan_destructuring_parameter_arrow(TSLexer *lexer);
 static bool can_start_destructuring_type(TSLexer *lexer);
 
 static bool has_destructuring_parameter_arrow(TSLexer *lexer) {
-    if (!can_start_destructuring_type(lexer)) return false;
+    TypeLookahead lookahead = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
+        .source = lexer,
+        .remaining = 4096,
+    };
+    bool found = scan_destructuring_parameter_arrow(&lookahead.lexer);
+    // Repeated unfinished annotations must not rescan the rest of the file. At the budget, let the grammar decide
+    // instead of imposing a maximum length on valid types, comments or annotation arguments.
+    return found || lookahead.remaining == 0;
+}
+
+static void advance_type_lookahead(TSLexer *lexer, bool skip) {
+    TypeLookahead *lookahead = (TypeLookahead *)lexer;
+    if (lookahead->remaining > 0) {
+        lookahead->source->advance(lookahead->source, skip);
+        lookahead->remaining--;
+    }
+    lexer->lookahead = lookahead->remaining > 0 ? lookahead->source->lookahead : 0;
+}
+
+static bool type_lookahead_eof(const TSLexer *lexer) {
+    const TypeLookahead *lookahead = (const TypeLookahead *)lexer;
+    return lookahead->remaining == 0 || lookahead->source->eof(lookahead->source);
+}
+
+static bool scan_destructuring_parameter_arrow(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || !can_start_destructuring_type(lexer)) return false;
     while (!lexer->eof(lexer)) {
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         int32_t c = lexer->lookahead;
@@ -1001,7 +1036,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     if (valid_symbols[DESTRUCTURING_TYPE_START] && !error_recovery && lexer->lookahead == ':') {
         advance(lexer);
         lexer->mark_end(lexer);
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
         lexer->result_symbol = DESTRUCTURING_TYPE_START;
         return has_destructuring_parameter_arrow(lexer);
     }
