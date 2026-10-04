@@ -156,7 +156,7 @@ Primary Constructor on a newline
 
 public class Foo
     @JvmOverloads
-    constructor(
+    internal constructor(
         val bar: Int = 5
     )
 
@@ -171,7 +171,8 @@ public class Foo
       (modifiers
         (annotation
           (user_type
-            (identifier))))
+            (identifier)))
+        (visibility_modifier))
       (class_parameters
         (class_parameter
           (identifier)

@@ -864,23 +864,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '(':
                 return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
-                if (valid_symbols[CONSTRUCTOR]) {
-                    while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    char ctor[12] = "constructor";
-                    for (uint8_t i = 0; i < 11; i++) {
-                        if (lexer->lookahead != ctor[i]) {
-                            return true;
-                        }
-                        skip(lexer);
-                    }
-                    return false;
-                }
-                if (valid_symbols[GET] || valid_symbols[SET]) {
+                if (valid_symbols[CONSTRUCTOR] || valid_symbols[GET] || valid_symbols[SET]) {
                     bool saw_paren = false;
                     while (!lexer->eof(lexer) && (saw_paren ? lexer->lookahead != '\n' : !iswspace(lexer->lookahead))) {
                         skip(lexer);
