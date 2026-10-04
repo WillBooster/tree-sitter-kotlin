@@ -10,6 +10,7 @@
 enum TokenType {
     SEMI,
     CLASS_MEMBER_SEMI,
+    SAME_LINE_MEMBER_END,
     BLOCK_COMMENT,
     LINE_COMMENT,
     NOT_IS,
@@ -37,6 +38,8 @@ enum TokenType {
     KEYWORD_REFERENCE,
     KEYWORD_REFERENCE_END,
     WHERE,
+    SEPARATED_MEMBER_START,
+    UNSEPARATED_MEMBER_START,
 };
 
 #define MAX_WORD_SIZE 16
@@ -324,13 +327,15 @@ typedef struct {
     // Whether the last token this scanner returned is the start of an interpolation of a name in a multi-dollar string
     // (`$$name`), or a keyword reference right after one.
     uint8_t after_short_template;
+    uint8_t same_line_member_end;
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
     uint8_t frames[MAX_FRAMES / 8];
+    uint8_t separated_members[MAX_FRAMES / 8];
     // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
     // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
     unsigned length;
-    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2 * sizeof(uint32_t) - 1 - MAX_FRAMES / 8) /
+    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2 * sizeof(uint32_t) - 2 - 2 * MAX_FRAMES / 8) /
                      sizeof(uint16_t)];
 } Scanner;
 
@@ -361,6 +366,7 @@ static void pop_frame(Scanner *scanner) {
     uint32_t i = scanner->depth;
     if (i < MAX_FRAMES) {
         scanner->frames[i / 8] &= (uint8_t)~(1u << (i % 8));
+        scanner->separated_members[i / 8] &= (uint8_t)~(1u << (i % 8));
     }
 }
 
@@ -379,7 +385,10 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
     size += sizeof(uint32_t);
     buffer[size++] = (char)scanner->after_short_template;
+    buffer[size++] = (char)scanner->same_line_member_end;
     memcpy(buffer + size, scanner->frames, frame_bytes(scanner->depth));
+    size += frame_bytes(scanner->depth);
+    memcpy(buffer + size, scanner->separated_members, frame_bytes(scanner->depth));
     size += frame_bytes(scanner->depth);
     memcpy(buffer + size, scanner->strings, scanner->length * sizeof(uint16_t));
     return size + scanner->length * sizeof(uint16_t);
@@ -390,16 +399,21 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
     scanner->depth = 0;
     scanner->surplus_dollars = 0;
     scanner->after_short_template = 0;
+    scanner->same_line_member_end = 0;
     memset(scanner->frames, 0, sizeof(scanner->frames));
+    memset(scanner->separated_members, 0, sizeof(scanner->separated_members));
     scanner->length = 0;
-    if (length >= 2 * sizeof(uint32_t) + 1) {
+    if (length >= 2 * sizeof(uint32_t) + 2) {
         unsigned size = 0;
         memcpy(&scanner->depth, buffer, sizeof(uint32_t));
         size += sizeof(uint32_t);
         memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
         size += sizeof(uint32_t);
         scanner->after_short_template = (uint8_t)buffer[size++];
+        scanner->same_line_member_end = (uint8_t)buffer[size++];
         memcpy(scanner->frames, buffer + size, frame_bytes(scanner->depth));
+        size += frame_bytes(scanner->depth);
+        memcpy(scanner->separated_members, buffer + size, frame_bytes(scanner->depth));
         size += frame_bytes(scanner->depth);
         scanner->length = (length - size) / sizeof(uint16_t);
         memcpy(scanner->strings, buffer + size, length - size);
@@ -574,6 +588,13 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    if (!error_recovery && scanner->same_line_member_end && valid_symbols[CLASS_MEMBER_SEMI]) {
+        scanner->same_line_member_end = 0;
+        lexer->mark_end(lexer);
+        lexer->result_symbol = CLASS_MEMBER_SEMI;
+        return true;
+    }
+    scanner->same_line_member_end = 0;
     bool after_short_template = scanner->after_short_template;
     scanner->after_short_template = 0;
     if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
@@ -581,6 +602,17 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->result_symbol = TOP_LEVEL_STATEMENT_END;
         scanner->depth = 0;
         memset(scanner->frames, 0, sizeof(scanner->frames));
+        memset(scanner->separated_members, 0, sizeof(scanner->separated_members));
+        return true;
+    }
+    if (!error_recovery && scanner->depth > 0 && !in_statements(scanner) &&
+        (valid_symbols[SEPARATED_MEMBER_START] || valid_symbols[UNSEPARATED_MEMBER_START])) {
+        lexer->mark_end(lexer);
+        bool separated = valid_symbols[SEPARATED_MEMBER_START];
+        lexer->result_symbol = separated ? SEPARATED_MEMBER_START : UNSEPARATED_MEMBER_START;
+        uint32_t i = scanner->depth - 1;
+        scanner->separated_members[i / 8] &= (uint8_t)~(1u << (i % 8));
+        scanner->separated_members[i / 8] |= (uint8_t)((unsigned)separated << (i % 8));
         return true;
     }
     if (valid_symbols[KEYWORD_REFERENCE] && !error_recovery) {
@@ -657,6 +689,21 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     }
 
+    if (!error_recovery && valid_symbols[SAME_LINE_MEMBER_END] && scanner->depth > 0 && !in_statements(scanner) &&
+        !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
+        lexer->mark_end(lexer);
+        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') skip(lexer);
+        if (iswalpha(lexer->lookahead)) {
+            char scanned_word[16] = {0};
+            skip_modifier_words(lexer, scanned_word, true);
+            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
+                scanner->same_line_member_end = 1;
+                lexer->result_symbol = SAME_LINE_MEMBER_END;
+                return true;
+            }
+            return false;
+        }
+    }
     bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
     bool saw_newline = false;
     if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI] || can_end_delegation) {

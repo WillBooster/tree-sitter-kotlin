@@ -1119,3 +1119,322 @@ fun f() {
   a[]
 }
 ---
+
+================================================================================
+Same-line class members
+================================================================================
+
+class Functions { fun a() {} fun b() {} }
+class Initializer { init { f() } fun f() {} }
+class Nested { class A {} interface I {} object O {} fun f() = 1 val x = 2 }
+interface Contract { fun a(): Int fun b(): Int }
+class Comments { fun f() = 1 /* boundary */ fun g() = 2 }
+infix fun Int.fun_value(rhs: Int) = this + rhs
+class Prefix { fun f() = 1 fun_value 2 }
+class Separated { val x = 1; var y = 2; fun f() = x }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (anonymous_initializer
+        (block
+          (call_expression
+            (identifier)
+            (value_arguments))))
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (class_declaration
+        name: (identifier)
+        (class_body))
+      (class_declaration
+        name: (identifier)
+        (class_body))
+      (object_declaration
+        name: (identifier)
+        (class_body))
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier)))
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier)))))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))
+      (block_comment)
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))))
+  (function_declaration
+    (modifiers
+      (function_modifier))
+    (user_type
+      (identifier))
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (binary_expression
+        left: (this_expression)
+        right: (identifier))))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (infix_expression
+            (number_literal)
+            (identifier)
+            (number_literal))))))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (identifier))))))
+
+================================================================================
+Trailing comments after class members
+================================================================================
+
+class End { fun f() {} /* retained */ }
+class Expressions { fun f() = 1 /* inside */ + 2 fun g() = 1 /* inside */ fun_value 2 }
+class Next {
+  fun f() = 1 // retained
+  fun g() = 2
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (block_comment)))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (binary_expression
+            (number_literal)
+            (block_comment)
+            (number_literal))))
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (infix_expression
+            (number_literal)
+            (block_comment)
+            (identifier)
+            (number_literal))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))
+      (line_comment)
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal))))))
+
+=========================================
+Functional interfaces among class members
+=========================================
+
+class Outer {
+  fun first() {} fun interface Callback { fun call() } fun last() {}
+  public fun interface Named { fun value(): Int }
+}
+fun interface TopLevel { fun call() }
+
+---
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (class_declaration
+        (identifier)
+        (class_body
+          (function_declaration
+            (identifier)
+            (function_value_parameters))))
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))
+      (class_declaration
+        (modifiers
+          (visibility_modifier))
+        (identifier)
+        (class_body
+          (function_declaration
+            (identifier)
+            (function_value_parameters)
+            (user_type
+              (identifier)))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)))))
+
+================================================================================
+Same-line modifier-prefixed members after bodyless functions
+================================================================================
+
+interface I { fun a(): Int private fun b(): Int = 1 }
+interface J { fun a(): Int data class D(val x: Int) }
+interface K { fun a(): Int public abstract fun b(): Int }
+class C { fun f() = 1 private fun g() = 2 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier)))
+      (function_declaration
+        (modifiers
+          (visibility_modifier))
+        (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier))
+        (function_body
+          (number_literal)))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier)))
+      (class_declaration
+        (modifiers
+          (class_modifier))
+        (identifier)
+        (primary_constructor
+          (class_parameters
+            (class_parameter
+              (identifier)
+              (user_type
+                (identifier))))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier)))
+      (function_declaration
+        (modifiers
+          (visibility_modifier)
+          (inheritance_modifier))
+        (identifier)
+        (function_value_parameters)
+        (user_type
+          (identifier)))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (function_declaration
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal)))
+      (function_declaration
+        (modifiers
+          (visibility_modifier))
+        (identifier)
+        (function_value_parameters)
+        (function_body
+          (number_literal))))))
