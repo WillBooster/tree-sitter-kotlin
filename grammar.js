@@ -88,6 +88,8 @@ module.exports = grammar({
   externals: ($) => [
     $._semi,
     $._class_member_semi,
+    // Unlike properties, these declarations can end before another member on the same line.
+    $._same_line_member_end,
     $.block_comment,
     // also lexed by the scanner, since the generated lexer stops at a NUL character
     $.line_comment,
@@ -127,6 +129,8 @@ module.exports = grammar({
     // never scanned: see `_template_name`
     $._keyword_reference_end,
     'where',
+    $._separated_member_start,
+    $._unseparated_member_start,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -206,7 +210,8 @@ module.exports = grammar({
       prec.right(
         seq(
           optional($.modifiers),
-          choice('class', seq(optional('fun'), 'interface')),
+          choice('class', seq(optional(seq('fun', optional($._unseparated_member_start))), 'interface')),
+          optional($._unseparated_member_start),
           field('name', $.identifier),
           optional($.type_parameters),
           optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
@@ -221,6 +226,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'object',
+          optional($._unseparated_member_start),
           field('name', $.identifier),
           optional(seq(':', $.delegation_specifiers)),
           optional($.class_body)
@@ -232,6 +238,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           choice('val', 'var'),
+          optional($._separated_member_start),
           optional($.type_parameters),
           optional(seq($._receiver_type, optional('.'))),
           choice($.variable_declaration, $.multi_variable_declaration),
@@ -244,7 +251,15 @@ module.exports = grammar({
 
     type_alias: ($) =>
       prec.right(
-        seq(optional($.modifiers), 'typealias', field('type', $.identifier), optional($.type_parameters), '=', $.type)
+        seq(
+          optional($.modifiers),
+          'typealias',
+          optional($._separated_member_start),
+          field('type', $.identifier),
+          optional($.type_parameters),
+          '=',
+          $.type
+        )
       ),
 
     companion_object: ($) =>
@@ -252,17 +267,19 @@ module.exports = grammar({
         optional($.modifiers),
         'companion',
         'object',
+        optional($._unseparated_member_start),
         optional(field('name', $.identifier)),
         optional(seq(':', $.delegation_specifiers)),
         optional($.class_body)
       ),
 
-    anonymous_initializer: ($) => seq('init', $.block),
+    anonymous_initializer: ($) => seq('init', optional($._unseparated_member_start), $.block),
 
     secondary_constructor: ($) =>
       seq(
         optional($.modifiers),
         'constructor',
+        optional($._unseparated_member_start),
         $.function_value_parameters,
         optional(seq(':', $.constructor_delegation_call)),
         optional($.block)
@@ -300,6 +317,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'fun',
+          optional($._unseparated_member_start),
           optional($.type_parameters),
           optional(seq($._receiver_type, optional('.'))),
           field('name', $._identifier),
@@ -406,8 +424,10 @@ module.exports = grammar({
 
     _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
-    class_body: ($) =>
-      seq('{', $._open_members, repeat(seq($.class_member_declaration, $._class_member_semi)), '}', $._close_braces),
+    class_body: ($) => seq('{', $._open_members, repeat($._class_member_with_separator), '}', $._close_braces),
+
+    _class_member_with_separator: ($) =>
+      seq($.class_member_declaration, optional($._same_line_member_end), $._class_member_semi),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
@@ -419,7 +439,7 @@ module.exports = grammar({
         '{',
         $._open_members,
         optionalCommaSep1($.enum_entry),
-        optional(seq(';', repeat(seq($.class_member_declaration, $._class_member_semi)))),
+        optional(seq(';', repeat($._class_member_with_separator))),
         '}',
         $._close_braces
       ),
