@@ -128,6 +128,7 @@ module.exports = grammar({
     $._keyword_reference,
     // never scanned: see `_template_name`
     $._keyword_reference_end,
+    'where',
     $._separated_member_start,
     $._unseparated_member_start,
   ],
