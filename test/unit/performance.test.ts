@@ -35,8 +35,17 @@ test('uses a Wasm build built from the current parser', () => {
 // and in alternation, each keeping its fastest run, give 9.8 to 11.7 locally; 18 leaves a margin over that and fails
 // for growth faster than about n^1.25.
 test('recovers from an error on each line in linear time', { timeout: 60_000 }, () => {
-  const small = '$ a\n'.repeat(2000);
-  const large = '$ a\n'.repeat(20_000);
+  expectLinearRecovery('$ a\n'.repeat(2000), '$ a\n'.repeat(20_000));
+});
+
+test('recovers from unfinished annotations in linear time', { timeout: 60_000 }, () => {
+  for (const suffix of ['(', '({']) {
+    expectLinearRecovery(`class X\n@A${suffix}\n`.repeat(1000), `class X\n@A${suffix}\n`.repeat(10_000));
+  }
+  expectLinearRecovery('val a = 1\n@A(\n'.repeat(2000) + ')\n', 'val a = 1\n@A(\n'.repeat(20_000) + ')\n');
+});
+
+function expectLinearRecovery(small: string, large: string): void {
   parseCpuTime(large);
   parseCpuTime(large);
   let smallFastest = Infinity;
@@ -48,7 +57,7 @@ test('recovers from an error on each line in linear time', { timeout: 60_000 }, 
   expect(largeFastest / smallFastest).toBeLessThan(18);
   // process.threadCpuUsage reports microseconds.
   expect(largeFastest).toBeLessThan(5_000_000);
-});
+}
 
 function parseCpuTime(source: string): number {
   const start = process.threadCpuUsage();

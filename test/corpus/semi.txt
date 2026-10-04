@@ -1588,3 +1588,365 @@ class Box<T>(val value: T)
             (type_projection
               (user_type
                 (identifier)))))))))
+
+================================================================================
+Generic annotations and across-line declaration arguments
+================================================================================
+
+@Target(AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY, AnnotationTarget.PROPERTY_GETTER)
+annotation class Generic<T>
+object Names {
+    @Target(AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY_GETTER)
+    annotation class `Typed mark`<T>
+}
+@Target(AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY_GETTER)
+annotation class Across(val value: String)
+class Constructed
+    @Generic<List<List<Int>>>
+    @Names.`Typed mark`<(Int) -> List<String>>
+    @Across
+    ("constructor")
+    internal constructor /* parameter comment */
+    ()
+class Getters {
+    val first = 1
+    @Generic<List<Int>> val second = 2
+    val third = 3
+    @Generic<(Int) -> List<(String) -> Int>>
+    internal val fourth = 4
+    val fifth = 5
+        @Names.`Typed mark`<Map<String, (Int) -> List<String>>>
+        @Across
+        ("getter")
+        get() = field
+    val following = 6
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier)))
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier)))
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier))))))
+      (class_modifier))
+    name: (identifier)
+    (type_parameters
+      (type_parameter
+        (identifier))))
+  (object_declaration
+    name: (identifier)
+    (class_body
+      (class_declaration
+        (modifiers
+          (annotation
+            (constructor_invocation
+              (user_type
+                (identifier))
+              (value_arguments
+                (value_argument
+                  (navigation_expression
+                    (identifier)
+                    (identifier)))
+                (value_argument
+                  (navigation_expression
+                    (identifier)
+                    (identifier))))))
+          (class_modifier))
+        name: (identifier)
+        (type_parameters
+          (type_parameter
+            (identifier))))))
+  (class_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier)))
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier))))))
+      (class_modifier))
+    name: (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier))))))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (modifiers
+        (annotation
+          (user_type
+            (identifier)
+            (type_arguments
+              (type_projection
+                (user_type
+                  (identifier)
+                  (type_arguments
+                    (type_projection
+                      (user_type
+                        (identifier)
+                        (type_arguments
+                          (type_projection
+                            (user_type
+                              (identifier))))))))))))
+        (annotation
+          (user_type
+            (identifier)
+            (identifier)
+            (type_arguments
+              (type_projection
+                (function_type
+                  (function_type_parameters
+                    (user_type
+                      (identifier)))
+                  (user_type
+                    (identifier)
+                    (type_arguments
+                      (type_projection
+                        (user_type
+                          (identifier))))))))))
+        (annotation
+          (constructor_invocation
+            (user_type
+              (identifier))
+            (value_arguments
+              (value_argument
+                (string_literal
+                  (string_content))))))
+        (visibility_modifier))
+      (block_comment)
+      (class_parameters)))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (property_declaration
+        (modifiers
+          (annotation
+            (user_type
+              (identifier)
+              (type_arguments
+                (type_projection
+                  (user_type
+                    (identifier)
+                    (type_arguments
+                      (type_projection
+                        (user_type
+                          (identifier))))))))))
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (property_declaration
+        (modifiers
+          (annotation
+            (user_type
+              (identifier)
+              (type_arguments
+                (type_projection
+                  (function_type
+                    (function_type_parameters
+                      (user_type
+                        (identifier)))
+                    (user_type
+                      (identifier)
+                      (type_arguments
+                        (type_projection
+                          (function_type
+                            (function_type_parameters
+                              (user_type
+                                (identifier)))
+                            (user_type
+                              (identifier)))))))))))
+          (visibility_modifier))
+        (variable_declaration
+          (identifier))
+        (number_literal))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (getter
+          (modifiers
+            (annotation
+              (user_type
+                (identifier)
+                (identifier)
+                (type_arguments
+                  (type_projection
+                    (user_type
+                      (identifier)
+                      (type_arguments
+                        (type_projection
+                          (user_type
+                            (identifier)))
+                        (type_projection
+                          (function_type
+                            (function_type_parameters
+                              (user_type
+                                (identifier)))
+                            (user_type
+                              (identifier)
+                              (type_arguments
+                                (type_projection
+                                  (user_type
+                                    (identifier)))))))))))))
+            (annotation
+              (constructor_invocation
+                (user_type
+                  (identifier))
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content)))))))
+          (function_body
+            (identifier))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)))))
+
+================================================================================
+Whitespace-separated annotated expressions and incomplete constructor recovery
+================================================================================
+
+@Target(AnnotationTarget.EXPRESSION)
+@Retention(AnnotationRetention.SOURCE)
+annotation class A
+class B { fun c() {} }
+fun f(b: B) {
+  val a = 1
+  @A (b).c()
+}
+fun annotated(y: List<String>) {
+    val x = 1
+    @Suppress
+    (y).forEach {}
+}
+class IncompleteConstructor
+    @A /* constructor remains a recovered expression */
+constructor
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (modifiers
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier))))))
+      (annotation
+        (constructor_invocation
+          (user_type
+            (identifier))
+          (value_arguments
+            (value_argument
+              (navigation_expression
+                (identifier)
+                (identifier))))))
+      (class_modifier))
+    name: (identifier))
+  (class_declaration
+    name: (identifier)
+    (class_body
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (block)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (annotated_expression
+          (annotation
+            (user_type
+              (identifier)))
+          (call_expression
+            (navigation_expression
+              (parenthesized_expression
+                (identifier))
+              (identifier))
+            (value_arguments))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier)))))))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (annotated_expression
+          (annotation
+            (user_type
+              (identifier)))
+          (call_expression
+            (navigation_expression
+              (parenthesized_expression
+                (identifier))
+              (identifier))
+            (annotated_lambda
+              (lambda_literal)))))))
+  (class_declaration
+    name: (identifier))
+  (annotated_expression
+    (annotation
+      (user_type
+        (identifier)))
+    (block_comment)
+    (identifier)))

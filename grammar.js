@@ -23,6 +23,8 @@ module.exports = grammar({
   name: 'kotlin',
 
   conflicts: ($) => [
+    [$.class_declaration],
+    [$.property_declaration],
     [$.if_expression, $.parenthesized_expression],
     [$.class_body, $.enum_class_body],
 
@@ -76,7 +78,7 @@ module.exports = grammar({
     [$.secondary_constructor, $._reserved_identifier],
     [$.enum_entry, $.modifiers],
     [$.qualified_identifier],
-    [$.constructor_invocation, $._unescaped_annotation],
+    [$._spaced_annotation_invocation, $._unescaped_annotation],
     [$.nullable_type],
     [$.non_nullable_type],
     [$.function_type],
@@ -108,7 +110,7 @@ module.exports = grammar({
     '$',
     // used to check if a modifier alone on its line belongs to a declaration on the next line
     'val',
-    // never scanned: it tells the scanner where a primary constructor may start
+    // empty: a newline before an annotation or parenthesis can end a statement or continue a declaration
     $._primary_constructor_position,
     // empty: it ends a delegation expression in a class header before `{` (see `explicit_delegation`)
     $._delegation_end,
@@ -188,11 +190,20 @@ module.exports = grammar({
         repeat($.import),
         // The scanner clears its brace frames after each top-level statement, so that a brace that error recovery
         // consumed affects no later statement.
-        repeat(seq($.statement, $._semi, $._top_level_statement_end))
+        repeat(seq($.statement, $._statement_semi, $._top_level_statement_end))
       ),
 
+    _statement_semi: ($) => choice($._semi, $._primary_constructor_position),
+    _member_semi: ($) => choice($._class_member_semi, $._primary_constructor_position),
+
     file_annotation: ($) =>
-      seq('@', 'file', ':', choice(seq('[', repeat1($._unescaped_annotation), ']'), $._unescaped_annotation), $._semi),
+      seq(
+        '@',
+        'file',
+        ':',
+        choice(seq('[', repeat1($._unescaped_annotation), ']'), $._unescaped_annotation),
+        $._statement_semi
+      ),
 
     package_header: ($) => seq('package', $.qualified_identifier, optional(';')),
 
@@ -203,17 +214,15 @@ module.exports = grammar({
       choice($.class_declaration, $.object_declaration, $.function_declaration, $.property_declaration, $.type_alias),
 
     class_declaration: ($) =>
-      prec.right(
-        seq(
-          optional($.modifiers),
-          choice('class', seq(optional('fun'), 'interface')),
-          field('name', $.identifier),
-          optional($.type_parameters),
-          optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
-          optional(seq(':', $.delegation_specifiers)),
-          optional($.type_constraints),
-          optional(choice($.class_body, $.enum_class_body))
-        )
+      seq(
+        optional($.modifiers),
+        choice('class', seq(optional('fun'), 'interface')),
+        field('name', $.identifier),
+        optional($.type_parameters),
+        optional($.primary_constructor),
+        optional(seq(':', $.delegation_specifiers)),
+        optional($.type_constraints),
+        optional(choice($.class_body, $.enum_class_body))
       ),
 
     object_declaration: ($) =>
@@ -228,18 +237,16 @@ module.exports = grammar({
       ),
 
     property_declaration: ($) =>
-      prec.right(
-        seq(
-          optional($.modifiers),
-          choice('val', 'var'),
-          optional($.type_parameters),
-          optional(seq($._receiver_type, optional('.'))),
-          choice($.variable_declaration, $.multi_variable_declaration),
-          optional($.type_constraints),
-          optional(choice(seq('=', $.expression), $.property_delegate)),
-          optional(';'),
-          optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
-        )
+      seq(
+        optional($.modifiers),
+        choice('val', 'var'),
+        optional($.type_parameters),
+        optional(seq($._receiver_type, optional('.'))),
+        choice($.variable_declaration, $.multi_variable_declaration),
+        optional($.type_constraints),
+        optional(choice(seq('=', $.expression), $.property_delegate)),
+        optional(';'),
+        optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
       ),
 
     type_alias: ($) =>
@@ -274,7 +281,12 @@ module.exports = grammar({
 
     type_parameter: ($) => seq(optional($.type_parameter_modifiers), $.identifier, optional(seq(':', $.type))),
 
-    primary_constructor: ($) => seq(optional(seq(optional($.modifiers), 'constructor')), $.class_parameters),
+    primary_constructor: ($) =>
+      seq(
+        optional(seq(optional($.modifiers), 'constructor')),
+        optional($._primary_constructor_position),
+        $.class_parameters
+      ),
 
     class_parameters: ($) => seq('(', optionalCommaSep1($.class_parameter), ')'),
 
@@ -407,7 +419,7 @@ module.exports = grammar({
     _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
     class_body: ($) =>
-      seq('{', $._open_members, repeat(seq($.class_member_declaration, $._class_member_semi)), '}', $._close_braces),
+      seq('{', $._open_members, repeat(seq($.class_member_declaration, $._member_semi)), '}', $._close_braces),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
@@ -419,7 +431,7 @@ module.exports = grammar({
         '{',
         $._open_members,
         optionalCommaSep1($.enum_entry),
-        optional(seq(';', repeat(seq($.class_member_declaration, $._class_member_semi)))),
+        optional(seq(';', repeat(seq($.class_member_declaration, $._member_semi)))),
         '}',
         $._close_braces
       ),
@@ -438,7 +450,7 @@ module.exports = grammar({
 
     value_argument: ($) => seq(optional(seq($._identifier, '=')), optional('*'), $.expression),
 
-    _statements: ($) => seq($.statement, repeat(seq($._semi, $.statement)), optional($._semi)),
+    _statements: ($) => seq($.statement, repeat(seq($._statement_semi, $.statement)), optional($._statement_semi)),
 
     statement: ($) =>
       choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
@@ -452,7 +464,7 @@ module.exports = grammar({
         prec.right(
           repeat1(
             choice(
-              $.annotation,
+              seq(optional($._primary_constructor_position), $.annotation),
               $.class_modifier,
               $.member_modifier,
               $.function_modifier,
@@ -502,7 +514,13 @@ module.exports = grammar({
     // token keeps an annotated parenthesized expression from being read there. After whitespace, Kotlin's reading
     // depends on the context, so both readings remain.
     _unescaped_annotation: ($) =>
-      choice($.constructor_invocation, alias($._annotation_invocation, $.constructor_invocation), $.type),
+      choice(
+        alias($._spaced_annotation_invocation, $.constructor_invocation),
+        alias($._annotation_invocation, $.constructor_invocation),
+        $.type
+      ),
+
+    _spaced_annotation_invocation: ($) => seq($.type, optional($._primary_constructor_position), $.value_arguments),
 
     _annotation_invocation: ($) => seq($.type, alias($._annotation_arguments, $.value_arguments)),
 
@@ -701,7 +719,7 @@ module.exports = grammar({
         '{',
         $._open_statements,
         optional(seq(optional($.lambda_parameters), '->')),
-        optionalSep1($.statement, $._semi),
+        optionalSep1($.statement, $._statement_semi),
         '}',
         $._close_braces
       ),
@@ -778,7 +796,7 @@ module.exports = grammar({
         optional(seq('if', field('guard', $.expression))),
         '->',
         field('body', choice($.block, $.statement)),
-        optional($._semi)
+        optional($._statement_semi)
       ),
 
     _when_condition: ($) => choice($.expression, $.range_test, $.type_test),

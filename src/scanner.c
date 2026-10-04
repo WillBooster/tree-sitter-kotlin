@@ -863,46 +863,28 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 advance(lexer);
                 lexer->mark_end(lexer);
                 return true;
-            // Kotlin allows a primary constructor on the line after the class name. During error recovery, where every
-            // token is valid, a `(` on a new line still starts a statement.
-            case '(':
-                return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
-                if (valid_symbols[CONSTRUCTOR] || valid_symbols[GET] || valid_symbols[SET]) {
+                if (!error_recovery && valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) {
+                    lexer->mark_end(lexer);
                     skip(lexer);
-                    for (;;) {
-                        if (!skip_whitespace_and_comments(lexer, true)) {
-                            return true;
-                        }
-                        while (!lexer->eof(lexer)) {
-                            if (is_identifier_part(lexer->lookahead)) {
-                                skip(lexer);
-                            } else if (lexer->lookahead == '`') {
-                                skip(lexer);
-                                if (!skip_literal_rest(lexer, '`', 0)) {
-                                    return true;
-                                }
-                            } else {
-                                break;
-                            }
-                        }
-                        if (!skip_whitespace_and_comments(lexer, true)) {
-                            return true;
-                        }
-                        if (lexer->lookahead != '.' && lexer->lookahead != ':') {
-                            break;
-                        }
+                    while (is_identifier_part(lexer->lookahead)) {
                         skip(lexer);
                     }
-                    if (lexer->lookahead == '(' || lexer->lookahead == '[') {
-                        int32_t open = lexer->lookahead;
-                        skip(lexer);
-                        if (!skip_to_closing_bracket(lexer, open, open == '(' ? ')' : ']', 0) ||
-                            !skip_whitespace_and_comments(lexer, true)) {
+                    if (skip_whitespace_and_comments(lexer, true)) {
+                        char word[MAX_WORD_SIZE] = {0};
+                        skip_modifier_words(lexer, word, true);
+                        if (strncmp(word, "constructor", MAX_WORD_SIZE) == 0 &&
+                            skip_whitespace_and_comments(lexer, true) && lexer->lookahead != '(') {
                             return true;
                         }
                     }
-                    goto _switch;
+                    lexer->result_symbol = PRIMARY_CONSTRUCTOR_POSITION;
+                }
+                return true;
+            case '(':
+                if (!error_recovery && valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) {
+                    lexer->result_symbol = PRIMARY_CONSTRUCTOR_POSITION;
+                    lexer->mark_end(lexer);
                 }
                 return true;
 
