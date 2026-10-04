@@ -14,8 +14,9 @@ const PREC = {
   ADD: 10,
   MULTIPLY: 11,
   AS: 12,
-  CALL: 13,
-  UNARY: 14,
+  PREFIX: 13,
+  CALL: 14,
+  POSTFIX: 14,
 };
 
 // oxlint-disable-next-line unicorn/prefer-module -- This package is CommonJS, so tree-sitter loads grammar.js as CommonJS.
@@ -27,6 +28,7 @@ module.exports = grammar({
     [$.class_body, $.enum_class_body],
 
     [$.binary_expression, $.call_expression],
+    [$.unary_expression, $.binary_expression, $.call_expression],
     [$.binary_expression, $.in_expression, $.call_expression],
     [$.binary_expression, $.infix_expression, $.call_expression],
     [$.binary_expression, $.range_expression, $.call_expression],
@@ -637,12 +639,12 @@ module.exports = grammar({
       ),
 
     unary_expression: ($) =>
-      prec.left(
-        PREC.UNARY,
-        choice(
-          seq(field('operator', choice('++', '--', '+', '-', '!')), field('argument', $.expression)),
-          seq(field('argument', $.expression), field('operator', choice('++', '--', '!!')))
-        )
+      choice(
+        prec.right(
+          PREC.PREFIX,
+          seq(field('operator', choice('++', '--', '+', '-', '!')), field('argument', $.expression))
+        ),
+        prec.left(PREC.POSTFIX, seq(field('argument', $.expression), field('operator', choice('++', '--', '!!'))))
       ),
 
     annotated_expression: ($) => seq($.annotation, $.expression),
