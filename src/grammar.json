@@ -5106,7 +5106,12 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "STRING",
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_destructuring_type_start"
+                  },
+                  "named": false,
                   "value": ":"
                 },
                 {
@@ -7471,6 +7476,10 @@
     ]
   ],
   "externals": [
+    {
+      "type": "SYMBOL",
+      "name": "_destructuring_type_start"
+    },
     {
       "type": "SYMBOL",
       "name": "_semi"

@@ -8,6 +8,7 @@
 #include <wctype.h>
 
 enum TokenType {
+    DESTRUCTURING_TYPE_START,
     SEMI,
     CLASS_MEMBER_SEMI,
     SAME_LINE_MEMBER_END,
@@ -959,6 +960,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
     while (iswspace(lexer->lookahead)) {
         skip(lexer);
+    }
+
+    if (valid_symbols[DESTRUCTURING_TYPE_START] && !error_recovery && lexer->lookahead == ':') {
+        advance(lexer);
+        lexer->mark_end(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        lexer->result_symbol = DESTRUCTURING_TYPE_START;
+        return is_identifier_start(lexer->lookahead) || lexer->lookahead == '(' || lexer->lookahead == '@' ||
+               lexer->lookahead == '`';
     }
 
     // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing

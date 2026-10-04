@@ -22,3 +22,34 @@ test('groups a destructuring annotation with its complete lambda parameter', asy
     parser.delete();
   }
 });
+
+test('keeps declarations after an unfinished destructuring annotation', async () => {
+  await Parser.init();
+  const parser = new Parser();
+  const language = await Language.load('tree-sitter-kotlin.wasm');
+  parser.setLanguage(language);
+  const query = new Query(language, '(property_declaration) @property');
+  try {
+    for (const gap of ['', '\n']) {
+      const source = `fun f(list: List<Pair<Int, Int>>) {
+  val mapped = list.map { (a, b):${gap} }
+  val total = 1
+  println(total)
+}`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError).toBe(true);
+        expect(tree.rootNode.namedChildren.map((node) => node.type)).toEqual(['function_declaration']);
+        expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([
+          `val mapped = list.map { (a, b):${gap} }`,
+          'val total = 1',
+        ]);
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});

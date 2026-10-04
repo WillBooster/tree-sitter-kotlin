@@ -88,6 +88,7 @@ module.exports = grammar({
   extras: ($) => [/\s/, $.line_comment, $.block_comment],
 
   externals: ($) => [
+    $._destructuring_type_start,
     $._semi,
     $._class_member_semi,
     // Unlike properties, these declarations can end before another member on the same line.
@@ -736,7 +737,7 @@ module.exports = grammar({
       choice($.variable_declaration, alias($._destructuring_lambda_parameter, $.multi_variable_declaration)),
 
     _destructuring_lambda_parameter: ($) =>
-      seq($._multi_variable_declaration, optional(seq(':', field('type', $.type)))),
+      seq($._multi_variable_declaration, optional(seq(alias($._destructuring_type_start, ':'), field('type', $.type)))),
 
     anonymous_function: ($) =>
       prec.right(
