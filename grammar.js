@@ -88,6 +88,8 @@ module.exports = grammar({
   externals: ($) => [
     $._semi,
     $._class_member_semi,
+    // Unlike properties, these declarations can end before another member on the same line.
+    $._same_line_member_end,
     $.block_comment,
     // also lexed by the scanner, since the generated lexer stops at a NUL character
     $.line_comment,
@@ -211,7 +213,8 @@ module.exports = grammar({
           optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
           optional(seq(':', $.delegation_specifiers)),
           optional($.type_constraints),
-          optional(choice($.class_body, $.enum_class_body))
+          optional(choice($.class_body, $.enum_class_body)),
+          optional($._same_line_member_end)
         )
       ),
 
@@ -222,7 +225,8 @@ module.exports = grammar({
           'object',
           field('name', $.identifier),
           optional(seq(':', $.delegation_specifiers)),
-          optional($.class_body)
+          optional($.class_body),
+          optional($._same_line_member_end)
         )
       ),
 
@@ -253,10 +257,11 @@ module.exports = grammar({
         'object',
         optional(field('name', $.identifier)),
         optional(seq(':', $.delegation_specifiers)),
-        optional($.class_body)
+        optional($.class_body),
+        optional($._same_line_member_end)
       ),
 
-    anonymous_initializer: ($) => seq('init', $.block),
+    anonymous_initializer: ($) => seq('init', $.block, optional($._same_line_member_end)),
 
     secondary_constructor: ($) =>
       seq(
@@ -264,7 +269,8 @@ module.exports = grammar({
         'constructor',
         $.function_value_parameters,
         optional(seq(':', $.constructor_delegation_call)),
-        optional($.block)
+        optional($.block),
+        optional($._same_line_member_end)
       ),
 
     constructor_delegation_call: ($) => seq(choice('this', 'super'), $.value_arguments),
@@ -305,7 +311,8 @@ module.exports = grammar({
           $.function_value_parameters,
           optional(seq(':', $.type)),
           optional($.type_constraints),
-          optional($.function_body)
+          optional($.function_body),
+          optional($._same_line_member_end)
         )
       ),
 

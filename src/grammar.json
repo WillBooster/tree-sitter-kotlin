@@ -380,6 +380,18 @@
                 "type": "BLANK"
               }
             ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_same_line_member_end"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         ]
       }
@@ -441,6 +453,18 @@
               {
                 "type": "SYMBOL",
                 "name": "class_body"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_same_line_member_end"
               },
               {
                 "type": "BLANK"
@@ -771,6 +795,18 @@
               "type": "BLANK"
             }
           ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_same_line_member_end"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -784,6 +820,18 @@
         {
           "type": "SYMBOL",
           "name": "block"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_same_line_member_end"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -837,6 +885,18 @@
             {
               "type": "SYMBOL",
               "name": "block"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_same_line_member_end"
             },
             {
               "type": "BLANK"
@@ -1312,6 +1372,18 @@
               {
                 "type": "SYMBOL",
                 "name": "function_body"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_same_line_member_end"
               },
               {
                 "type": "BLANK"
@@ -7306,6 +7378,10 @@
     {
       "type": "SYMBOL",
       "name": "_class_member_semi"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_same_line_member_end"
     },
     {
       "type": "SYMBOL",
