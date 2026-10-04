@@ -653,19 +653,146 @@ test('retains annotation and accessor ranges beyond recovery lookahead', () => {
     );
     try {
       const annotation = `@A("${'x'.repeat(3000)}")`;
-      for (const accessor of ['get() = field', 'set(value) { field = value }']) {
-        const source = `annotation class A(val text: String)\nclass C { var x = 1\n${annotation}\n${accessor}\n}`;
+      for (const [initializer, accessor] of [
+        ['1', 'get() = field'],
+        ['foo()', 'get() = field'],
+        ['a + b', 'get() = field'],
+        ['foo()', 'private get() = field'],
+        ['1', 'set(value) { field = value }'],
+        ['foo()', 'set(value) { field = value }'],
+      ] as const) {
+        const source = `annotation class A(val text: String)\nclass C { var x = ${initializer}\n${annotation}\n${accessor}\n}`;
         const tree = parser.parse(source)!;
         try {
           expect(tree.rootNode.hasError).toBe(false);
           const captures = query.captures(tree.rootNode);
           const modifiers = captures.find(({ name }) => name === 'modifiers')!.node;
           const node = captures.find(({ name }) => name === 'accessor')!.node;
-          expect(modifiers.text).toBe(annotation);
+          expect(modifiers.text).toBe(`${annotation}${accessor.startsWith('private ') ? '\nprivate' : ''}`);
           expect(modifiers.startIndex).toBe(source.indexOf(annotation));
           expect(node.text).toBe(`${annotation}\n${accessor}`);
           expect(node.startIndex).toBe(modifiers.startIndex);
           expect(node.endIndex).toBe(source.indexOf(accessor) + accessor.length);
+        } finally {
+          tree.delete();
+        }
+      }
+    } finally {
+      query.delete();
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
+test('keeps long annotated members after an expression getter', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      '(getter (function_body) @body) (secondary_constructor (modifiers) @modifiers) @constructor (function_declaration name: (identifier) @function) (property_declaration (variable_declaration (identifier) @property))'
+    );
+    try {
+      const annotation = `@A("${'x'.repeat(3000)}")`;
+      for (const [declaration, expected] of [
+        ['constructor(x: Int): this()', ['value']],
+        ['fun z() = 1', ['value', 'z']],
+        ['val y = 2', ['value', 'y']],
+      ] as const) {
+        const source = `class C() { var value = 1\nget() = field\n${annotation}\n${declaration}\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          const captures = query.captures(tree.rootNode);
+          expect(captures.filter(({ name }) => name === 'body').map(({ node }) => node.text)).toEqual(['= field']);
+          expect(
+            captures.filter(({ name }) => name === 'function' || name === 'property').map(({ node }) => node.text)
+          ).toEqual(expected);
+          const member = tree.rootNode
+            .descendantsOfType(['secondary_constructor', 'function_declaration', 'property_declaration'])
+            .at(-1)!;
+          expect(member.text).toBe(`${annotation}\n${declaration}`);
+          expect(member.startIndex).toBe(source.indexOf(annotation));
+          expect(member.endIndex).toBe(source.indexOf(declaration) + declaration.length);
+        } finally {
+          tree.delete();
+        }
+      }
+    } finally {
+      query.delete();
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
+test('keeps annotated local calls and return or loop operands distinct', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      '(call_expression (expression) @callee) (getter) @accessor (setter) @accessor (annotated_expression) @annotated (return_expression) @return'
+    );
+    try {
+      for (const annotation of ['@A', `@A("${'x'.repeat(3000)}")`]) {
+        const source = `fun f() { val x=foo()\n${annotation} set(x) {} }`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          const captures = query.captures(tree.rootNode);
+          expect(captures.filter(({ name }) => name === 'accessor')).toHaveLength(0);
+          expect(captures.filter(({ name }) => name === 'callee').map(({ node }) => node.text)).toEqual(['foo', 'set']);
+          expect(captures.filter(({ name }) => name === 'annotated').map(({ node }) => node.text)).toEqual([
+            `${annotation} set(x) {}`,
+          ]);
+        } finally {
+          tree.delete();
+        }
+      }
+      for (const statement of ['return', 'return@f']) {
+        const source = `fun f() { ${statement}\n@A { x } }`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          const captures = query.captures(tree.rootNode);
+          expect(captures.filter(({ name }) => name === 'return').map(({ node }) => node.text)).toEqual([statement]);
+          expect(captures.filter(({ name }) => name === 'annotated').map(({ node }) => node.text)).toEqual([
+            '@A { x }',
+          ]);
+        } finally {
+          tree.delete();
+        }
+      }
+      for (const prefix of ['return', 'return@f', 'while (a)', 'for (i in l)']) {
+        const tree = parser.parse(`fun f() { ${prefix} @A x }`)!;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          expect(
+            query
+              .captures(tree.rootNode)
+              .filter(({ name }) => name === 'annotated')
+              .map(({ node }) => node.text)
+          ).toEqual(['@A x']);
+        } finally {
+          tree.delete();
+        }
+      }
+      for (const declaration of ['suspend fun z() = 3', 'private fun z() = 3', 'val z = 3', 'class Z']) {
+        const source = `val x=1\n@A private constructor\n${declaration}`;
+        const tree = parser.parse(source)!;
+        try {
+          const nodes = tree.rootNode.descendantsOfType([
+            'function_declaration',
+            'property_declaration',
+            'class_declaration',
+          ]);
+          const node = nodes.at(-1)!;
+          const name =
+            node.childForFieldName('name') ?? node.descendantsOfType('variable_declaration')[0]?.namedChildren[0];
+          expect(name!.text).toBe(declaration === 'class Z' ? 'Z' : 'z');
+          expect(name!.startIndex).toBe(source.lastIndexOf(name!.text));
+          if (declaration.includes('fun'))
+            expect(node.descendantsOfType('function_body').map((body) => body.text)).toEqual(['= 3']);
         } finally {
           tree.delete();
         }

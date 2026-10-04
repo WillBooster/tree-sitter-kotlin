@@ -44,6 +44,8 @@ enum TokenType {
     EXPRESSION_ANNOTATION_START,
     PROPERTY_ANNOTATION_POSITION,
     PROPERTY_ANNOTATION_SEPARATOR,
+    SUPER_LABEL_START,
+    ACCESSOR_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -295,7 +297,7 @@ static bool annotation_probe_eof(const TSLexer *lexer) {
     return probe->exhausted || probe->source->eof(probe->source);
 }
 
-static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_function);
+static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_declaration, bool *accessor);
 static bool scan_named_function_header(TSLexer *lexer);
 static bool skip_annotation_type_arguments(TSLexer *lexer);
 
@@ -310,12 +312,12 @@ static bool scan_expression_annotation_start(TSLexer *source, bool member) {
         .preserve_token_start = true,
     };
     bool lambda = false;
-    bool named_function = false;
-    scan_annotation_recovery_boundary(&probe.lexer, member, &lambda, &named_function);
-    return probe.exhausted || !named_function;
+    bool named_declaration = false;
+    scan_annotation_recovery_boundary(&probe.lexer, member, &lambda, &named_declaration, NULL);
+    return probe.exhausted || !named_declaration;
 }
 
-static bool annotation_requires_recovery_separator(TSLexer *source, bool member, bool *lambda, bool *exhausted) {
+static bool annotation_requires_recovery_separator(TSLexer *source, bool member, bool *lambda, bool *exhausted, bool *accessor) {
     AnnotationRecoveryProbe probe = {
         .lexer = {.lookahead = source->lookahead,
                   .advance = advance_annotation_probe,
@@ -324,13 +326,14 @@ static bool annotation_requires_recovery_separator(TSLexer *source, bool member,
         .remaining = ANNOTATION_RECOVERY_LOOKAHEAD,
     };
     TSLexer *lexer = &probe.lexer;
-    bool boundary = scan_annotation_recovery_boundary(lexer, member, lambda, NULL);
+    bool boundary = scan_annotation_recovery_boundary(lexer, member, lambda, NULL, accessor);
     *exhausted = probe.exhausted;
     return !probe.exhausted && (boundary || source->eof(source));
 }
 
-static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_function) {
+static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_declaration, bool *accessor) {
     char word[MAX_WORD_SIZE] = {0};
+    bool constructor_prefix = false;
     for (;;) {
         while (lexer->lookahead == '@') {
             skip(lexer);
@@ -376,18 +379,30 @@ static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool 
             memset(word, 0, MAX_WORD_SIZE);
             if (!skip_whitespace_and_comments(lexer, true)) return false;
         }
-        if (lexer->lookahead != '@') break;
+        if (lexer->lookahead == '@') continue;
+        if (constructor_prefix) {
+            if (strncmp(word, "fun", MAX_WORD_SIZE) == 0 &&
+                skip_whitespace_and_comments(lexer, true)) {
+                *named_declaration = scan_named_function_header(lexer);
+            } else {
+                *named_declaration = scan_words(lexer, DECLARATION_KEYWORDS, word, NULL);
+                if (*named_declaration && strncmp(word, "object", MAX_WORD_SIZE) == 0) {
+                    *named_declaration = skip_whitespace_and_comments(lexer, true) &&
+                        (is_identifier_start(lexer->lookahead) || lexer->lookahead == '`');
+                }
+            }
+            return true;
+        }
+        if (accessor) *accessor = strncmp(word, "get", MAX_WORD_SIZE) == 0 || strncmp(word, "set", MAX_WORD_SIZE) == 0;
+        if (member && strncmp(word, "constructor", MAX_WORD_SIZE) != 0)
+            return strncmp(word, "get", MAX_WORD_SIZE) != 0 && strncmp(word, "set", MAX_WORD_SIZE) != 0;
+        if (strncmp(word, "constructor", MAX_WORD_SIZE) != 0 ||
+            !skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == '(') return false;
+        if (!named_declaration) return true;
+        constructor_prefix = true;
+        memset(word, 0, MAX_WORD_SIZE);
     }
-    if (member && strncmp(word, "constructor", MAX_WORD_SIZE) != 0)
-        return strncmp(word, "get", MAX_WORD_SIZE) != 0 && strncmp(word, "set", MAX_WORD_SIZE) != 0;
-    if (strncmp(word, "constructor", MAX_WORD_SIZE) != 0 ||
-        !skip_whitespace_and_comments(lexer, true)) return false;
-    if (lexer->lookahead == '(') return false;
-    if (named_function && scan_word(lexer, "fun") && !is_identifier_part(lexer->lookahead) &&
-        skip_whitespace_and_comments(lexer, true)) {
-        *named_function = scan_named_function_header(lexer);
-    }
-    return true;
 }
 
 static bool scan_named_function_header(TSLexer *lexer) {
@@ -439,10 +454,6 @@ static bool skip_annotation_type_arguments(TSLexer *lexer) {
     return depth == 0 && skip_whitespace_and_comments(lexer, true);
 }
 
-// Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
-// a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
-// accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
-// such as `get("a") { … }` or an assignment such as `set = 1` on the next line from an accessor.
 static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     if (!skip_whitespace_and_comments(lexer, false)) {
         return false;
@@ -852,6 +863,18 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     scanner->boundary_flags = 0;
     bool after_short_template = scanner->after_short_template;
     scanner->after_short_template = 0;
+    if (!error_recovery && valid_symbols[ACCESSOR_POSITION] &&
+        (scanner->depth == 0 || !in_statements(scanner))) {
+        lexer->mark_end(lexer);
+        lexer->result_symbol = ACCESSOR_POSITION;
+        return true;
+    }
+    if (!error_recovery && valid_symbols[SUPER_LABEL_START] && lexer->lookahead == '@') {
+        advance(lexer);
+        lexer->mark_end(lexer);
+        lexer->result_symbol = SUPER_LABEL_START;
+        return true;
+    }
     if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
         lexer->mark_end(lexer);
         lexer->result_symbol = TOP_LEVEL_STATEMENT_END;
@@ -990,6 +1013,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
 
         if (!saw_newline) {
+            if (!error_recovery && valid_symbols[EXPRESSION_ANNOTATION_START] && lexer->lookahead == '@') {
+                if (!scan_expression_annotation_start(lexer, scanner->depth > 0 && !in_statements(scanner))) return false;
+                lexer->result_symbol = EXPRESSION_ANNOTATION_START;
+                return true;
+            }
             switch (lexer->lookahead) {
                 case '!':
                     skip(lexer);
@@ -1174,13 +1202,14 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     }
                     bool lambda = false;
                     bool exhausted = false;
-                    if (annotation_requires_recovery_separator(lexer, scanner->depth > 0 && !in_statements(scanner), &lambda, &exhausted)) {
+                    bool accessor = false;
+                    if (annotation_requires_recovery_separator(lexer, scanner->depth > 0 && !in_statements(scanner), &lambda, &exhausted, &accessor)) {
                         return true;
                     }
-                    if (lambda && (valid_symbols[GET] || valid_symbols[SET])) {
-                        return false;
+                    if (valid_symbols[SEMI] && in_statements(scanner) && accessor && !exhausted) {
+                        return true;
                     }
-                    lexer->result_symbol = exhausted && valid_symbols[PROPERTY_ANNOTATION_POSITION] &&
+                    lexer->result_symbol = (exhausted || lambda) && valid_symbols[PROPERTY_ANNOTATION_POSITION] &&
                         (valid_symbols[GET] || valid_symbols[SET]) ? PROPERTY_ANNOTATION_POSITION : PRIMARY_CONSTRUCTOR_POSITION;
                     if (lexer->result_symbol == PROPERTY_ANNOTATION_POSITION) {
                         scanner->boundary_flags = PROPERTY_ANNOTATION_BOUNDARY;

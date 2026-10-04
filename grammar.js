@@ -26,6 +26,7 @@ module.exports = grammar({
   conflicts: ($) => [
     [$._accessor_modifiers, $.annotated_lambda],
     [$.call_expression, $.if_expression],
+    [$.function_body, $.call_expression],
     [$.call_expression, $.return_expression],
     [$.property_declaration, $.navigation_expression],
     [$.property_declaration, $.unary_expression],
@@ -147,6 +148,8 @@ module.exports = grammar({
     $._expression_annotation_start,
     $._property_annotation_position,
     $._property_annotation_separator,
+    $._super_label_start,
+    $._accessor_position,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -216,14 +219,16 @@ module.exports = grammar({
         $._semi,
         $._primary_constructor_position,
         $._property_annotation_position,
-        $._property_annotation_separator
+        $._property_annotation_separator,
+        prec(PREC.CALL, seq($._property_annotation_position, $._property_annotation_separator))
       ),
     _member_semi: ($) =>
       choice(
         $._class_member_semi,
         $._primary_constructor_position,
         $._property_annotation_position,
-        $._property_annotation_separator
+        $._property_annotation_separator,
+        prec(PREC.CALL, seq($._property_annotation_position, $._property_annotation_separator))
       ),
 
     file_annotation: ($) =>
@@ -406,6 +411,7 @@ module.exports = grammar({
         seq(
           optional(alias($._accessor_modifiers, $.modifiers)),
           'get',
+          $._accessor_position,
           optional(seq('(', ')', optional(seq(':', $.type)), $.function_body))
         )
       ),
@@ -416,6 +422,7 @@ module.exports = grammar({
         seq(
           optional(alias($._accessor_modifiers, $.modifiers)),
           'set',
+          $._accessor_position,
           optional(
             seq(
               '(',
@@ -432,7 +439,7 @@ module.exports = grammar({
         )
       ),
 
-    function_body: ($) => choice($.block, seq('=', $.expression)),
+    function_body: ($) => choice($.block, withPropertyAnnotationBoundary($, seq('=', $.expression))),
 
     block: ($) => seq('{', $._open_statements, optional($._statements), '}', $._close_braces),
 
@@ -833,7 +840,7 @@ module.exports = grammar({
           'super',
           seq('super', '<', $.type, '>'),
           seq('super@', $.identifier),
-          seq('super', '<', $.type, '>', token.immediate('@'), $.identifier)
+          seq('super', '<', $.type, '>', alias($._super_label_start, '@'), $.identifier)
         )
       ),
 
@@ -1202,6 +1209,7 @@ function accessorRule($, accessor) {
     optional(
       choice(
         $._primary_constructor_position,
+        $._property_annotation_separator,
         seq(prec(PREC.CALL, $._property_annotation_position), $._property_annotation_separator)
       )
     ),

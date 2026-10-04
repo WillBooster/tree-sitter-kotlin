@@ -84,6 +84,23 @@
         {
           "type": "SYMBOL",
           "name": "_property_annotation_separator"
+        },
+        {
+          "type": "PREC",
+          "value": 14,
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_property_annotation_position"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_property_annotation_separator"
+              }
+            ]
+          }
         }
       ]
     },
@@ -105,6 +122,23 @@
         {
           "type": "SYMBOL",
           "name": "_property_annotation_separator"
+        },
+        {
+          "type": "PREC",
+          "value": 14,
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_property_annotation_position"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_property_annotation_separator"
+              }
+            ]
+          }
         }
       ]
     },
@@ -700,6 +734,10 @@
                                     "name": "_primary_constructor_position"
                                   },
                                   {
+                                    "type": "SYMBOL",
+                                    "name": "_property_annotation_separator"
+                                  },
+                                  {
                                     "type": "SEQ",
                                     "members": [
                                       {
@@ -744,6 +782,10 @@
                                       {
                                         "type": "SYMBOL",
                                         "name": "_primary_constructor_position"
+                                      },
+                                      {
+                                        "type": "SYMBOL",
+                                        "name": "_property_annotation_separator"
                                       },
                                       {
                                         "type": "SEQ",
@@ -799,6 +841,10 @@
                                     "name": "_primary_constructor_position"
                                   },
                                   {
+                                    "type": "SYMBOL",
+                                    "name": "_property_annotation_separator"
+                                  },
+                                  {
                                     "type": "SEQ",
                                     "members": [
                                       {
@@ -843,6 +889,10 @@
                                       {
                                         "type": "SYMBOL",
                                         "name": "_primary_constructor_position"
+                                      },
+                                      {
+                                        "type": "SYMBOL",
+                                        "name": "_property_annotation_separator"
                                       },
                                       {
                                         "type": "SEQ",
@@ -2019,6 +2069,10 @@
             "value": "get"
           },
           {
+            "type": "SYMBOL",
+            "name": "_accessor_position"
+          },
+          {
             "type": "CHOICE",
             "members": [
               {
@@ -2093,6 +2147,10 @@
           {
             "type": "STRING",
             "value": "set"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_accessor_position"
           },
           {
             "type": "CHOICE",
@@ -2221,15 +2279,50 @@
           "name": "block"
         },
         {
-          "type": "SEQ",
+          "type": "CHOICE",
           "members": [
             {
-              "type": "STRING",
-              "value": "="
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "="
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "expression"
+                }
+              ]
             },
             {
-              "type": "SYMBOL",
-              "name": "expression"
+              "type": "PREC_DYNAMIC",
+              "value": -1,
+              "content": {
+                "type": "PREC",
+                "value": 14,
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "STRING",
+                          "value": "="
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "expression"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_property_annotation_position"
+                    }
+                  ]
+                }
+              }
             }
           ]
         }
@@ -6994,11 +7087,13 @@
                 "value": ">"
               },
               {
-                "type": "IMMEDIATE_TOKEN",
+                "type": "ALIAS",
                 "content": {
-                  "type": "STRING",
-                  "value": "@"
-                }
+                  "type": "SYMBOL",
+                  "name": "_super_label_start"
+                },
+                "named": false,
+                "value": "@"
               },
               {
                 "type": "SYMBOL",
@@ -9221,6 +9316,10 @@
       "if_expression"
     ],
     [
+      "function_body",
+      "call_expression"
+    ],
+    [
       "call_expression",
       "return_expression"
     ],
@@ -9640,6 +9739,14 @@
     {
       "type": "SYMBOL",
       "name": "_property_annotation_separator"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_super_label_start"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_accessor_position"
     }
   ],
   "inline": [
