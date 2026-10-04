@@ -7410,6 +7410,10 @@
     {
       "type": "SYMBOL",
       "name": "_keyword_reference_end"
+    },
+    {
+      "type": "STRING",
+      "value": "where"
     }
   ],
   "inline": [
