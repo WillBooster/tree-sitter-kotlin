@@ -315,6 +315,24 @@ static bool scan_template_keyword(TSLexer *lexer) {
     return false;
 }
 
+static bool can_start_destructuring_type(TSLexer *lexer) {
+    if (!is_identifier_start(lexer->lookahead)) {
+        return lexer->lookahead == '(' || lexer->lookahead == '@' || lexer->lookahead == '`';
+    }
+    char word[MAX_WORD_SIZE] = {0};
+    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_identifier_part(lexer->lookahead); i++) {
+        if (lexer->lookahead > 0x7f) return true;
+        word[i] = (char)lexer->lookahead;
+        advance(lexer);
+    }
+    if (is_identifier_part(lexer->lookahead)) return true;
+    if (strcmp(word, "this") == 0) return false;
+    for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
+        if (strcmp(word, TEMPLATE_KEYWORDS[i]) == 0) return false;
+    }
+    return true;
+}
+
 // Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
 #define MAX_FRAMES 256
 
@@ -967,8 +985,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->mark_end(lexer);
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         lexer->result_symbol = DESTRUCTURING_TYPE_START;
-        return is_identifier_start(lexer->lookahead) || lexer->lookahead == '(' || lexer->lookahead == '@' ||
-               lexer->lookahead == '`';
+        return can_start_destructuring_type(lexer);
     }
 
     // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing

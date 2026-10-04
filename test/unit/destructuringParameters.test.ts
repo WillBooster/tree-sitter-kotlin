@@ -53,3 +53,35 @@ test('keeps declarations after an unfinished destructuring annotation', async ()
     parser.delete();
   }
 });
+
+test('keeps statements after an unfinished destructuring annotation before hard keywords', async () => {
+  await Parser.init();
+  const parser = new Parser();
+  parser.setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
+  try {
+    for (const [statement, kind] of [
+      ['val inner = 1', 'property_declaration'],
+      ['return', 'return_expression'],
+      ['if (x > 1) println(x)', 'if_expression'],
+    ]) {
+      for (const gap of [' ', '\n']) {
+        const source = `fun f() { list.map { (a, b):${gap}${statement} }\n val after = 2\n println(after)\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.namedChildren.map((node) => node.type)).toEqual(['function_declaration']);
+          expect(tree.rootNode.descendantsOfType(kind!).some((node) => node.text === statement)).toBe(true);
+          expect(
+            tree.rootNode.descendantsOfType('property_declaration').some((node) => node.text === 'val after = 2')
+          ).toBe(true);
+          expect(
+            tree.rootNode.descendantsOfType('call_expression').some((node) => node.text === 'println(after)')
+          ).toBe(true);
+        } finally {
+          tree.delete();
+        }
+      }
+    }
+  } finally {
+    parser.delete();
+  }
+});
