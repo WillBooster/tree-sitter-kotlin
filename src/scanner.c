@@ -315,6 +315,24 @@ static bool scan_template_keyword(TSLexer *lexer) {
     return false;
 }
 
+static bool can_start_destructuring_type(TSLexer *lexer);
+
+static bool has_destructuring_parameter_arrow(TSLexer *lexer) {
+    if (!can_start_destructuring_type(lexer)) return false;
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == '{' || c == '}' || c == ')' || c == ']' || c == ';' || c == '=' || c == '"' || c == '\'') return false;
+        if (lexer->eof(lexer)) return false;
+        skip(lexer);
+        if (c == '-' && lexer->lookahead == '>') return true;
+        if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+        if (c == '[' && !skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        if (c == '`' && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
+}
+
 static bool can_start_destructuring_type(TSLexer *lexer) {
     if (!is_identifier_start(lexer->lookahead)) {
         return lexer->lookahead == '(' || lexer->lookahead == '@' || lexer->lookahead == '`';
@@ -985,7 +1003,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->mark_end(lexer);
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         lexer->result_symbol = DESTRUCTURING_TYPE_START;
-        return can_start_destructuring_type(lexer);
+        return has_destructuring_parameter_arrow(lexer);
     }
 
     // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing

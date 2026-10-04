@@ -54,7 +54,7 @@ test('keeps declarations after an unfinished destructuring annotation', async ()
   }
 });
 
-test('keeps statements after an unfinished destructuring annotation before hard keywords', async () => {
+test('keeps statements after an unfinished destructuring annotation before subsequent statements', async () => {
   await Parser.init();
   const parser = new Parser();
   parser.setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
@@ -63,6 +63,9 @@ test('keeps statements after an unfinished destructuring annotation before hard 
       ['val inner = 1', 'property_declaration'],
       ['return', 'return_expression'],
       ['if (x > 1) println(x)', 'if_expression'],
+      ['println(a)', 'call_expression'],
+      ['xs.map { y -> y }', 'call_expression'],
+      ['println("->")', 'call_expression'],
     ]) {
       for (const gap of [' ', '\n']) {
         const source = `fun f() { list.map { (a, b):${gap}${statement} }\n val after = 2\n println(after)\n}`;
