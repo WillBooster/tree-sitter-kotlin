@@ -8,6 +8,7 @@
 #include <wctype.h>
 
 enum TokenType {
+    DESTRUCTURING_TYPE_START,
     SEMI,
     CLASS_MEMBER_SEMI,
     SAME_LINE_MEMBER_END,
@@ -312,6 +313,77 @@ static bool scan_template_keyword(TSLexer *lexer) {
         }
     }
     return false;
+}
+
+typedef struct {
+    TSLexer lexer;
+    TSLexer *source;
+    unsigned remaining;
+} TypeLookahead;
+
+static void advance_type_lookahead(TSLexer *lexer, bool skip);
+static bool type_lookahead_eof(const TSLexer *lexer);
+static bool scan_destructuring_parameter_arrow(TSLexer *lexer);
+static bool can_start_destructuring_type(TSLexer *lexer);
+
+static bool has_destructuring_parameter_arrow(TSLexer *lexer) {
+    TypeLookahead lookahead = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
+        .source = lexer,
+        .remaining = 4096,
+    };
+    bool found = scan_destructuring_parameter_arrow(&lookahead.lexer);
+    // Repeated unfinished annotations must not rescan the rest of the file. At the budget, let the grammar decide
+    // instead of imposing a maximum length on valid types, comments or annotation arguments.
+    return found || lookahead.remaining == 0;
+}
+
+static void advance_type_lookahead(TSLexer *lexer, bool skip) {
+    TypeLookahead *lookahead = (TypeLookahead *)lexer;
+    if (lookahead->remaining > 0) {
+        lookahead->source->advance(lookahead->source, skip);
+        lookahead->remaining--;
+    }
+    lexer->lookahead = lookahead->remaining > 0 ? lookahead->source->lookahead : 0;
+}
+
+static bool type_lookahead_eof(const TSLexer *lexer) {
+    const TypeLookahead *lookahead = (const TypeLookahead *)lexer;
+    return lookahead->remaining == 0 || lookahead->source->eof(lookahead->source);
+}
+
+static bool scan_destructuring_parameter_arrow(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || !can_start_destructuring_type(lexer)) return false;
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == '{' || c == '}' || c == ')' || c == ']' || c == ';' || c == '=' || c == '"' || c == '\'') return false;
+        if (lexer->eof(lexer)) return false;
+        skip(lexer);
+        if (c == '-' && lexer->lookahead == '>') return true;
+        if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+        if (c == '[' && !skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        if (c == '`' && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
+}
+
+static bool can_start_destructuring_type(TSLexer *lexer) {
+    if (!is_identifier_start(lexer->lookahead)) {
+        return lexer->lookahead == '(' || lexer->lookahead == '@' || lexer->lookahead == '`';
+    }
+    char word[MAX_WORD_SIZE] = {0};
+    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_identifier_part(lexer->lookahead); i++) {
+        if (lexer->lookahead > 0x7f) return true;
+        word[i] = (char)lexer->lookahead;
+        advance(lexer);
+    }
+    if (is_identifier_part(lexer->lookahead)) return true;
+    if (strcmp(word, "this") == 0) return false;
+    for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
+        if (strcmp(word, TEMPLATE_KEYWORDS[i]) == 0) return false;
+    }
+    return true;
 }
 
 // Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
@@ -959,6 +1031,13 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
     while (iswspace(lexer->lookahead)) {
         skip(lexer);
+    }
+
+    if (valid_symbols[DESTRUCTURING_TYPE_START] && !error_recovery && lexer->lookahead == ':') {
+        advance(lexer);
+        lexer->mark_end(lexer);
+        lexer->result_symbol = DESTRUCTURING_TYPE_START;
+        return has_destructuring_parameter_arrow(lexer);
     }
 
     // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing
