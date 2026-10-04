@@ -83,3 +83,18 @@ test('keeps contextual infix calls inside property initializers', () => {
     }
   }
 });
+
+test('keeps nested primary constructors attached to their class header', () => {
+  for (const modifier of ['', 'private ', '@Ann ']) {
+    const member = `class Nested ${modifier}constructor(val x: Int) { companion object {} }`;
+    const tree = parser.parse(`class Outer { ${member} }`)!;
+    try {
+      expect(tree.rootNode.hasError, member).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([member, 'companion object {}']);
+      expect(tree.rootNode.descendantsOfType('primary_constructor')).toHaveLength(1);
+      expect(tree.rootNode.descendantsOfType('secondary_constructor')).toHaveLength(0);
+    } finally {
+      tree.delete();
+    }
+  }
+});
