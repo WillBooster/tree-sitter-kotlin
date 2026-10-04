@@ -1602,10 +1602,6 @@
           "named": true
         },
         {
-          "type": "type",
-          "named": true
-        },
-        {
           "type": "variable_declaration",
           "named": true
         }
@@ -1671,7 +1667,18 @@
   {
     "type": "multi_variable_declaration",
     "named": true,
-    "fields": {},
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,

@@ -59,7 +59,7 @@ module.exports = grammar({
 
     [$.function_value_parameters, $.function_type_parameters],
     [$.parenthesized_type, $.function_type_parameters],
-    [$.multi_variable_declaration, $.function_type_parameters],
+    [$._multi_variable_declaration, $.function_type_parameters],
 
     [$.class_modifier, $._reserved_identifier],
     [$.platform_modifier, $._reserved_identifier],
@@ -344,7 +344,9 @@ module.exports = grammar({
 
     variable_declaration: ($) => prec(1, seq(repeat($.annotation), $._identifier, optional(seq(':', $.type)))),
 
-    multi_variable_declaration: ($) => seq('(', optionalCommaSep1($.variable_declaration), ')'),
+    multi_variable_declaration: ($) => $._multi_variable_declaration,
+
+    _multi_variable_declaration: ($) => seq('(', optionalCommaSep1($.variable_declaration), ')'),
 
     property_delegate: ($) => seq('by', $.expression),
 
@@ -729,7 +731,10 @@ module.exports = grammar({
     lambda_parameters: ($) => seq(commaSep1($._lambda_parameter), optional(',')),
 
     _lambda_parameter: ($) =>
-      choice($.variable_declaration, seq($.multi_variable_declaration, optional(seq(':', $.type)))),
+      choice($.variable_declaration, alias($._destructuring_lambda_parameter, $.multi_variable_declaration)),
+
+    _destructuring_lambda_parameter: ($) =>
+      seq($._multi_variable_declaration, optional(seq(':', field('type', $.type)))),
 
     anonymous_function: ($) =>
       prec.right(

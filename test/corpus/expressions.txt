@@ -1673,16 +1673,16 @@ fun ordinary(values: List<Pair<Int, Int>>): List<Int> = values.map { (a, b) -> a
                 (variable_declaration
                   (identifier))
                 (variable_declaration
-                  (identifier)))
-              (user_type
-                (identifier)
-                (type_arguments
-                  (type_projection
-                    (user_type
-                      (identifier)))
-                  (type_projection
-                    (user_type
-                      (identifier))))))
+                  (identifier))
+                (user_type
+                  (identifier)
+                  (type_arguments
+                    (type_projection
+                      (user_type
+                        (identifier)))
+                    (type_projection
+                      (user_type
+                        (identifier)))))))
             (binary_expression
               (identifier)
               (identifier)))))))
