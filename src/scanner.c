@@ -876,7 +876,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 goto keywords;
             }
         }
-    _switch:
         switch (lexer->lookahead) {
             case ',':
             case '.':
