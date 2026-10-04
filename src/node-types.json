@@ -688,19 +688,7 @@
       "required": false,
       "types": [
         {
-          "type": "class_declaration",
-          "named": true
-        },
-        {
           "type": "class_member_declaration",
-          "named": true
-        },
-        {
-          "type": "function_declaration",
-          "named": true
-        },
-        {
-          "type": "object_declaration",
           "named": true
         }
       ]
@@ -1036,23 +1024,11 @@
       "required": false,
       "types": [
         {
-          "type": "class_declaration",
-          "named": true
-        },
-        {
           "type": "class_member_declaration",
           "named": true
         },
         {
           "type": "enum_entry",
-          "named": true
-        },
-        {
-          "type": "function_declaration",
-          "named": true
-        },
-        {
-          "type": "object_declaration",
           "named": true
         }
       ]

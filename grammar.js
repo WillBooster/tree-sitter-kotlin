@@ -128,6 +128,8 @@ module.exports = grammar({
     $._keyword_reference,
     // never scanned: see `_template_name`
     $._keyword_reference_end,
+    $._separated_member_start,
+    $._unseparated_member_start,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -208,6 +210,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           choice('class', seq(optional('fun'), 'interface')),
+          optional($._unseparated_member_start),
           field('name', $.identifier),
           optional($.type_parameters),
           optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
@@ -222,6 +225,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'object',
+          optional($._unseparated_member_start),
           field('name', $.identifier),
           optional(seq(':', $.delegation_specifiers)),
           optional($.class_body)
@@ -233,6 +237,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           choice('val', 'var'),
+          optional($._separated_member_start),
           optional($.type_parameters),
           optional(seq($._receiver_type, optional('.'))),
           choice($.variable_declaration, $.multi_variable_declaration),
@@ -245,7 +250,15 @@ module.exports = grammar({
 
     type_alias: ($) =>
       prec.right(
-        seq(optional($.modifiers), 'typealias', field('type', $.identifier), optional($.type_parameters), '=', $.type)
+        seq(
+          optional($.modifiers),
+          'typealias',
+          optional($._separated_member_start),
+          field('type', $.identifier),
+          optional($.type_parameters),
+          '=',
+          $.type
+        )
       ),
 
     companion_object: ($) =>
@@ -253,17 +266,19 @@ module.exports = grammar({
         optional($.modifiers),
         'companion',
         'object',
+        optional($._unseparated_member_start),
         optional(field('name', $.identifier)),
         optional(seq(':', $.delegation_specifiers)),
         optional($.class_body)
       ),
 
-    anonymous_initializer: ($) => seq('init', $.block),
+    anonymous_initializer: ($) => seq('init', optional($._unseparated_member_start), $.block),
 
     secondary_constructor: ($) =>
       seq(
         optional($.modifiers),
         'constructor',
+        optional($._unseparated_member_start),
         $.function_value_parameters,
         optional(seq(':', $.constructor_delegation_call)),
         optional($.block)
@@ -301,6 +316,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'fun',
+          optional($._unseparated_member_start),
           optional($.type_parameters),
           optional(seq($._receiver_type, optional('.'))),
           field('name', $._identifier),
@@ -410,21 +426,7 @@ module.exports = grammar({
     class_body: ($) => seq('{', $._open_members, repeat($._class_member_with_separator), '}', $._close_braces),
 
     _class_member_with_separator: ($) =>
-      choice(
-        seq($.class_member_declaration, $._class_member_semi),
-        seq(
-          choice(
-            $.class_declaration,
-            $.object_declaration,
-            $.function_declaration,
-            $.companion_object,
-            $.anonymous_initializer,
-            $.secondary_constructor
-          ),
-          $._same_line_member_end,
-          $._class_member_semi
-        )
-      ),
+      seq($.class_member_declaration, optional($._same_line_member_end), $._class_member_semi),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
