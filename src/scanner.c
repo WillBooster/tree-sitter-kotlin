@@ -768,7 +768,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         if (iswalpha(lexer->lookahead)) {
             char scanned_word[16] = {0};
             skip_modifier_words(lexer, scanned_word, true);
-            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
+            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL) ||
+                strcmp(scanned_word, "init") == 0 || strcmp(scanned_word, "constructor") == 0 ||
+                strcmp(scanned_word, "companion") == 0) {
                 scanner->same_line_member_end = 1;
                 lexer->result_symbol = SAME_LINE_MEMBER_END;
                 return true;

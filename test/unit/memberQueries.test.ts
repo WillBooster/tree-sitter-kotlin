@@ -46,3 +46,40 @@ test('requires a separator after properties even when nested bodies contain adja
     }
   }
 });
+
+test('preserves adjacent contextual members and their query captures', () => {
+  for (const members of [
+    ['init {}', 'init {}', 'fun f() {}'],
+    ['constructor() {}', 'constructor(x: Int) {}', 'fun f() {}'],
+    ['fun f() {}', 'companion object {}'],
+    ['fun f() {}', 'private constructor() {}'],
+  ]) {
+    for (const separator of [' ', ' /* boundary */ ', '\n', '; ']) {
+      const source = `class C { ${members.join(separator)} }`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(false);
+        expect(
+          query.captures(tree.rootNode).map(({ node }) => node.text),
+          source
+        ).toEqual(members);
+      } finally {
+        tree.delete();
+      }
+    }
+  }
+});
+
+test('keeps contextual infix calls inside property initializers', () => {
+  for (const expression of ['1 init {}', '1 companion object {}']) {
+    const source = `class C { val x = ${expression} }`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.type)).toEqual(['property_declaration']);
+      expect(tree.rootNode.descendantsOfType('infix_expression').map((node) => node.text)).toEqual([expression]);
+    } finally {
+      tree.delete();
+    }
+  }
+});
