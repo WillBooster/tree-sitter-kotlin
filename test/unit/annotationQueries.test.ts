@@ -10,6 +10,8 @@ const incompleteHeaders = [
   'class Foo\n@A(run { class Local; 1 }) constructor',
   'class Foo\n@A\ninternal constructor',
   'class Foo\n@A private constructor\nval x = 1',
+  'class Foo\n@A private /* comment */ constructor',
+  'class Foo\n@A private // comment\n constructor',
   'class Foo\n@A(1)\ninternal constructor',
   'class Foo\n@A(run { class Local; 1 }) private constructor',
   'class Foo\n@Foo<Int> internal constructor',
@@ -186,6 +188,77 @@ test('keeps completed declarations queryable before trailing annotations', () =>
         completed?.delete();
         fresh?.delete();
       }
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
+test('keeps spaced annotation arguments before annotated parenthesized expressions', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      '(annotation (constructor_invocation (value_arguments) @arguments)) @annotation (annotated_expression (call_expression) @call)'
+    );
+    try {
+      for (const spacing of [' ', '\n', ' /* comment */ ', ' // comment\n']) {
+        const annotation = `@Suppress${spacing}("UNUSED_EXPRESSION")`;
+        const source = `class B { fun c() {} }\nfun f(b: B) {\nval x = 1\n${annotation} (b).c()\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError, source).toBe(false);
+          expect(query.captures(tree.rootNode).map(({ name, node }) => ({ name, text: node.text }))).toEqual([
+            { name: 'annotation', text: annotation },
+            { name: 'arguments', text: '("UNUSED_EXPRESSION")' },
+            { name: 'call', text: '(b).c()' },
+          ]);
+        } finally {
+          tree.delete();
+        }
+      }
+    } finally {
+      query.delete();
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
+test('keeps surrounding class members queryable while an annotated member is unfinished', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      '(class_body (property_declaration) @property) (class_body (function_declaration name: (identifier) @function))'
+    );
+    try {
+      for (const annotation of ['@A', '@A(1)', '@A(', '@Inject\nlateinit', '@Deprecated("x")\nfu']) {
+        const source = `class C {\nval x = 1\n${annotation}\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(
+            query.captures(tree.rootNode).map(({ node }) => node.text),
+            source
+          ).toEqual(['val x = 1']);
+        } finally {
+          tree.delete();
+        }
+      }
+      const source = `class C {\nfun a() {}\nval b = 2\nprivate val x: Int = compute()\n@Deprecated("x")\nfu\nfun z() = 3\n}`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(query.captures(tree.rootNode).map(({ name, node }) => ({ name, text: node.text }))).toEqual([
+          { name: 'function', text: 'a' },
+          { name: 'property', text: 'val b = 2' },
+          { name: 'property', text: 'private val x: Int = compute()' },
+          { name: 'function', text: 'z' },
+        ]);
+      } finally {
+        tree.delete();
+      }
+    } finally {
+      query.delete();
     }
   } finally {
     parser.delete();

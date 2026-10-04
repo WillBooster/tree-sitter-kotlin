@@ -3070,6 +3070,10 @@
       "type": "CHOICE",
       "members": [
         {
+          "type": "SYMBOL",
+          "name": "constructor_invocation"
+        },
+        {
           "type": "ALIAS",
           "content": {
             "type": "SYMBOL",
@@ -3101,16 +3105,8 @@
           "name": "type"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_primary_constructor_position"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "_primary_constructor_position"
         },
         {
           "type": "SYMBOL",
@@ -7443,6 +7439,10 @@
     ],
     [
       "qualified_identifier"
+    ],
+    [
+      "constructor_invocation",
+      "_unescaped_annotation"
     ],
     [
       "_spaced_annotation_invocation",

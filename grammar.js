@@ -80,6 +80,7 @@ module.exports = grammar({
     [$.secondary_constructor, $._reserved_identifier],
     [$.enum_entry, $.modifiers],
     [$.qualified_identifier],
+    [$.constructor_invocation, $._unescaped_annotation],
     [$._spaced_annotation_invocation, $._unescaped_annotation],
     [$.nullable_type],
     [$.non_nullable_type],
@@ -106,7 +107,7 @@ module.exports = grammar({
     $._multi_dollar_string_content,
     $._multi_dollar_interpolation_start,
     $._multi_dollar_string_end,
-    // used to check if a preceding annoation should not have an automatic _semi inserted
+    // Retained for compatibility with the existing external-token ordering.
     'constructor',
     'get',
     'set',
@@ -537,12 +538,13 @@ module.exports = grammar({
     // depends on the context, so both readings remain.
     _unescaped_annotation: ($) =>
       choice(
+        $.constructor_invocation,
         alias($._spaced_annotation_invocation, $.constructor_invocation),
         alias($._annotation_invocation, $.constructor_invocation),
         $.type
       ),
 
-    _spaced_annotation_invocation: ($) => seq($.type, optional($._primary_constructor_position), $.value_arguments),
+    _spaced_annotation_invocation: ($) => seq($.type, $._primary_constructor_position, $.value_arguments),
 
     _annotation_invocation: ($) => seq($.type, alias($._annotation_arguments, $.value_arguments)),
 
