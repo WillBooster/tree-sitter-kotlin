@@ -877,10 +877,7 @@ module.exports = grammar({
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) =>
-      withPropertyAnnotationBoundary(
-        $,
-        seq('when', optional($.when_subject), '{', $._open_statements, repeat($.when_entry), '}', $._close_braces)
-      ),
+      seq('when', optional($.when_subject), '{', $._open_statements, repeat($.when_entry), '}', $._close_braces),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),
@@ -901,10 +898,7 @@ module.exports = grammar({
     type_test: ($) => seq(choice('is', alias($._not_is, '!is')), $.type),
 
     try_expression: ($) =>
-      withPropertyAnnotationBoundary(
-        $,
-        seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block))
-      ),
+      seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block)),
 
     catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
 

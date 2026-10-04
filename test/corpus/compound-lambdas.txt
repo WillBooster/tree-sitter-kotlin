@@ -1,0 +1,82 @@
+========================================
+Annotated trailing lambdas after compound initializers
+========================================
+class WhenHolder {
+ val x = when(a) { else -> b }
+ @A
+ { b() }
+}
+class TryHolder {
+ val x = try { a } finally { b }
+ @A
+ { b() }
+}
+class CallHolder {
+ val x = f(1)
+ @A
+ { b() }
+}
+
+----------------------------------------
+
+(source_file
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (call_expression
+          (when_expression
+            (when_subject
+              (identifier))
+            (when_entry
+              (identifier)))
+          (annotated_lambda
+            (annotation
+              (user_type
+                (identifier)))
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments))))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (call_expression
+          (try_expression
+            (block
+              (identifier))
+            (finally_block
+              (block
+                (identifier))))
+          (annotated_lambda
+            (annotation
+              (user_type
+                (identifier)))
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments))))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (number_literal)))
+          (annotated_lambda
+            (annotation
+              (user_type
+                (identifier)))
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments)))))))))

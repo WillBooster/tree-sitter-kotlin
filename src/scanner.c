@@ -300,6 +300,7 @@ static bool annotation_probe_eof(const TSLexer *lexer) {
 static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda, bool *named_declaration, bool *accessor);
 static bool scan_named_function_header(TSLexer *lexer);
 static bool skip_annotation_type_arguments(TSLexer *lexer);
+static bool skip_annotation_prefix(TSLexer *lexer);
 
 static bool scan_expression_annotation_start(TSLexer *source, bool member) {
     advance(source);
@@ -336,48 +337,23 @@ static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool 
     bool constructor_prefix = false;
     for (;;) {
         while (lexer->lookahead == '@') {
-            skip(lexer);
-            if (!skip_whitespace_and_comments(lexer, true)) return false;
-            if (lexer->lookahead == '[') {
-                skip(lexer);
-                if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
-            } else {
-                for (;;) {
-                    if (lexer->lookahead == '`') {
-                        skip(lexer);
-                        if (!skip_literal_rest(lexer, '`', 0)) return false;
-                    } else {
-                        if (!is_identifier_start(lexer->lookahead)) return false;
-                        while (is_identifier_part(lexer->lookahead)) skip(lexer);
-                    }
-                    if (!skip_whitespace_and_comments(lexer, true)) return false;
-                    if (lexer->lookahead == '<') {
-                        if (!skip_annotation_type_arguments(lexer)) return false;
-                    }
-                    if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
-                    bool target = lexer->lookahead == ':';
-                    skip(lexer);
-                    if (!skip_whitespace_and_comments(lexer, true)) return false;
-                    if (target && lexer->lookahead == '[') {
-                        skip(lexer);
-                        if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
-                        break;
-                    }
-                }
-                if (lexer->lookahead == '(') {
-                    skip(lexer);
-                    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
-                }
-            }
-            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (!skip_annotation_prefix(lexer)) return false;
         }
         if (lexer->eof(lexer) || lexer->lookahead == '}') return true;
         if (lexer->lookahead == '{') { *lambda = true; return false; }
         memset(word, 0, MAX_WORD_SIZE);
-        while (scan_words(lexer, MODIFIER_WORDS, word, NULL) ||
-               scan_words(lexer, OTHER_MODIFIER_WORDS, word, NULL)) {
+        for (;;) {
+            while (scan_words(lexer, MODIFIER_WORDS, word, NULL) ||
+                   scan_words(lexer, OTHER_MODIFIER_WORDS, word, NULL)) {
+                memset(word, 0, MAX_WORD_SIZE);
+                if (!skip_whitespace_and_comments(lexer, true)) return false;
+            }
+            if (strncmp(word, "context", MAX_WORD_SIZE) != 0 ||
+                !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') break;
+            skip(lexer);
+            if (!skip_to_closing_bracket(lexer, '(', ')', 0) ||
+                !skip_whitespace_and_comments(lexer, true)) return false;
             memset(word, 0, MAX_WORD_SIZE);
-            if (!skip_whitespace_and_comments(lexer, true)) return false;
         }
         if (lexer->lookahead == '@') continue;
         if (constructor_prefix) {
@@ -407,14 +383,27 @@ static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool 
 
 static bool scan_named_function_header(TSLexer *lexer) {
     if (lexer->lookahead == '<' && !skip_annotation_type_arguments(lexer)) return false;
+    while (lexer->lookahead == '@') {
+        if (!skip_annotation_prefix(lexer)) return false;
+    }
     if (lexer->lookahead == '(') {
         skip(lexer);
         if (!skip_to_closing_bracket(lexer, '(', ')', 0) ||
-            !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '.') return false;
-        skip(lexer);
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
+            !skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == '?') {
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+        }
+        if (lexer->lookahead != '.' && !is_identifier_start(lexer->lookahead) && lexer->lookahead != '`') return false;
     }
     for (;;) {
+        if (lexer->lookahead == '.') {
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+        }
+        while (lexer->lookahead == '@') {
+            if (!skip_annotation_prefix(lexer)) return false;
+        }
         if (lexer->lookahead == '`') {
             skip(lexer);
             if (!skip_literal_rest(lexer, '`', 0)) return false;
@@ -428,10 +417,48 @@ static bool scan_named_function_header(TSLexer *lexer) {
             skip(lexer);
             if (!skip_whitespace_and_comments(lexer, true)) return false;
         }
-        if (lexer->lookahead != '.') return lexer->lookahead == '(';
-        skip(lexer);
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == '(') return true;
+        if (lexer->lookahead != '.' && lexer->lookahead != '@' &&
+            !is_identifier_start(lexer->lookahead) && lexer->lookahead != '`') return false;
     }
+}
+
+static bool skip_annotation_prefix(TSLexer *lexer) {
+    skip(lexer);
+    if (!skip_whitespace_and_comments(lexer, true)) return false;
+    if (lexer->lookahead == '[') {
+        skip(lexer);
+        if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+    } else {
+        for (;;) {
+            if (lexer->lookahead == '`') {
+                skip(lexer);
+                if (!skip_literal_rest(lexer, '`', 0)) return false;
+            } else {
+                if (!is_identifier_start(lexer->lookahead)) return false;
+                while (is_identifier_part(lexer->lookahead)) skip(lexer);
+            }
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (lexer->lookahead == '<') {
+                if (!skip_annotation_type_arguments(lexer)) return false;
+            }
+            if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
+            bool target = lexer->lookahead == ':';
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (target && lexer->lookahead == '[') {
+                skip(lexer);
+                if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+                break;
+            }
+        }
+        if (lexer->lookahead == '(') {
+            skip(lexer);
+            if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+        }
+    }
+    if (!skip_whitespace_and_comments(lexer, true)) return false;
+    return true;
 }
 
 static bool skip_annotation_type_arguments(TSLexer *lexer) {
