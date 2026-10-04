@@ -36,6 +36,7 @@ enum TokenType {
     CONTEXT_END,
     KEYWORD_REFERENCE,
     KEYWORD_REFERENCE_END,
+    WHERE,
 };
 
 #define MAX_WORD_SIZE 16
@@ -853,6 +854,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 // return a semi since it's being used in a range test
                 else if (index == 1 && valid_symbols[IN]) {
                     return true;
+                }
+                else if (index == 8) {
+                    return !valid_symbols[WHERE];
                 }
                 return !res;
             case ';':
