@@ -1130,7 +1130,7 @@ class Nested { class A {} interface I {} object O {} fun f() = 1 val x = 2 }
 interface Contract { fun a(): Int fun b(): Int }
 class Comments { fun f() = 1 /* boundary */ fun g() = 2 }
 infix fun Int.fun_value(rhs: Int) = this + rhs
-class Prefix { val x = 1 fun_value 2 }
+class Prefix { fun f() = 1 fun_value 2 }
 class Separated { val x = 1; var y = 2; fun f() = x }
 
 --------------------------------------------------------------------------------
@@ -1203,8 +1203,8 @@ class Separated { val x = 1; var y = 2; fun f() = x }
         name: (identifier)
         (function_value_parameters)
         (function_body
-          (number_literal))
-        (block_comment))
+          (number_literal)))
+      (block_comment)
       (function_declaration
         name: (identifier)
         (function_value_parameters)
@@ -1228,13 +1228,14 @@ class Separated { val x = 1; var y = 2; fun f() = x }
   (class_declaration
     name: (identifier)
     (class_body
-      (property_declaration
-        (variable_declaration
-          (identifier))
-        (infix_expression
-          (number_literal)
-          (identifier)
-          (number_literal)))))
+      (function_declaration
+        name: (identifier)
+        (function_value_parameters)
+        (function_body
+          (infix_expression
+            (number_literal)
+            (identifier)
+            (number_literal))))))
   (class_declaration
     name: (identifier)
     (class_body
