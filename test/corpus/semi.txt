@@ -1146,3 +1146,245 @@ fun f() {
             (line_comment)
             (number_literal)))))))
 
+
+================================================================================
+Where identifiers and multiline type constraints
+================================================================================
+
+fun values() {
+    var where = 1
+    where += 1
+    where++
+    where
+    println(where)
+}
+fun calls() {
+    val where = { value: Int -> value }
+    where(1)
+    println(where(2))
+}
+fun indices() {
+    val where = arrayOf(1)
+    where[0]
+    println(where[0])
+}
+fun safe(where: String?) {
+    val previous = 1
+    where?.let { println(it) }
+    println(previous)
+}
+fun <T> identity(x: T): T
+    where T : Comparable<T> {
+    return x
+}
+fun nested() {
+    fun <T> local(x: T): T
+        where T : Comparable<T> {
+        return x
+    }
+    val where = "hello"
+    where.trim()
+    println(local(1))
+}
+class Box<T>(val value: T)
+    where T : Comparable<T>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (assignment
+          left: (identifier)
+          right: (number_literal))
+        (unary_expression
+          argument: (identifier))
+        (identifier)
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (identifier)))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (lambda_literal
+            (lambda_parameters
+              (variable_declaration
+                (identifier)
+                (user_type
+                  (identifier))))
+            (identifier)))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (number_literal))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (number_literal))))))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (number_literal)))))
+        (index_expression
+          (identifier)
+          (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (index_expression
+                (identifier)
+                (number_literal))))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (nullable_type
+          (user_type
+            (identifier)))))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (navigation_expression
+            (identifier)
+            (identifier))
+          (annotated_lambda
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier)))))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (identifier)))))))
+  (function_declaration
+    (type_parameters
+      (type_parameter
+        (identifier)))
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (type_constraints
+      (type_constraint
+        (identifier)
+        (user_type
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier)))))))
+    (function_body
+      (block
+        (return_expression
+          (identifier)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (function_declaration
+          (type_parameters
+            (type_parameter
+              (identifier)))
+          name: (identifier)
+          (function_value_parameters
+            (parameter
+              (identifier)
+              (user_type
+                (identifier))))
+          (user_type
+            (identifier))
+          (type_constraints
+            (type_constraint
+              (identifier)
+              (user_type
+                (identifier)
+                (type_arguments
+                  (type_projection
+                    (user_type
+                      (identifier)))))))
+          (function_body
+            (block
+              (return_expression
+                (identifier)))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (string_literal
+            (string_content)))
+        (call_expression
+          (navigation_expression
+            (identifier)
+            (identifier))
+          (value_arguments))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (number_literal))))))))))
+  (class_declaration
+    name: (identifier)
+    (type_parameters
+      (type_parameter
+        (identifier)))
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier)))))
+    (type_constraints
+      (type_constraint
+        (identifier)
+        (user_type
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier)))))))))
