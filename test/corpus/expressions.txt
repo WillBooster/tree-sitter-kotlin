@@ -1626,3 +1626,225 @@ fun describe(x: Int) {
                 (value_argument
                   (string_literal
                     (string_content)))))))))))
+
+
+================================================================================
+Prefix operators around postfix expressions
+================================================================================
+
+object Flags { val enabled = false }
+class Counter(var value: Int)
+fun flag() = false
+fun value() = 1
+fun factory(): () -> Int = { 1 }
+fun member() = !Flags.enabled
+fun negative(counter: Counter) = -counter.value
+fun positive(counter: Counter) = +counter.value
+fun called() = !flag()
+fun indexed(values: IntArray) = -values[0]
+fun postfixed(counter: Counter) = -counter.value++
+fun prefixed(counter: Counter) = ++counter.value
+fun nullable(counter: Counter?) = -counter?.value!!
+fun nested(counter: Counter) = - -counter.value
+fun chained() = -factory()()
+fun grouped(counter: Counter) = (-counter.value).toString()
+fun ordinary(counter: Counter) = counter.value++ + 1
+fun comparison(counter: Counter) = -counter.value < 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (object_declaration
+    name: (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (identifier))))
+  (class_declaration
+    name: (identifier)
+    (primary_constructor
+      (class_parameters
+        (class_parameter
+          (identifier)
+          (user_type
+            (identifier))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (identifier)))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (number_literal)))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_type
+      (function_type_parameters)
+      (user_type
+        (identifier)))
+    (function_body
+      (lambda_literal
+        (number_literal))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (unary_expression
+        argument: (navigation_expression
+          (identifier)
+          (identifier)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (unary_expression
+        argument: (navigation_expression
+          (identifier)
+          (identifier)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (unary_expression
+        argument: (navigation_expression
+          (identifier)
+          (identifier)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (unary_expression
+        argument: (call_expression
+          (identifier)
+          (value_arguments)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (unary_expression
+        argument: (index_expression
+          (identifier)
+          (number_literal)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (unary_expression
+        argument: (unary_expression
+          argument: (navigation_expression
+            (identifier)
+            (identifier))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (unary_expression
+        argument: (navigation_expression
+          (identifier)
+          (identifier)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (nullable_type
+          (user_type
+            (identifier)))))
+    (function_body
+      (unary_expression
+        argument: (unary_expression
+          argument: (navigation_expression
+            (identifier)
+            (identifier))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (unary_expression
+        argument: (unary_expression
+          argument: (navigation_expression
+            (identifier)
+            (identifier))))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (unary_expression
+        argument: (call_expression
+          (call_expression
+            (identifier)
+            (value_arguments))
+          (value_arguments)))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (call_expression
+        (navigation_expression
+          (parenthesized_expression
+            (unary_expression
+              argument: (navigation_expression
+                (identifier)
+                (identifier))))
+          (identifier))
+        (value_arguments))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (binary_expression
+        left: (unary_expression
+          argument: (navigation_expression
+            (identifier)
+            (identifier)))
+        right: (number_literal))))
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (binary_expression
+        left: (unary_expression
+          argument: (navigation_expression
+            (identifier)
+            (identifier)))
+        right: (number_literal)))))
