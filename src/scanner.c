@@ -284,9 +284,9 @@ static bool annotation_probe_eof(const TSLexer *lexer) {
     return probe->exhausted || probe->source->eof(probe->source);
 }
 
-static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member);
+static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda);
 
-static bool annotation_requires_recovery_separator(TSLexer *source, bool member) {
+static bool annotation_requires_recovery_separator(TSLexer *source, bool member, bool *lambda) {
     AnnotationRecoveryProbe probe = {
         .lexer = {.lookahead = source->lookahead,
                   .advance = advance_annotation_probe,
@@ -295,11 +295,13 @@ static bool annotation_requires_recovery_separator(TSLexer *source, bool member)
         .remaining = ANNOTATION_RECOVERY_LOOKAHEAD,
     };
     TSLexer *lexer = &probe.lexer;
-    bool boundary = scan_annotation_recovery_boundary(lexer, member);
+    bool boundary = scan_annotation_recovery_boundary(lexer, member, lambda);
+    if (probe.exhausted) *lambda = true;
     return !probe.exhausted && (boundary || source->eof(source));
 }
 
-static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member) {
+static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member, bool *lambda) {
+    bool quoted_name = false;
     while (lexer->lookahead == '@') {
         skip(lexer);
         if (!skip_whitespace_and_comments(lexer, true)) return false;
@@ -309,6 +311,7 @@ static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member) {
         } else {
             for (;;) {
                 if (lexer->lookahead == '`') {
+                    quoted_name = true;
                     skip(lexer);
                     if (!skip_literal_rest(lexer, '`', 0)) return false;
                 } else {
@@ -347,6 +350,7 @@ static bool scan_annotation_recovery_boundary(TSLexer *lexer, bool member) {
         if (!skip_whitespace_and_comments(lexer, true)) return false;
     }
     if (lexer->eof(lexer) || lexer->lookahead == '}') return true;
+    if (lexer->lookahead == '{' && !quoted_name) { *lambda = true; return false; }
     char word[MAX_WORD_SIZE] = {0};
     while (scan_words(lexer, MODIFIER_WORDS, word, NULL) ||
            scan_words(lexer, OTHER_MODIFIER_WORDS, word, NULL)) {
@@ -1013,9 +1017,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '@':
                 if (!error_recovery && valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) {
                     lexer->mark_end(lexer);
-                    if (annotation_requires_recovery_separator(lexer, scanner->depth > 0 && !in_statements(scanner))) {
+                    bool lambda = false;
+                    if (annotation_requires_recovery_separator(lexer, scanner->depth > 0 && !in_statements(scanner), &lambda)) {
                         return true;
                     }
+                    if (lambda && (valid_symbols[GET] || valid_symbols[SET])) return false;
                     lexer->result_symbol = PRIMARY_CONSTRUCTOR_POSITION;
                 }
                 return true;

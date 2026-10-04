@@ -122,6 +122,7 @@ class ComparedArgument
 
 test('keeps completed declarations queryable before trailing annotations', () => {
   const parser = new Parser().setLanguage(language);
+  const queries = new Map<string, Query>();
   try {
     for (const annotation of [
       '@A',
@@ -139,19 +140,19 @@ test('keeps completed declarations queryable before trailing annotations', () =>
         ['class Foo {\n val x = 1\n val y = 2', '\n}', 'property_declaration', ['val x = 1', 'val y = 2']],
       ] as const) {
         const source = `${prefix}\n${annotation}${suffix}`;
-        const query = new Query(language, `(${node}) @declaration`);
+        let query = queries.get(node);
+        if (!query) {
+          query = new Query(language, `(${node}) @declaration`);
+          queries.set(node, query);
+        }
+        const tree = parser.parse(source)!;
         try {
-          const tree = parser.parse(source)!;
-          try {
-            expect(
-              query.captures(tree.rootNode).map(({ node }) => node.text),
-              source
-            ).toEqual(expected);
-          } finally {
-            tree.delete();
-          }
+          expect(
+            query.captures(tree.rootNode).map(({ node }) => node.text),
+            source
+          ).toEqual(expected);
         } finally {
-          query.delete();
+          tree.delete();
         }
       }
     }
@@ -190,6 +191,7 @@ test('keeps completed declarations queryable before trailing annotations', () =>
       }
     }
   } finally {
+    for (const query of queries.values()) query.delete();
     parser.delete();
   }
 });
@@ -256,6 +258,84 @@ test('keeps surrounding class members queryable while an annotated member is unf
         ]);
       } finally {
         tree.delete();
+      }
+    } finally {
+      query.delete();
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
+test('keeps annotated trailing lambdas in property initializer queries', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    const query = new Query(
+      language,
+      '(property_declaration (expression) @initializer) (call_expression (annotated_lambda) @lambda) @call'
+    );
+    try {
+      for (const annotation of ['@A', '@A("' + 'x'.repeat(3000) + '")']) {
+        const initializer = `Runnable\n${annotation}\n{ println() }`;
+        for (const [prefix, suffix] of [
+          ['val r = ', ''],
+          ['fun f() { val r = ', ' }'],
+          ['class C { val r = ', ' }'],
+        ]) {
+          const source = prefix + initializer + suffix;
+          const tree = parser.parse(source)!;
+          try {
+            expect(tree.rootNode.hasError, source).toBe(false);
+            expect(query.captures(tree.rootNode).map(({ name, node }) => ({ name, text: node.text }))).toEqual([
+              { name: 'initializer', text: initializer },
+              { name: 'call', text: initializer },
+              { name: 'lambda', text: `${annotation}\n{ println() }` },
+            ]);
+          } finally {
+            tree.delete();
+          }
+        }
+      }
+      for (const source of ['foo()\n@A\n{ bar() }', 'class Foo\n@A\n{}']) {
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError, source).toBe(false);
+          expect(tree.rootNode.namedChildCount).toBe(2);
+          expect(query.captures(tree.rootNode)).toHaveLength(0);
+        } finally {
+          tree.delete();
+        }
+      }
+      const source = 'val r = Runnable\n@A';
+      const addition = '\n{ println() }';
+      const tree = parser.parse(source)!;
+      let completed: ReturnType<Parser['parse']> | undefined;
+      let fresh: ReturnType<Parser['parse']> | undefined;
+      try {
+        const point = { row: 1, column: 2 };
+        tree.edit(
+          new Edit({
+            startIndex: source.length,
+            oldEndIndex: source.length,
+            newEndIndex: source.length + addition.length,
+            startPosition: point,
+            oldEndPosition: point,
+            newEndPosition: { row: 2, column: 13 },
+          })
+        );
+        completed = parser.parse(source + addition, tree)!;
+        fresh = parser.parse(source + addition)!;
+        expect(completed.rootNode.toString()).toBe(fresh.rootNode.toString());
+        expect(fresh.rootNode.hasError).toBe(false);
+        expect(query.captures(completed.rootNode).map(({ name, node }) => ({ name, text: node.text }))).toEqual([
+          { name: 'initializer', text: 'Runnable\n@A\n{ println() }' },
+          { name: 'call', text: 'Runnable\n@A\n{ println() }' },
+          { name: 'lambda', text: '@A\n{ println() }' },
+        ]);
+      } finally {
+        tree.delete();
+        completed?.delete();
+        fresh?.delete();
       }
     } finally {
       query.delete();
