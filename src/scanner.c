@@ -284,7 +284,9 @@ static bool annotation_probe_eof(const TSLexer *lexer) {
     return probe->exhausted || probe->source->eof(probe->source);
 }
 
-static bool annotation_precedes_bare_constructor(TSLexer *source) {
+static bool scan_annotation_recovery_boundary(TSLexer *lexer);
+
+static bool annotation_requires_recovery_separator(TSLexer *source) {
     AnnotationRecoveryProbe probe = {
         .lexer = {.lookahead = source->lookahead,
                   .advance = advance_annotation_probe,
@@ -293,6 +295,11 @@ static bool annotation_precedes_bare_constructor(TSLexer *source) {
         .remaining = ANNOTATION_RECOVERY_LOOKAHEAD,
     };
     TSLexer *lexer = &probe.lexer;
+    bool boundary = scan_annotation_recovery_boundary(lexer);
+    return !probe.exhausted && (boundary || source->eof(source));
+}
+
+static bool scan_annotation_recovery_boundary(TSLexer *lexer) {
     while (lexer->lookahead == '@') {
         skip(lexer);
         if (!skip_whitespace_and_comments(lexer, true)) return false;
@@ -339,11 +346,12 @@ static bool annotation_precedes_bare_constructor(TSLexer *source) {
         }
         if (!skip_whitespace_and_comments(lexer, true)) return false;
     }
+    if (lexer->eof(lexer) || lexer->lookahead == '}') return true;
     char word[MAX_WORD_SIZE] = {0};
     skip_modifier_words(lexer, word, true);
     if (strncmp(word, "constructor", MAX_WORD_SIZE) != 0 ||
         !skip_whitespace_and_comments(lexer, true)) return false;
-    return !probe.exhausted && lexer->lookahead != '(';
+    return lexer->lookahead != '(';
 }
 
 // Scans the rest of an accessor after `get` or `set`: either nothing more on its line, or a parameter list (empty for
@@ -1000,7 +1008,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '@':
                 if (!error_recovery && valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) {
                     lexer->mark_end(lexer);
-                    if (annotation_precedes_bare_constructor(lexer)) {
+                    if (annotation_requires_recovery_separator(lexer)) {
                         return true;
                     }
                     lexer->result_symbol = PRIMARY_CONSTRUCTOR_POSITION;

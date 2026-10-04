@@ -117,3 +117,77 @@ class ComparedArgument
   tree.delete();
   parser.delete();
 });
+
+test('keeps completed declarations queryable before trailing annotations', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    for (const annotation of [
+      '@A',
+      '@Suppress("x")',
+      '@pkg.A<List<Int>>',
+      '@A\n("x")',
+      '@A(',
+      '@A<',
+      '@A("unfinished',
+    ]) {
+      for (const [prefix, suffix, node, expected] of [
+        ['class Foo', '', 'class_declaration', ['class Foo']],
+        ['val x = 1', '', 'property_declaration', ['val x = 1']],
+        ['class Foo {\n val x = 1', '\n}', 'property_declaration', ['val x = 1']],
+        ['class Foo {\n val x = 1\n val y = 2', '\n}', 'property_declaration', ['val x = 1', 'val y = 2']],
+      ] as const) {
+        const source = `${prefix}\n${annotation}${suffix}`;
+        const query = new Query(language, `(${node}) @declaration`);
+        try {
+          const tree = parser.parse(source)!;
+          try {
+            expect(
+              query.captures(tree.rootNode).map(({ node }) => node.text),
+              source
+            ).toEqual(expected);
+          } finally {
+            tree.delete();
+          }
+        } finally {
+          query.delete();
+        }
+      }
+    }
+    for (const [source, addition, node] of [
+      ['class Foo\n@A', '\nconstructor()', 'primary_constructor'],
+      ['class Foo { val x = 1\n@A\n}', '\nget() = field', 'getter'],
+    ] as const) {
+      const tree = parser.parse(source)!;
+      let completed: ReturnType<Parser['parse']> | undefined;
+      let fresh: ReturnType<Parser['parse']> | undefined;
+      try {
+        const index = source.indexOf('@A') + '@A'.length;
+        const lines = source.slice(0, index).split('\n');
+        const point = { row: lines.length - 1, column: lines.at(-1)!.length };
+        const addedLines = addition.split('\n');
+        tree.edit(
+          new Edit({
+            startIndex: index,
+            oldEndIndex: index,
+            newEndIndex: index + addition.length,
+            startPosition: point,
+            oldEndPosition: point,
+            newEndPosition: { row: point.row + addedLines.length - 1, column: addedLines.at(-1)!.length },
+          })
+        );
+        const completeSource = source.slice(0, index) + addition + source.slice(index);
+        completed = parser.parse(completeSource, tree)!;
+        fresh = parser.parse(completeSource)!;
+        expect(completed.rootNode.toString()).toBe(fresh.rootNode.toString());
+        expect(fresh.rootNode.hasError).toBe(false);
+        expect(fresh.rootNode.descendantsOfType(node)).toHaveLength(1);
+      } finally {
+        tree.delete();
+        completed?.delete();
+        fresh?.delete();
+      }
+    }
+  } finally {
+    parser.delete();
+  }
+});
