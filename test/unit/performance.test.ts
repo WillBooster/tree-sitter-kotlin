@@ -64,6 +64,20 @@ function expectLinearRecovery(small: string, large: string): void {
   expect(largeFastest).toBeLessThan(5_000_000);
 }
 
+test('recovers from repeated unfinished destructuring types in linear time', { timeout: 60_000 }, () => {
+  const small = `fun f() {\n${'  xs.map { (a, b):\n  println(i\n'.repeat(500)}}\n`;
+  const large = `fun f() {\n${'  xs.map { (a, b):\n  println(i\n'.repeat(5000)}}\n`;
+  parseCpuTime(large);
+  let smallFastest = Infinity;
+  let largeFastest = Infinity;
+  for (let run = 0; run < 3; run++) {
+    smallFastest = Math.min(smallFastest, parseCpuTime(small));
+    largeFastest = Math.min(largeFastest, parseCpuTime(large));
+  }
+  expect(largeFastest / smallFastest).toBeLessThan(18);
+  expect(largeFastest).toBeLessThan(5_000_000);
+});
+
 function parseCpuTime(source: string): number {
   const start = process.threadCpuUsage();
   const tree = parser.parse(source);

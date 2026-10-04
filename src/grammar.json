@@ -1888,6 +1888,10 @@
       }
     },
     "multi_variable_declaration": {
+      "type": "SYMBOL",
+      "name": "_multi_variable_declaration"
+    },
+    "_multi_variable_declaration": {
       "type": "SEQ",
       "members": [
         {
@@ -6705,8 +6709,52 @@
           "name": "variable_declaration"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_destructuring_lambda_parameter"
+          },
+          "named": true,
+          "value": "multi_variable_declaration"
+        }
+      ]
+    },
+    "_destructuring_lambda_parameter": {
+      "type": "SEQ",
+      "members": [
+        {
           "type": "SYMBOL",
-          "name": "multi_variable_declaration"
+          "name": "_multi_variable_declaration"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_destructuring_type_start"
+                  },
+                  "named": false,
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "type",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "type"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -9341,7 +9389,7 @@
       "function_type_parameters"
     ],
     [
-      "multi_variable_declaration",
+      "_multi_variable_declaration",
       "function_type_parameters"
     ],
     [
@@ -9449,6 +9497,10 @@
     ]
   ],
   "externals": [
+    {
+      "type": "SYMBOL",
+      "name": "_destructuring_type_start"
+    },
     {
       "type": "SYMBOL",
       "name": "_semi"
