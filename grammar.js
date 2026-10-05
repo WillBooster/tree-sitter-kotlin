@@ -134,6 +134,8 @@ module.exports = grammar({
     'where',
     $._separated_member_start,
     $._unseparated_member_start,
+    $._infix_position,
+    $._companion_name_position,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -271,7 +273,7 @@ module.exports = grammar({
         'companion',
         'object',
         optional($._unseparated_member_start),
-        optional(field('name', $.identifier)),
+        optional(seq(optional($._companion_name_position), field('name', $.identifier))),
         optional(seq(':', $.delegation_specifiers)),
         optional($.class_body)
       ),
@@ -705,7 +707,8 @@ module.exports = grammar({
 
     range_expression: ($) => prec.left(PREC.RANGE, seq($.expression, choice('..', '..<'), $.expression)),
 
-    infix_expression: ($) => prec.left(PREC.INFIX, seq($.expression, $.identifier, $.expression)),
+    infix_expression: ($) =>
+      prec.left(PREC.INFIX, seq($.expression, optional($._infix_position), $.identifier, $.expression)),
 
     // Right-associative so that a trailing lambda after arguments belongs to the same call (`f(x) { … }`), as in
     // Kotlin, instead of calling the result of `f(x)`.

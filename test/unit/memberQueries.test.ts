@@ -46,3 +46,78 @@ test('requires a separator after properties even when nested bodies contain adja
     }
   }
 });
+
+test('preserves adjacent contextual members and their query captures', () => {
+  for (const members of [
+    ['init {}', 'init {}', 'fun f() {}'],
+    ['constructor() {}', 'constructor(x: Int) {}', 'fun f() {}'],
+    ['fun f() {}', 'companion object {}'],
+    ['fun f() {}', 'private constructor() {}'],
+    ['fun f() {}', 'private /* outer /* nested */ */ constructor() {}'],
+  ]) {
+    for (const separator of [' ', ' /* boundary */ ', '\n', '; ']) {
+      const source = `class C { ${members.join(separator)} }`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(false);
+        expect(
+          query.captures(tree.rootNode).map(({ node }) => node.text),
+          source
+        ).toEqual(members);
+      } finally {
+        tree.delete();
+      }
+    }
+  }
+});
+
+test('keeps contextual infix calls inside member expressions', () => {
+  for (const expression of ['1 init {}', '1 companion object {}']) {
+    const source = `class C { val x = ${expression}; fun f() = ${expression} }`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.type)).toEqual([
+        'property_declaration',
+        'function_declaration',
+      ]);
+      expect(tree.rootNode.descendantsOfType('infix_expression').map((node) => node.text)).toEqual([
+        expression,
+        expression,
+      ]);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test('keeps nested primary constructors attached to their class header', () => {
+  for (const modifier of ['', 'private ', '@Ann ']) {
+    const member = `class Nested ${modifier}constructor(val x: Int) { companion object {} }`;
+    const tree = parser.parse(`class Outer { ${member} }`)!;
+    try {
+      expect(tree.rootNode.hasError, member).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([member, 'companion object {}']);
+      expect(tree.rootNode.descendantsOfType('primary_constructor')).toHaveLength(1);
+      expect(tree.rootNode.descendantsOfType('secondary_constructor')).toHaveLength(0);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test('retains contextual companion object names and bodies', () => {
+  for (const name of ['init', 'constructor', 'companion']) {
+    for (const body of ['', ' {}']) {
+      const member = `companion object ${name}${body}`;
+      const tree = parser.parse(`class C { fun f() {} ${member} }`)!;
+      try {
+        expect(tree.rootNode.hasError, member).toBe(false);
+        expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual(['fun f() {}', member]);
+        expect(tree.rootNode.descendantsOfType('companion_object')[0]?.childForFieldName('name')?.text).toBe(name);
+      } finally {
+        tree.delete();
+      }
+    }
+  }
+});
