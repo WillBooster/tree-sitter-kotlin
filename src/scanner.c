@@ -42,6 +42,7 @@ enum TokenType {
     SEPARATED_MEMBER_START,
     UNSEPARATED_MEMBER_START,
     INFIX_POSITION,
+    COMPANION_NAME_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -774,7 +775,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 if (!skip_whitespace_and_comments(lexer, true)) return false;
             }
             if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL) ||
-                (!valid_symbols[INFIX_POSITION] &&
+                (!valid_symbols[INFIX_POSITION] && !valid_symbols[COMPANION_NAME_POSITION] &&
                  (strcmp(scanned_word, "init") == 0 ||
                   (strcmp(scanned_word, "constructor") == 0 && !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) ||
                   strcmp(scanned_word, "companion") == 0))) {

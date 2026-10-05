@@ -135,6 +135,7 @@ module.exports = grammar({
     $._separated_member_start,
     $._unseparated_member_start,
     $._infix_position,
+    $._companion_name_position,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -272,7 +273,7 @@ module.exports = grammar({
         'companion',
         'object',
         optional($._unseparated_member_start),
-        optional(field('name', $.identifier)),
+        optional(seq(optional($._companion_name_position), field('name', $.identifier))),
         optional(seq(':', $.delegation_specifiers)),
         optional($.class_body)
       ),

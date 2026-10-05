@@ -105,3 +105,19 @@ test('keeps nested primary constructors attached to their class header', () => {
     }
   }
 });
+
+test('retains contextual companion object names and bodies', () => {
+  for (const name of ['init', 'constructor', 'companion']) {
+    for (const body of ['', ' {}']) {
+      const member = `companion object ${name}${body}`;
+      const tree = parser.parse(`class C { fun f() {} ${member} }`)!;
+      try {
+        expect(tree.rootNode.hasError, member).toBe(false);
+        expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual(['fun f() {}', member]);
+        expect(tree.rootNode.descendantsOfType('companion_object')[0]?.childForFieldName('name')?.text).toBe(name);
+      } finally {
+        tree.delete();
+      }
+    }
+  }
+});
