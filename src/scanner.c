@@ -41,11 +41,14 @@ enum TokenType {
     WHERE,
     SEPARATED_MEMBER_START,
     UNSEPARATED_MEMBER_START,
+    INFIX_POSITION,
+    COMPANION_NAME_POSITION,
     EXPRESSION_ANNOTATION_START,
     PROPERTY_ANNOTATION_POSITION,
     PROPERTY_ANNOTATION_SEPARATOR,
     SUPER_LABEL_START,
     ACCESSOR_POSITION,
+    CLASS_HEADER_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -1023,8 +1026,16 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') skip(lexer);
         if (iswalpha(lexer->lookahead)) {
             char scanned_word[16] = {0};
-            skip_modifier_words(lexer, scanned_word, true);
-            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL)) {
+            while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
+                   scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL)) {
+                memset(scanned_word, 0, MAX_WORD_SIZE);
+                if (!skip_whitespace_and_comments(lexer, true)) return false;
+            }
+            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL) ||
+                (!valid_symbols[INFIX_POSITION] && !valid_symbols[COMPANION_NAME_POSITION] &&
+                 (strcmp(scanned_word, "init") == 0 ||
+                  (strcmp(scanned_word, "constructor") == 0 && !valid_symbols[CLASS_HEADER_POSITION]) ||
+                  strcmp(scanned_word, "companion") == 0))) {
                 scanner->boundary_flags = SAME_LINE_MEMBER_BOUNDARY;
                 lexer->result_symbol = SAME_LINE_MEMBER_END;
                 return true;

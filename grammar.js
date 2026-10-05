@@ -37,6 +37,7 @@ module.exports = grammar({
     [$.in_expression, $.call_expression],
     [$.unary_expression, $.call_expression],
     [$.property_declaration, $.call_expression],
+    [$.property_delegate, $.call_expression],
     [$.call_expression, $.throw_expression],
     [$._loop_prefix, $.modifiers, $.type_modifiers],
     [$.modifiers, $.type_modifiers],
@@ -45,6 +46,7 @@ module.exports = grammar({
     [$.variable_declaration, $.modifiers, $.type_modifiers],
     [$.type_modifiers, $.when_subject],
     [$.annotation, $._expression_annotation],
+    [$._expression_annotation, $._unescaped_annotation],
     [$.class_declaration],
     [$.property_declaration],
     [$.if_expression, $.parenthesized_expression],
@@ -145,11 +147,14 @@ module.exports = grammar({
     'where',
     $._separated_member_start,
     $._unseparated_member_start,
+    $._infix_position,
+    $._companion_name_position,
     $._expression_annotation_start,
     $._property_annotation_position,
     $._property_annotation_separator,
     $._super_label_start,
     $._accessor_position,
+    $._class_header_position,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -237,7 +242,7 @@ module.exports = grammar({
         'file',
         ':',
         choice(seq('[', repeat1($._unescaped_annotation), ']'), $._unescaped_annotation),
-        $._statement_semi
+        $._semi
       ),
 
     package_header: ($) => seq('package', $.qualified_identifier, optional(';')),
@@ -255,7 +260,7 @@ module.exports = grammar({
         optional($._unseparated_member_start),
         field('name', $.identifier),
         optional($.type_parameters),
-        optional($.primary_constructor),
+        optional(seq(optional($._class_header_position), $.primary_constructor)),
         optional(seq(':', $.delegation_specifiers)),
         optional($.type_constraints),
         optional(choice($.class_body, $.enum_class_body))
@@ -314,7 +319,7 @@ module.exports = grammar({
         'companion',
         'object',
         optional($._unseparated_member_start),
-        optional(field('name', $.identifier)),
+        optional(seq(optional($._companion_name_position), field('name', $.identifier))),
         optional(seq(':', $.delegation_specifiers)),
         optional($.class_body)
       ),
@@ -399,7 +404,8 @@ module.exports = grammar({
 
     _multi_variable_declaration: ($) => seq('(', optionalCommaSep1($.variable_declaration), ')'),
 
-    property_delegate: ($) => seq('by', $.expression),
+    property_delegate: ($) =>
+      choice(seq('by', $.expression), prec(PREC.CALL, seq('by', $.expression, $._property_annotation_position))),
 
     // As in Kotlin, a `{` after the delegation expression starts the class body, never a trailing lambda, also after the
     // last operand of an operator (`B by a ?: b { … }`): the scanner ends the expression before it.
@@ -555,7 +561,14 @@ module.exports = grammar({
 
     annotation: ($) => annotationRule($, annotationStart($)),
 
-    _expression_annotation: ($) => annotationRule($, alias($._expression_annotation_start, '@')),
+    _expression_annotation: ($) =>
+      choice(
+        prec.dynamic(
+          1,
+          seq(alias($._expression_annotation_start, '@'), optional($.use_site_target), $.constructor_invocation)
+        ),
+        annotationRule($, alias($._expression_annotation_start, '@'))
+      ),
 
     use_site_target: () =>
       seq(choice('field', 'property', 'get', 'set', 'receiver', 'param', 'setparam', 'delegate'), ':'),
@@ -744,7 +757,10 @@ module.exports = grammar({
       withPropertyAnnotationBoundary($, prec.left(PREC.RANGE, seq($.expression, choice('..', '..<'), $.expression))),
 
     infix_expression: ($) =>
-      withPropertyAnnotationBoundary($, prec.left(PREC.INFIX, seq($.expression, $.identifier, $.expression))),
+      withPropertyAnnotationBoundary(
+        $,
+        prec.left(PREC.INFIX, seq($.expression, optional($._infix_position), $.identifier, $.expression))
+      ),
 
     call_expression: ($) =>
       choice(

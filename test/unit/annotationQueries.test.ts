@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import path from 'node:path';
-import { Edit, Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Edit, Language, Parser, Query, type Point } from '@willbooster/web-tree-sitter';
 
 await Parser.init();
 const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
@@ -463,7 +463,7 @@ fun f(): Int {
     validTree = parser.parse(validInfixSource)!;
     expect(validTree.rootNode.hasError).toBe(false);
     expect(validTree.rootNode.descendantsOfType('file_annotation').map((node) => node.text)).toEqual([
-      '@file:[JvmName("AnnotatedInfix") Suppress("unused")]\n',
+      '@file:[JvmName("AnnotatedInfix") Suppress("unused")]',
     ]);
     expect(
       query
@@ -569,14 +569,14 @@ test('keeps annotated calls on their operands across declaration edits', () => {
     const query = new Query(
       language,
       `
-      (call_expression (expression) @callee (annotated_lambda) @lambda) @call
-      (call_expression (primary_expression) @primary (annotated_lambda))
-      (call_expression (value_arguments) @arguments (annotated_lambda))
+      (call_expression (expression) @callee (annotated_lambda (annotation)) @lambda) @call
+      (call_expression (primary_expression) @primary (annotated_lambda (annotation)))
+      (call_expression (value_arguments) @arguments (annotated_lambda (annotation)))
       (property_declaration (variable_declaration (identifier) @property))
     `
     );
     try {
-      for (const annotation of ['@A', `@A("${'x'.repeat(3000)}")`]) {
+      for (const annotation of ['@A', '@A("")', `@A("${'x'.repeat(3000)}")`]) {
         const body = '{ println() }';
         for (const [initializer, target, callee, argumentsText] of [
           ['f(1)', 'f(1)', 'f', ['(1)']],
@@ -589,6 +589,13 @@ test('keeps annotated calls on their operands across declaration edits', () => {
           ['if(a) { b }', 'if(a) { b }', 'if(a) { b }', []],
           ['-Runnable', 'Runnable', 'Runnable', []],
           ['a ?: Runnable', 'Runnable', 'Runnable', []],
+          ...(annotation.includes('(')
+            ? ([
+                ['run { a }', 'run { a }', 'run { a }', []],
+                ['if(a) run { b } else run { c }', 'run { c }', 'run { c }', []],
+                ['if(a) {b} else run { c }', 'run { c }', 'run { c }', []],
+              ] as const)
+            : []),
         ] as const) {
           const source = `class C { val r = ${initializer}\n${annotation}\n${body}\n}`;
           const tree = parser.parse(source)!;
@@ -924,6 +931,231 @@ test('keeps following named functions with annotated receivers and context modif
         tree.delete();
         edited?.delete();
         fresh?.delete();
+      }
+    }
+  } finally {
+    query?.delete();
+    parser.delete();
+  }
+});
+
+test('keeps file annotation ranges before blank lines and later annotations', () => {
+  const parser = new Parser().setLanguage(language);
+  let query: Query | undefined;
+  try {
+    query = new Query(language, '(file_annotation) @file (function_declaration) @function');
+    const first = '@file:Suppress("unused")';
+    const second = '@file:JvmName("Boundary")';
+    for (const [trivia, firstText] of [
+      ['', first],
+      ['\n', first],
+      ['// comment\n\n', first + '\n// comment'],
+    ] as const) {
+      const source = `${first}\n${trivia}${second}\nfun f() {}`;
+      const tree = parser.parse(source)!;
+      let edited: ReturnType<Parser['parse']> | undefined;
+      let fresh: ReturnType<Parser['parse']> | undefined;
+      try {
+        expect(tree.rootNode.hasError).toBe(false);
+        const captures = query.captures(tree.rootNode);
+        expect(
+          captures.filter(({ name }) => name === 'file').map(({ node }) => [node.text, node.startIndex, node.endIndex])
+        ).toEqual([
+          [firstText, 0, firstText.length],
+          [second, source.indexOf(second), source.indexOf(second) + second.length],
+        ]);
+        expect(captures.filter(({ name }) => name === 'function').map(({ node }) => node.text)).toEqual(['fun f() {}']);
+        const index = source.indexOf('JvmName') + 'JvmName'.length;
+        const row = source.slice(0, index).split('\n').length - 1;
+        const column = index - source.lastIndexOf('\n', index) - 1;
+        tree.edit(
+          new Edit({
+            startIndex: index,
+            oldEndIndex: index,
+            newEndIndex: index + 1,
+            startPosition: { row, column },
+            oldEndPosition: { row, column },
+            newEndPosition: { row, column: column + 1 },
+          })
+        );
+        const changed = source.slice(0, index) + 'X' + source.slice(index);
+        edited = parser.parse(changed, tree)!;
+        fresh = parser.parse(changed)!;
+        expect(edited.rootNode.hasError).toBe(false);
+        expect(fresh.rootNode.hasError).toBe(false);
+        expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
+        const snapshot = (node: NonNullable<ReturnType<Parser['parse']>>): (string | number | Point)[][] =>
+          query!
+            .captures(node.rootNode)
+            .map(({ name, node }) => [
+              name,
+              node.text,
+              node.startIndex,
+              node.endIndex,
+              node.startPosition,
+              node.endPosition,
+            ]);
+        expect(snapshot(edited)).toEqual(snapshot(fresh));
+        expect(query.captures(edited.rootNode).find(({ name }) => name === 'file')!.node.text).toBe(firstText);
+      } finally {
+        tree.delete();
+        edited?.delete();
+        fresh?.delete();
+      }
+    }
+  } finally {
+    query?.delete();
+    parser.delete();
+  }
+});
+
+test('keeps spaced annotation arguments before ordinary calls', () => {
+  const parser = new Parser().setLanguage(language);
+  let query: Query | undefined;
+  try {
+    query = new Query(
+      language,
+      '(annotation (constructor_invocation (value_arguments) @annotationArguments)) (call_expression) @call (infix_expression) @infix'
+    );
+    for (const annotation of [
+      '@Suppress ("unused")',
+      '@Suppress\n("unused")',
+      '@Suppress /* comment */ ("unused")',
+      `@Suppress ("${'x'.repeat(3000)}")`,
+    ]) {
+      const source = `fun consume(x: Int) {}\nfun main() { val x=1\n${annotation} consume(2) }`;
+      const tree = parser.parse(source)!;
+      let edited: ReturnType<Parser['parse']> | undefined;
+      let fresh: ReturnType<Parser['parse']> | undefined;
+      try {
+        expect(tree.rootNode.hasError).toBe(false);
+        const captures = query.captures(tree.rootNode);
+        expect(captures.filter(({ name }) => name === 'annotationArguments').map(({ node }) => node.text)).toEqual([
+          annotation.slice(annotation.indexOf('(')),
+        ]);
+        expect(
+          captures.filter(({ name }) => name === 'call').map(({ node }) => [node.text, node.startIndex, node.endIndex])
+        ).toEqual([['consume(2)', source.lastIndexOf('consume'), source.lastIndexOf('consume') + 'consume(2)'.length]]);
+        expect(captures.filter(({ name }) => name === 'infix')).toHaveLength(0);
+        const index = source.lastIndexOf('consume') + 'consume'.length;
+        const row = source.slice(0, index).split('\n').length - 1;
+        const column = index - source.lastIndexOf('\n', index) - 1;
+        tree.edit(
+          new Edit({
+            startIndex: index,
+            oldEndIndex: index,
+            newEndIndex: index + 5,
+            startPosition: { row, column },
+            oldEndPosition: { row, column },
+            newEndPosition: { row, column: column + 5 },
+          })
+        );
+        const changed = source.slice(0, index) + 'Again' + source.slice(index);
+        edited = parser.parse(changed, tree)!;
+        fresh = parser.parse(changed)!;
+        expect(edited.rootNode.hasError).toBe(false);
+        expect(fresh.rootNode.hasError).toBe(false);
+        expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
+        const snapshot = (node: NonNullable<ReturnType<Parser['parse']>>): (string | number | Point)[][] =>
+          query!
+            .captures(node.rootNode)
+            .map(({ name, node }) => [
+              name,
+              node.text,
+              node.startIndex,
+              node.endIndex,
+              node.startPosition,
+              node.endPosition,
+            ]);
+        expect(snapshot(edited)).toEqual(snapshot(fresh));
+        expect(
+          query
+            .captures(edited.rootNode)
+            .filter(({ name }) => name === 'call')
+            .map(({ node }) => node.text)
+        ).toEqual(['consumeAgain(2)']);
+      } finally {
+        tree.delete();
+        edited?.delete();
+        fresh?.delete();
+      }
+    }
+  } finally {
+    query?.delete();
+    parser.delete();
+  }
+});
+
+test('keeps long declaration annotations after completed delegated calls', () => {
+  const parser = new Parser().setLanguage(language);
+  let query: Query | undefined;
+  try {
+    query = new Query(
+      language,
+      '(function_declaration name: (identifier) @name) @function (property_declaration) @property (call_expression) @call'
+    );
+    for (const context of ['object O', 'class C', '']) {
+      for (const annotation of ['@A("y")', `@A("${'y'.repeat(2100)}")`, `@A /*${'x'.repeat(3000)}*/ ("y")`]) {
+        const property = 'val extractor: Int by lazy { 1 }';
+        const source = `${context ? context + ' {\n' : ''}${property}\n${annotation}\nfun init() {}${context ? '\n}' : ''}`;
+        const tree = parser.parse(source)!;
+        let edited: ReturnType<Parser['parse']> | undefined;
+        let fresh: ReturnType<Parser['parse']> | undefined;
+        try {
+          expect(tree.rootNode.hasError).toBe(false);
+          const captures = query.captures(tree.rootNode);
+          expect(captures.filter(({ name }) => name === 'name').map(({ node }) => node.text)).toEqual(['init']);
+          expect(captures.filter(({ name }) => name === 'function').map(({ node }) => node.text)).toEqual([
+            `${annotation}\nfun init() {}`,
+          ]);
+          expect(
+            captures
+              .filter(({ name }) => name === 'property')
+              .map(({ node }) => [node.text, node.startIndex, node.endIndex])
+          ).toEqual([[property, source.indexOf(property), source.indexOf(property) + property.length]]);
+          expect(captures.filter(({ name }) => name === 'call').map(({ node }) => node.text)).toEqual(['lazy { 1 }']);
+          const index = source.lastIndexOf('init');
+          const row = source.slice(0, index).split('\n').length - 1;
+          const column = index - source.lastIndexOf('\n', index) - 1;
+          tree.edit(
+            new Edit({
+              startIndex: index,
+              oldEndIndex: index + 4,
+              newEndIndex: index + 7,
+              startPosition: { row, column },
+              oldEndPosition: { row, column: column + 4 },
+              newEndPosition: { row, column: column + 7 },
+            })
+          );
+          const changed = source.slice(0, index) + 'renamed' + source.slice(index + 4);
+          edited = parser.parse(changed, tree)!;
+          fresh = parser.parse(changed)!;
+          expect(edited.rootNode.hasError).toBe(false);
+          expect(fresh.rootNode.hasError).toBe(false);
+          expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
+          const snapshot = (node: NonNullable<ReturnType<Parser['parse']>>): (string | number | Point)[][] =>
+            query!
+              .captures(node.rootNode)
+              .map(({ name, node }) => [
+                name,
+                node.text,
+                node.startIndex,
+                node.endIndex,
+                node.startPosition,
+                node.endPosition,
+              ]);
+          expect(snapshot(edited)).toEqual(snapshot(fresh));
+          expect(
+            query
+              .captures(edited.rootNode)
+              .filter(({ name }) => name === 'name')
+              .map(({ node }) => node.text)
+          ).toEqual(['renamed']);
+        } finally {
+          tree.delete();
+          edited?.delete();
+          fresh?.delete();
+        }
       }
     }
   } finally {
