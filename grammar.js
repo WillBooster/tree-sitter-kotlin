@@ -844,28 +844,25 @@ module.exports = grammar({
         )
       ),
 
-    if_expression: ($) =>
-      withPropertyAnnotationBoundary(
-        $,
+    if_expression: ($) => {
+      const prefix = seq('if', '(', field('condition', $.expression), ')');
+      const nonBlockBody = choice($.expression, $.assignment, $.for_statement, $.while_statement, $.do_while_statement);
+      const elsePrefix = seq(optional(field('consequence', $._control_structure_body)), optional(';'), 'else');
+      return choice(
         prec.right(
           seq(
-            'if',
-            '(',
-            field('condition', $.expression),
-            ')',
-            choice(
-              field('consequence', $._control_structure_body),
-              ';',
-              seq(
-                optional(field('consequence', $._control_structure_body)),
-                optional(';'),
-                'else',
-                choice(field('alternative', $._control_structure_body), ';')
-              )
-            )
+            prefix,
+            choice(field('consequence', $.block), ';', seq(elsePrefix, choice(field('alternative', $.block), ';')))
+          )
+        ),
+        withPropertyAnnotationBoundary(
+          $,
+          prec.right(
+            seq(prefix, choice(field('consequence', nonBlockBody), seq(elsePrefix, field('alternative', nonBlockBody))))
           )
         )
-      ),
+      );
+    },
 
     // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
     // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.

@@ -585,6 +585,8 @@ test('keeps annotated calls on their operands across declaration edits', () => {
           ['a + f(1)', 'f(1)', 'f', ['(1)']],
           ['when(a) { else -> b }', 'when(a) { else -> b }', 'when(a) { else -> b }', []],
           ['try { a } finally { b }', 'try { a } finally { b }', 'try { a } finally { b }', []],
+          ['if(a) { b } else { c }', 'if(a) { b } else { c }', 'if(a) { b } else { c }', []],
+          ['if(a) { b }', 'if(a) { b }', 'if(a) { b }', []],
           ['-Runnable', 'Runnable', 'Runnable', []],
           ['a ?: Runnable', 'Runnable', 'Runnable', []],
         ] as const) {
@@ -742,12 +744,12 @@ test('keeps long annotated members after an expression getter', () => {
   }
 });
 
-test('keeps annotated local calls and return or loop operands distinct', () => {
+test('keeps annotated local calls, anonymous functions and return or loop operands distinct', () => {
   const parser = new Parser().setLanguage(language);
   try {
     const query = new Query(
       language,
-      '(call_expression (expression) @callee) (getter) @accessor (setter) @accessor (annotated_expression) @annotated (return_expression) @return'
+      '(call_expression (expression) @callee) (getter) @accessor (setter) @accessor (annotated_expression) @annotated (return_expression) @return (anonymous_function) @anonymous'
     );
     try {
       for (const annotation of ['@A', `@A("${'x'.repeat(3000)}")`]) {
@@ -793,7 +795,48 @@ test('keeps annotated local calls and return or loop operands distinct', () => {
           tree.delete();
         }
       }
-      for (const declaration of ['suspend fun z() = 3', 'private fun z() = 3', 'val z = 3', 'class Z']) {
+      const anonymous = 'fun @A suspend (() -> Unit)?.() = 1';
+      const source = `val x=1\n@A private constructor\n${anonymous}`;
+      const tree = parser.parse(source)!;
+      let edited: ReturnType<Parser['parse']> | undefined;
+      let fresh: ReturnType<Parser['parse']> | undefined;
+      try {
+        const node = query.captures(tree.rootNode).find(({ name }) => name === 'anonymous')!.node;
+        expect(node.text).toBe(anonymous);
+        expect(node.startIndex).toBe(source.indexOf('fun'));
+        expect(node.endIndex).toBe(source.length);
+        const index = source.lastIndexOf('.()') + 1;
+        const point = { row: 2, column: index - source.lastIndexOf('\n', index) - 1 };
+        tree.edit(
+          new Edit({
+            startIndex: index,
+            oldEndIndex: index,
+            newEndIndex: index + 1,
+            startPosition: point,
+            oldEndPosition: point,
+            newEndPosition: { row: point.row, column: point.column + 1 },
+          })
+        );
+        const changed = source.slice(0, index) + 'f' + source.slice(index);
+        edited = parser.parse(changed, tree)!;
+        fresh = parser.parse(changed)!;
+        expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
+        const name = edited.rootNode.descendantsOfType('function_declaration').at(-1)!.childForFieldName('name')!;
+        expect(name.text).toBe('f');
+        expect(name.startIndex).toBe(index);
+        expect(edited.rootNode.descendantsOfType('anonymous_function')).toHaveLength(0);
+      } finally {
+        tree.delete();
+        edited?.delete();
+        fresh?.delete();
+      }
+      for (const declaration of [
+        'suspend fun z() = 3',
+        'private fun z() = 3',
+        'fun suspend() = 3',
+        'val z = 3',
+        'class Z',
+      ]) {
         const source = `val x=1\n@A private constructor\n${declaration}`;
         const tree = parser.parse(source)!;
         try {
@@ -805,7 +848,9 @@ test('keeps annotated local calls and return or loop operands distinct', () => {
           const node = nodes.at(-1)!;
           const name =
             node.childForFieldName('name') ?? node.descendantsOfType('variable_declaration')[0]?.namedChildren[0];
-          expect(name!.text).toBe(declaration === 'class Z' ? 'Z' : 'z');
+          expect(name!.text).toBe(
+            declaration === 'class Z' ? 'Z' : declaration === 'fun suspend() = 3' ? 'suspend' : 'z'
+          );
           expect(name!.startIndex).toBe(source.lastIndexOf(name!.text));
           if (declaration.includes('fun'))
             expect(node.descendantsOfType('function_body').map((body) => body.text)).toEqual(['= 3']);
@@ -832,6 +877,8 @@ test('keeps following named functions with annotated receivers and context modif
       'fun @A(1) T.f()',
       'fun <R> @A T.f()',
       'fun (@A T)?.f()',
+      'fun @A (T)?.f()',
+      'fun suspend @A (() -> Unit)?.f()',
       'fun (() -> Unit)?.f()',
       'fun (Int)?.f()',
       'context(t:T) fun f()',

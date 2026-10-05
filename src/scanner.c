@@ -404,12 +404,25 @@ static bool scan_named_function_header(TSLexer *lexer) {
         while (lexer->lookahead == '@') {
             if (!skip_annotation_prefix(lexer)) return false;
         }
+        if (lexer->lookahead == '?') {
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '.') return false;
+            continue;
+        }
+        bool suspend_word = false;
         if (lexer->lookahead == '`') {
             skip(lexer);
             if (!skip_literal_rest(lexer, '`', 0)) return false;
         } else {
             if (!is_identifier_start(lexer->lookahead)) return false;
-            while (is_identifier_part(lexer->lookahead)) skip(lexer);
+            size_t length = 0;
+            suspend_word = true;
+            while (is_identifier_part(lexer->lookahead)) {
+                if (length >= sizeof("suspend") - 1 || lexer->lookahead != "suspend"[length]) suspend_word = false;
+                length++;
+                skip(lexer);
+            }
+            suspend_word = suspend_word && length == sizeof("suspend") - 1;
         }
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         if (lexer->lookahead == '<' && !skip_annotation_type_arguments(lexer)) return false;
@@ -417,7 +430,17 @@ static bool scan_named_function_header(TSLexer *lexer) {
             skip(lexer);
             if (!skip_whitespace_and_comments(lexer, true)) return false;
         }
-        if (lexer->lookahead == '(') return true;
+        if (lexer->lookahead == '(') {
+            if (!suspend_word) return true;
+            skip(lexer);
+            if (!skip_to_closing_bracket(lexer, '(', ')', 0) ||
+                !skip_whitespace_and_comments(lexer, true)) return true;
+            if (lexer->lookahead == '?') {
+                skip(lexer);
+                if (!skip_whitespace_and_comments(lexer, true)) return true;
+            }
+            if (lexer->lookahead != '.') return true;
+        }
         if (lexer->lookahead != '.' && lexer->lookahead != '@' &&
             !is_identifier_start(lexer->lookahead) && lexer->lookahead != '`') return false;
     }

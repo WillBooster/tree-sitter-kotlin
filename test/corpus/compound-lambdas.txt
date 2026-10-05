@@ -11,6 +11,21 @@ class TryHolder {
  @A
  { b() }
 }
+class IfHolder {
+ val x = if(a) { b } else { c }
+ @A
+ { b() }
+}
+class ElseLessIfHolder {
+ val x = if(a) { b }
+ @A
+ { b() }
+}
+class RunHolder {
+ val x = run { a }
+ @A
+ { b() }
+}
 class CallHolder {
  val x = f(1)
  @A
@@ -52,6 +67,66 @@ class CallHolder {
               (identifier))
             (finally_block
               (block
+                (identifier))))
+          (annotated_lambda
+            (annotation
+              (user_type
+                (identifier)))
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments))))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (call_expression
+          (if_expression
+            (identifier)
+            (block
+              (identifier))
+            (block
+              (identifier)))
+          (annotated_lambda
+            (annotation
+              (user_type
+                (identifier)))
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments))))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (call_expression
+          (if_expression
+            (identifier)
+            (block
+              (identifier)))
+          (annotated_lambda
+            (annotation
+              (user_type
+                (identifier)))
+            (lambda_literal
+              (call_expression
+                (identifier)
+                (value_arguments))))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (call_expression
+          (call_expression
+            (identifier)
+            (annotated_lambda
+              (lambda_literal
                 (identifier))))
           (annotated_lambda
             (annotation

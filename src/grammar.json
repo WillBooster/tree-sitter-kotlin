@@ -7114,24 +7114,29 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "STRING",
-                "value": "if"
-              },
-              {
-                "type": "STRING",
-                "value": "("
-              },
-              {
-                "type": "FIELD",
-                "name": "condition",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "expression"
-                }
-              },
-              {
-                "type": "STRING",
-                "value": ")"
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "if"
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "("
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "condition",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "expression"
+                    }
+                  },
+                  {
+                    "type": "STRING",
+                    "value": ")"
+                  }
+                ]
               },
               {
                 "type": "CHOICE",
@@ -7141,7 +7146,7 @@
                     "name": "consequence",
                     "content": {
                       "type": "SYMBOL",
-                      "name": "_control_structure_body"
+                      "name": "block"
                     }
                   },
                   {
@@ -7152,36 +7157,41 @@
                     "type": "SEQ",
                     "members": [
                       {
-                        "type": "CHOICE",
+                        "type": "SEQ",
                         "members": [
                           {
-                            "type": "FIELD",
-                            "name": "consequence",
-                            "content": {
-                              "type": "SYMBOL",
-                              "name": "_control_structure_body"
-                            }
+                            "type": "CHOICE",
+                            "members": [
+                              {
+                                "type": "FIELD",
+                                "name": "consequence",
+                                "content": {
+                                  "type": "SYMBOL",
+                                  "name": "_control_structure_body"
+                                }
+                              },
+                              {
+                                "type": "BLANK"
+                              }
+                            ]
                           },
                           {
-                            "type": "BLANK"
-                          }
-                        ]
-                      },
-                      {
-                        "type": "CHOICE",
-                        "members": [
+                            "type": "CHOICE",
+                            "members": [
+                              {
+                                "type": "STRING",
+                                "value": ";"
+                              },
+                              {
+                                "type": "BLANK"
+                              }
+                            ]
+                          },
                           {
                             "type": "STRING",
-                            "value": ";"
-                          },
-                          {
-                            "type": "BLANK"
+                            "value": "else"
                           }
                         ]
-                      },
-                      {
-                        "type": "STRING",
-                        "value": "else"
                       },
                       {
                         "type": "CHOICE",
@@ -7191,7 +7201,7 @@
                             "name": "alternative",
                             "content": {
                               "type": "SYMBOL",
-                              "name": "_control_structure_body"
+                              "name": "block"
                             }
                           },
                           {
@@ -7208,18 +7218,15 @@
           }
         },
         {
-          "type": "PREC_DYNAMIC",
-          "value": -1,
-          "content": {
-            "type": "PREC",
-            "value": 14,
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "PREC_RIGHT",
-                  "value": 0,
-                  "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "PREC_RIGHT",
+              "value": 0,
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
                     "type": "SEQ",
                     "members": [
                       {
@@ -7241,22 +7248,44 @@
                       {
                         "type": "STRING",
                         "value": ")"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "FIELD",
+                        "name": "consequence",
+                        "content": {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "SYMBOL",
+                              "name": "expression"
+                            },
+                            {
+                              "type": "SYMBOL",
+                              "name": "assignment"
+                            },
+                            {
+                              "type": "SYMBOL",
+                              "name": "for_statement"
+                            },
+                            {
+                              "type": "SYMBOL",
+                              "name": "while_statement"
+                            },
+                            {
+                              "type": "SYMBOL",
+                              "name": "do_while_statement"
+                            }
+                          ]
+                        }
                       },
                       {
-                        "type": "CHOICE",
+                        "type": "SEQ",
                         "members": [
-                          {
-                            "type": "FIELD",
-                            "name": "consequence",
-                            "content": {
-                              "type": "SYMBOL",
-                              "name": "_control_structure_body"
-                            }
-                          },
-                          {
-                            "type": "STRING",
-                            "value": ";"
-                          },
                           {
                             "type": "SEQ",
                             "members": [
@@ -7291,21 +7320,185 @@
                               {
                                 "type": "STRING",
                                 "value": "else"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "FIELD",
+                            "name": "alternative",
+                            "content": {
+                              "type": "CHOICE",
+                              "members": [
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "expression"
+                                },
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "assignment"
+                                },
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "for_statement"
+                                },
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "while_statement"
+                                },
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "do_while_statement"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "PREC_DYNAMIC",
+              "value": -1,
+              "content": {
+                "type": "PREC",
+                "value": 14,
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "PREC_RIGHT",
+                      "value": 0,
+                      "content": {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "SEQ",
+                            "members": [
+                              {
+                                "type": "STRING",
+                                "value": "if"
                               },
                               {
-                                "type": "CHOICE",
+                                "type": "STRING",
+                                "value": "("
+                              },
+                              {
+                                "type": "FIELD",
+                                "name": "condition",
+                                "content": {
+                                  "type": "SYMBOL",
+                                  "name": "expression"
+                                }
+                              },
+                              {
+                                "type": "STRING",
+                                "value": ")"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "CHOICE",
+                            "members": [
+                              {
+                                "type": "FIELD",
+                                "name": "consequence",
+                                "content": {
+                                  "type": "CHOICE",
+                                  "members": [
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "expression"
+                                    },
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "assignment"
+                                    },
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "for_statement"
+                                    },
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "while_statement"
+                                    },
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "do_while_statement"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "type": "SEQ",
                                 "members": [
+                                  {
+                                    "type": "SEQ",
+                                    "members": [
+                                      {
+                                        "type": "CHOICE",
+                                        "members": [
+                                          {
+                                            "type": "FIELD",
+                                            "name": "consequence",
+                                            "content": {
+                                              "type": "SYMBOL",
+                                              "name": "_control_structure_body"
+                                            }
+                                          },
+                                          {
+                                            "type": "BLANK"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "CHOICE",
+                                        "members": [
+                                          {
+                                            "type": "STRING",
+                                            "value": ";"
+                                          },
+                                          {
+                                            "type": "BLANK"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "STRING",
+                                        "value": "else"
+                                      }
+                                    ]
+                                  },
                                   {
                                     "type": "FIELD",
                                     "name": "alternative",
                                     "content": {
-                                      "type": "SYMBOL",
-                                      "name": "_control_structure_body"
+                                      "type": "CHOICE",
+                                      "members": [
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "expression"
+                                        },
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "assignment"
+                                        },
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "for_statement"
+                                        },
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "while_statement"
+                                        },
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "do_while_statement"
+                                        }
+                                      ]
                                     }
-                                  },
-                                  {
-                                    "type": "STRING",
-                                    "value": ";"
                                   }
                                 ]
                               }
@@ -7313,16 +7506,16 @@
                           }
                         ]
                       }
-                    ]
-                  }
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_property_annotation_position"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_property_annotation_position"
+                    }
+                  ]
                 }
-              ]
+              }
             }
-          }
+          ]
         }
       ]
     },
