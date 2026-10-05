@@ -4844,6 +4844,18 @@
             "name": "expression"
           },
           {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_infix_position"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
             "type": "SYMBOL",
             "name": "identifier"
           },
@@ -7607,6 +7619,10 @@
     {
       "type": "SYMBOL",
       "name": "_unseparated_member_start"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_infix_position"
     }
   ],
   "inline": [

@@ -53,6 +53,7 @@ test('preserves adjacent contextual members and their query captures', () => {
     ['constructor() {}', 'constructor(x: Int) {}', 'fun f() {}'],
     ['fun f() {}', 'companion object {}'],
     ['fun f() {}', 'private constructor() {}'],
+    ['fun f() {}', 'private /* outer /* nested */ */ constructor() {}'],
   ]) {
     for (const separator of [' ', ' /* boundary */ ', '\n', '; ']) {
       const source = `class C { ${members.join(separator)} }`;
@@ -70,14 +71,20 @@ test('preserves adjacent contextual members and their query captures', () => {
   }
 });
 
-test('keeps contextual infix calls inside property initializers', () => {
+test('keeps contextual infix calls inside member expressions', () => {
   for (const expression of ['1 init {}', '1 companion object {}']) {
-    const source = `class C { val x = ${expression} }`;
+    const source = `class C { val x = ${expression}; fun f() = ${expression} }`;
     const tree = parser.parse(source)!;
     try {
       expect(tree.rootNode.hasError, source).toBe(false);
-      expect(query.captures(tree.rootNode).map(({ node }) => node.type)).toEqual(['property_declaration']);
-      expect(tree.rootNode.descendantsOfType('infix_expression').map((node) => node.text)).toEqual([expression]);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.type)).toEqual([
+        'property_declaration',
+        'function_declaration',
+      ]);
+      expect(tree.rootNode.descendantsOfType('infix_expression').map((node) => node.text)).toEqual([
+        expression,
+        expression,
+      ]);
     } finally {
       tree.delete();
     }
