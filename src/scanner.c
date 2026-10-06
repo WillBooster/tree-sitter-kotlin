@@ -294,8 +294,11 @@ static bool scan_catch_parameter_start(TSLexer *lexer) {
     while (!lexer->eof(lexer)) {
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         int32_t c = lexer->lookahead;
-        if (c == ':') return true;
-        if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}') return false;
+        if (c == ':') {
+            skip(lexer);
+            return lexer->lookahead != ':';
+        }
+        if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}' || c == '?') return false;
         skip(lexer);
         if (c == '@') {
             while (is_identifier_part(lexer->lookahead) || lexer->lookahead == '.') skip(lexer);

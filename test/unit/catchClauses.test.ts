@@ -143,6 +143,12 @@ test('keeps non-handler catch and finally expressions after a completed try', ()
       'catch[0]',
       'catch = 1',
       'catch(@param:A e)',
+      'catch(::foo)',
+      'catch(a::foo)',
+      'catch(A::class)',
+      'catch((::foo))',
+      'catch(a ?: b)',
+      'catch(a?:b)',
     ]) {
       const source = `fun f() { ${completeTry}\n${expression}\nprintln(1) }`;
       const tree = parser.parse(source)!;
