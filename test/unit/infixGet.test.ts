@@ -323,6 +323,98 @@ test('retains get annotation targets through target and trivia edits', async () 
   }
 });
 
+test('retains get labels and bare accessor boundaries through name and trivia edits', async () => {
+  await Parser.init();
+  const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(label) @label (getter) @getter');
+  try {
+    for (const [original, kind] of [
+      ['fun f() { get@ for (i in 1..3) { println(i) } }', 'label'],
+      ['fun f() { val x = get@ (1 + 2) }', 'label'],
+      ['fun f() { get@ while (true) { break@get } }', 'label'],
+      ['class C { val a = 1 get\nval b = 2 }', 'getter'],
+      ['class C { val a = 1 get /* boundary */\nprivate val b = 2 }', 'getter'],
+      ['class C { val a = 1 get // boundary\nfun <T> b(t: T) = t }', 'getter'],
+      ['class C { val a = 1 get\nconstructor() {} }', 'getter'],
+      ['class C { val a = 1 get\ninit {} }', 'getter'],
+    ] as const) {
+      let text: string = original;
+      let tree = parser.parse(text)!;
+      try {
+        check(tree, text);
+        for (const replacement of kind === 'label' ? ['longerLabel', 'get'] : ['get /* accessor */ ', 'get']) {
+          const start = text.indexOf(
+            kind === 'label' ? (text.includes('longerLabel@') ? 'longerLabel@' : 'get@') : 'get'
+          );
+          const end = kind === 'label' ? text.indexOf('@', start) : text.indexOf('\n', start);
+          const next = text.slice(0, start) + replacement + text.slice(end);
+          const previous = tree;
+          let fresh: Tree | undefined;
+          try {
+            previous.edit(
+              new Edit({
+                startIndex: start,
+                oldEndIndex: end,
+                newEndIndex: start + replacement.length,
+                startPosition: pointAt(text, start),
+                oldEndPosition: pointAt(text, end),
+                newEndPosition: pointAt(next, start + replacement.length),
+              })
+            );
+            tree = parser.parse(next, previous)!;
+            fresh = parser.parse(next)!;
+            check(tree, next);
+            check(fresh, next);
+            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
+            expect(captures(query, tree)).toEqual(captures(query, fresh));
+          } finally {
+            fresh?.delete();
+            previous.delete();
+          }
+          text = next;
+        }
+      } finally {
+        tree.delete();
+      }
+      function check(current: Tree, sourceText: string): void {
+        expect(current.rootNode.hasError, sourceText).toBe(false);
+        const matching = query.captures(current.rootNode).filter(({ name }) => name === kind);
+        expect(matching).toHaveLength(1);
+        const node = matching[0]!.node;
+        const start = sourceText.indexOf(
+          kind === 'label' && sourceText.includes('longerLabel@') ? 'longerLabel@' : 'get'
+        );
+        expect(node.startIndex).toBe(start);
+        expect(node.text).toBe(kind === 'label' ? sourceText.slice(start, sourceText.indexOf('@', start) + 1) : 'get');
+        if (kind === 'getter') expect(node.parent?.type).toBe('property_declaration');
+      }
+    }
+    for (const operand of [
+      '3',
+      'public',
+      'fun() = 2',
+      'fun String.() = length',
+      'object {}',
+      '@Label { 3 }',
+      'constructor()',
+    ]) {
+      const text = `class C { val value = row get\n${operand} }`;
+      const tree = parser.parse(text)!;
+      try {
+        expect(tree.rootNode.hasError, text).toBe(false);
+        expect(tree.rootNode.descendantsOfType('getter')).toHaveLength(0);
+        expect(tree.rootNode.descendantsOfType('infix_expression')).toHaveLength(1);
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
 function pointAt(text: string, index: number): Point {
   const preceding = text.slice(0, index).split('\n');
   return { row: preceding.length - 1, column: preceding.at(-1)!.length };
