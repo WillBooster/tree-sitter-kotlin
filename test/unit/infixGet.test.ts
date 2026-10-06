@@ -260,6 +260,69 @@ test('retains get call operands of return and throw through name and trivia edit
   }
 });
 
+test('retains get annotation targets through target and trivia edits', async () => {
+  await Parser.init();
+  const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(use_site_target) @target (annotation) @annotation');
+  try {
+    for (const sourceText of [
+      'class C { @get:Rule var value = 1 }',
+      'class C(@get:Rule var value: Int)',
+      'class C { @get:[Rule Other] var value = 1 }',
+    ]) {
+      let text = sourceText;
+      let tree = parser.parse(text)!;
+      try {
+        check(tree, text);
+        for (const replacement of ['set /* target */ ', 'get']) {
+          const start = text.indexOf('@') + 1;
+          const end = text.indexOf(':', start);
+          const next = text.slice(0, start) + replacement + text.slice(end);
+          const previous = tree;
+          let fresh: Tree | undefined;
+          try {
+            previous.edit(
+              new Edit({
+                startIndex: start,
+                oldEndIndex: end,
+                newEndIndex: start + replacement.length,
+                startPosition: pointAt(text, start),
+                oldEndPosition: pointAt(text, end),
+                newEndPosition: pointAt(next, start + replacement.length),
+              })
+            );
+            tree = parser.parse(next, previous)!;
+            fresh = parser.parse(next)!;
+            check(tree, next);
+            check(fresh, next);
+            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
+            expect(captures(query, tree)).toEqual(captures(query, fresh));
+          } finally {
+            fresh?.delete();
+            previous.delete();
+          }
+          text = next;
+        }
+        expect(text).toBe(sourceText);
+      } finally {
+        tree.delete();
+      }
+      function check(current: Tree, sourceText: string): void {
+        expect(current.rootNode.hasError, sourceText).toBe(false);
+        const targets = query.captures(current.rootNode).filter(({ name }) => name === 'target');
+        expect(targets).toHaveLength(1);
+        expect(targets[0]!.node.parent?.type).toBe('annotation');
+        expect(targets[0]!.node.startIndex).toBe(sourceText.indexOf('@') + 1);
+        expect(targets[0]!.node.endIndex).toBe(sourceText.indexOf(':') + 1);
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
 function pointAt(text: string, index: number): Point {
   const preceding = text.slice(0, index).split('\n');
   return { row: preceding.length - 1, column: preceding.at(-1)!.length };

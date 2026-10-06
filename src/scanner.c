@@ -1271,6 +1271,10 @@ static bool scan_infix_get_identifier(TSLexer *lexer) {
     if (is_identifier_part(lexer->lookahead)) return false;
     lexer->mark_end(lexer);
     if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+    if (lexer->lookahead == ':') {
+        advance(lexer);
+        if (lexer->lookahead != ':') return false;
+    }
     if (lexer->lookahead == '(') {
         advance(lexer);
         if (!scan_whitespace_and_comments(lexer, true, false) || lexer->lookahead == ')') return false;
