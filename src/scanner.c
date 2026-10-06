@@ -288,6 +288,27 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
 }
 
+static bool scan_catch_parameter_start(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') return false;
+    skip(lexer);
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == ':') return true;
+        if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}') return false;
+        skip(lexer);
+        if (c == '@') {
+            while (is_identifier_part(lexer->lookahead) || lexer->lookahead == '.') skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (lexer->lookahead == ':') skip(lexer);
+        }
+        if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+        if (c == '[' && !skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        if ((c == '"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
+}
+
 // Kotlin's hard keywords other than `this`, which a string template cannot reference.
 static const char *const TEMPLATE_KEYWORDS[] = {
     "as",  "break", "class", "continue", "do",     "else",    "false",  "for",       "fun",    "if",
@@ -989,7 +1010,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return !valid_symbols[WHERE];
                 }
                 else if (index == 9 || index == 10) {
-                    return error_recovery || !valid_symbols[TRY_CONTINUATION_POSITION];
+                    if (error_recovery || !valid_symbols[TRY_CONTINUATION_POSITION]) return true;
+                    if (index == 9) return !scan_catch_parameter_start(lexer);
+                    return !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '{';
                 }
                 return !res;
             case ';':

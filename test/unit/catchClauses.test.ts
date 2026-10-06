@@ -122,3 +122,73 @@ test('retains standalone finally expressions and keyword-prefixed calls', () => 
     parser.delete();
   }
 });
+
+test('keeps non-handler catch and finally expressions after a completed try', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(try_expression) @try (catch_block) @catch (finally_block) @finally');
+  const completeTry = 'try {} catch(e: Exception) {}';
+  try {
+    for (const expression of [
+      'finally()',
+      'finally + 1',
+      'finally.value',
+      'finally[0]',
+      'finally = 1',
+      'finally?.value',
+      'finally as Any',
+      'finally is Any',
+      'catch()',
+      'catch + 1',
+      'catch.value',
+      'catch[0]',
+      'catch = 1',
+      'catch(@param:A e)',
+    ]) {
+      const source = `fun f() { ${completeTry}\n${expression}\nprintln(1) }`;
+      const tree = parser.parse(source)!;
+      let edited: Tree | undefined;
+      let fresh: Tree | undefined;
+      try {
+        check(tree);
+        const start = source.indexOf(expression);
+        const insertion = '\n/* boundary */\n';
+        const changed = source.slice(0, start) + insertion + source.slice(start);
+        tree.edit(
+          new Edit({
+            startIndex: start,
+            oldEndIndex: start,
+            newEndIndex: start + insertion.length,
+            startPosition: position(source, start),
+            oldEndPosition: position(source, start),
+            newEndPosition: position(changed, start + insertion.length),
+          })
+        );
+        edited = parser.parse(changed, tree)!;
+        fresh = parser.parse(changed)!;
+        check(edited);
+        check(fresh);
+        expect(snapshot(edited.rootNode)).toEqual(snapshot(fresh.rootNode));
+      } finally {
+        fresh?.delete();
+        edited?.delete();
+        tree.delete();
+      }
+      function check(current: Tree): void {
+        expect(current.rootNode.hasError, source).toBe(false);
+        expect(query.captures(current.rootNode).map(({ name, node }) => [name, node.text])).toEqual([
+          ['try', completeTry],
+          ['catch', 'catch(e: Exception) {}'],
+        ]);
+        expect(
+          current.rootNode
+            .descendantsOfType('block')[0]!
+            .namedChildren.filter((node) => !node.isExtra)
+            .map((node) => node.text)
+        ).toEqual([completeTry, expression, 'println(1)']);
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
