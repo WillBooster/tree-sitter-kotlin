@@ -267,6 +267,10 @@ test('retains catch identifiers while ordinary object arguments are incomplete',
       'catch(object : Any())',
       'catch(throw object : Exception())',
       'catch(return object : Any())',
+      'catch(object : Any) {}',
+      'catch(object : Any()) {}',
+      'catch(object : Any) /* trailing lambda */ {}',
+      'catch(object /* name */ : Any)\n{}',
     ]) {
       const source = `fun f() { try {} catch(e: E) {}\n${expression}\nprintln(1) }`;
       const start = source.indexOf(expression);

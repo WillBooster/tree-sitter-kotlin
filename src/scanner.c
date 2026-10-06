@@ -311,13 +311,28 @@ static bool scan_catch_parameter_start(TSLexer *lexer) {
     if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') return false;
     skip(lexer);
     int32_t previous = 0;
+    bool object_name = false;
     while (!lexer->eof(lexer)) {
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         int32_t c = lexer->lookahead;
         if (c == ':') {
-            return (is_identifier_part(previous) || previous == '`') && scan_catch_parameter_type_end(lexer);
+            return !object_name && (is_identifier_part(previous) || previous == '`') &&
+                   scan_catch_parameter_type_end(lexer);
         }
         if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}' || c == '?') return false;
+        if (is_identifier_part(c)) {
+            const char *word = "object";
+            bool matches = true;
+            do {
+                previous = lexer->lookahead;
+                if (!*word || previous != *word) matches = false;
+                else word++;
+                skip(lexer);
+            } while (is_identifier_part(lexer->lookahead));
+            object_name = matches && !*word;
+            continue;
+        }
+        object_name = false;
         skip(lexer);
         if (c == '@') {
             while (is_identifier_part(lexer->lookahead) || lexer->lookahead == '.') skip(lexer);

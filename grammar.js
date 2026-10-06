@@ -824,7 +824,6 @@ module.exports = grammar({
       seq(
         'try',
         $.block,
-        optional($._try_continuation_position),
         choice(
           seq(repeat1(seq($.catch_block, optional($._try_continuation_position))), optional($.finally_block)),
           $.finally_block
