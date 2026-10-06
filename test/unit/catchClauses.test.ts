@@ -258,6 +258,93 @@ test('retains whole catch-prefixed names in malformed member lists', () => {
   }
 });
 
+test('retains catch identifiers while ordinary object arguments are incomplete', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(identifier) @identifier');
+  try {
+    for (const expression of [
+      'catch(object : Any)',
+      'catch(object : Any())',
+      'catch(throw object : Exception())',
+      'catch(return object : Any())',
+    ]) {
+      const source = `fun f() { try {} catch(e: E) {}\n${expression}\nprintln(1) }`;
+      const start = source.indexOf(expression);
+      const insertion = '\n/* ordinary boundary */\n';
+      const changed = source.slice(0, start) + insertion + source.slice(start);
+      const tree = parser.parse(source)!;
+      let incremental: Tree | undefined;
+      let fresh: Tree | undefined;
+      let restored: Tree | undefined;
+      let original: Tree | undefined;
+      try {
+        check(tree, start);
+        tree.edit(
+          new Edit({
+            startIndex: start,
+            oldEndIndex: start,
+            newEndIndex: start + insertion.length,
+            startPosition: position(source, start),
+            oldEndPosition: position(source, start),
+            newEndPosition: position(changed, start + insertion.length),
+          })
+        );
+        incremental = parser.parse(changed, tree)!;
+        fresh = parser.parse(changed)!;
+        check(incremental, start + insertion.length);
+        check(fresh, start + insertion.length);
+        expect(snapshot(incremental.rootNode)).toEqual(snapshot(fresh.rootNode));
+        expect(captures(incremental)).toEqual(captures(fresh));
+        incremental.edit(
+          new Edit({
+            startIndex: start,
+            oldEndIndex: start + insertion.length,
+            newEndIndex: start,
+            startPosition: position(changed, start),
+            oldEndPosition: position(changed, start + insertion.length),
+            newEndPosition: position(source, start),
+          })
+        );
+        restored = parser.parse(source, incremental)!;
+        original = parser.parse(source)!;
+        check(restored, start);
+        expect(snapshot(restored.rootNode)).toEqual(snapshot(original.rootNode));
+        expect(captures(restored)).toEqual(captures(original));
+      } finally {
+        original?.delete();
+        restored?.delete();
+        fresh?.delete();
+        incremental?.delete();
+        tree.delete();
+      }
+      function check(current: Tree, index: number): void {
+        expect(current.rootNode.hasError, expression).toBe(true);
+        expect(
+          query
+            .captures(current.rootNode)
+            .filter(({ node }) => node.text === 'catch')
+            .map(({ node }) => [node.startIndex, node.endIndex])
+        ).toEqual([[index, index + 'catch'.length]]);
+      }
+    }
+    function captures(tree: Tree): unknown {
+      return query
+        .captures(tree.rootNode)
+        .map(({ name, node }) => [
+          name,
+          node.text,
+          node.startIndex,
+          node.endIndex,
+          node.startPosition,
+          node.endPosition,
+        ]);
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
 test('retains finally ownership when enclosing syntax changes around reused catch blocks', () => {
   const parser = new Parser().setLanguage(language);
   const query = new Query(

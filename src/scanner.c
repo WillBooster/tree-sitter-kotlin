@@ -294,7 +294,10 @@ static bool scan_catch_parameter_type_end(TSLexer *lexer) {
     while (!lexer->eof(lexer)) {
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         int32_t c = lexer->lookahead;
-        if (c == ')') return true;
+        if (c == ')') {
+            skip(lexer);
+            return skip_whitespace_and_comments(lexer, true) && lexer->lookahead == '{';
+        }
         if (c == '{' || c == '}' || c == '=') return false;
         skip(lexer);
         if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
