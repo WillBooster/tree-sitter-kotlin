@@ -1163,3 +1163,84 @@ test('keeps long declaration annotations after completed delegated calls', () =>
     parser.delete();
   }
 });
+
+test('keeps when-entry ranges before parenthesized entries and class-constructor ranges after newlines', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(when_entry) @entry (primary_constructor) @constructor');
+  try {
+    for (const newline of ['\n', '\r\n']) {
+      for (const blankLines of [0, 2, 8]) {
+        for (const body of ['a', '{ a }']) {
+          for (const next of ['(b)', '@A b']) {
+            const first = `1 -> ${body}`;
+            const source = `fun f() {${newline}  when (x) {${newline}    ${first}${newline.repeat(blankLines + 1)}    ${next} -> c${newline}  }${newline}}`;
+            const tree = parser.parse(source)!;
+            try {
+              expect(tree.rootNode.hasError, source).toBe(false);
+              const entry = query.captures(tree.rootNode).find(({ name }) => name === 'entry')!.node;
+              expect([entry.text, entry.startIndex, entry.endIndex], source).toEqual([
+                first,
+                source.indexOf(first),
+                source.indexOf(first) + first.length,
+              ]);
+              expect(entry.endPosition).toEqual({ row: 2, column: 4 + first.length });
+              const index = entry.endIndex;
+              const insertion = newline.repeat(2);
+              const changed = source.slice(0, index) + insertion + source.slice(index);
+              tree.edit(
+                new Edit({
+                  startIndex: index,
+                  oldEndIndex: index,
+                  newEndIndex: index + insertion.length,
+                  startPosition: entry.endPosition,
+                  oldEndPosition: entry.endPosition,
+                  newEndPosition: { row: 4, column: 0 },
+                })
+              );
+              const incremental = parser.parse(changed, tree)!;
+              const fresh = parser.parse(changed)!;
+              try {
+                expect(incremental.rootNode.toString()).toBe(fresh.rootNode.toString());
+                const snapshot = (current: NonNullable<ReturnType<Parser['parse']>>): unknown[][] =>
+                  query
+                    .captures(current.rootNode)
+                    .map(({ name, node }) => [
+                      name,
+                      node.text,
+                      node.startIndex,
+                      node.endIndex,
+                      node.startPosition,
+                      node.endPosition,
+                    ]);
+                expect(snapshot(incremental)).toEqual(snapshot(fresh));
+                expect(query.captures(incremental.rootNode)[0]!.node.text).toBe(first);
+              } finally {
+                incremental.delete();
+                fresh.delete();
+              }
+            } finally {
+              tree.delete();
+            }
+          }
+        }
+        const parameters = '(val x: Int)';
+        const source = `class A${newline.repeat(blankLines + 1)}  ${parameters}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError, source).toBe(false);
+          const constructor = query.captures(tree.rootNode).find(({ name }) => name === 'constructor')!.node;
+          expect([constructor.text, constructor.startIndex, constructor.endIndex]).toEqual([
+            parameters,
+            source.indexOf(parameters),
+            source.length,
+          ]);
+        } finally {
+          tree.delete();
+        }
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});

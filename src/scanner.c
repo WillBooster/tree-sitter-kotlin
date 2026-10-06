@@ -1280,7 +1280,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '(':
                 if (!error_recovery && valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) {
                     lexer->result_symbol = PRIMARY_CONSTRUCTOR_POSITION;
-                    lexer->mark_end(lexer);
+                    if (valid_symbols[CLASS_HEADER_POSITION]) lexer->mark_end(lexer);
                 }
                 return true;
 
