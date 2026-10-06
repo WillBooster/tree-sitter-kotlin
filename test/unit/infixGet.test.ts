@@ -189,6 +189,77 @@ test('retains getter ownership and incomplete member identifiers beside contextu
   }
 });
 
+test('retains get call operands of return and throw through name and trivia edits', async () => {
+  await Parser.init();
+  const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(call_expression) @call (infix_expression) @infix (identifier) @identifier');
+  try {
+    for (const [prefix, argumentsText, owner] of [
+      ['return ', '(1)', 'return_expression'],
+      ['return ', '(1, 2)', 'return_expression'],
+      ['return ', '()', 'return_expression'],
+      ['return@f ', '(1, 2)', 'return_expression'],
+      ['throw ', '(1, 2)', 'throw_expression'],
+    ] as const) {
+      let text = `fun f() { ${prefix}get${argumentsText} }`;
+      let tree = parser.parse(text)!;
+      try {
+        check(tree, text, 'get');
+        for (const name of ['getValue', 'get']) {
+          const start = text.indexOf('get');
+          const end = start + (text.startsWith('getValue', start) ? 'getValue'.length : 'get'.length);
+          const replacement = `${name} /* call boundary */ `;
+          const next = text.slice(0, start) + replacement + text.slice(end);
+          const previous = tree;
+          let fresh: Tree | undefined;
+          try {
+            previous.edit(
+              new Edit({
+                startIndex: start,
+                oldEndIndex: end,
+                newEndIndex: start + replacement.length,
+                startPosition: pointAt(text, start),
+                oldEndPosition: pointAt(text, end),
+                newEndPosition: pointAt(next, start + replacement.length),
+              })
+            );
+            tree = parser.parse(next, previous)!;
+            fresh = parser.parse(next)!;
+            check(tree, next, name);
+            check(fresh, next, name);
+            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
+            expect(captures(query, tree)).toEqual(captures(query, fresh));
+          } finally {
+            fresh?.delete();
+            previous.delete();
+          }
+          text = next;
+        }
+      } finally {
+        tree.delete();
+      }
+      function check(current: Tree, sourceText: string, name: string): void {
+        expect(current.rootNode.hasError, sourceText).toBe(false);
+        const result = query.captures(current.rootNode);
+        expect(result.filter(({ name }) => name === 'infix')).toHaveLength(0);
+        const call = result.filter(({ name }) => name === 'call');
+        expect(call).toHaveLength(1);
+        expect(call[0]!.node.parent?.type).toBe(owner);
+        const identifier = result.find(
+          ({ name: capture, node }) => capture === 'identifier' && node.text === name
+        )!.node;
+        expect(identifier.parent?.id).toBe(call[0]!.node.id);
+        expect(identifier.startIndex).toBe(sourceText.indexOf(name));
+        expect(identifier.endIndex).toBe(identifier.startIndex + name.length);
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
 function pointAt(text: string, index: number): Point {
   const preceding = text.slice(0, index).split('\n');
   return { row: preceding.length - 1, column: preceding.at(-1)!.length };

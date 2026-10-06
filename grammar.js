@@ -136,6 +136,8 @@ module.exports = grammar({
     $._unseparated_member_start,
     $._infix_position,
     $._companion_name_position,
+    $._try_continuation_position,
+    $._infix_get_identifier,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -710,9 +712,11 @@ module.exports = grammar({
     infix_expression: ($) =>
       prec.left(
         PREC.INFIX,
-        choice(
-          seq($.expression, optional($._infix_position), $.identifier, $.expression),
-          seq($.expression, $._infix_position, alias('get', $.identifier), $.expression)
+        seq(
+          $.expression,
+          optional($._infix_position),
+          choice($.identifier, alias($._infix_get_identifier, $.identifier)),
+          $.expression
         )
       ),
 
@@ -826,11 +830,19 @@ module.exports = grammar({
     type_test: ($) => seq(choice('is', alias($._not_is, '!is')), $.type),
 
     try_expression: ($) =>
-      seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block)),
+      seq(
+        'try',
+        $.block,
+        choice(
+          seq(repeat1(seq($.catch_block, optional($._try_continuation_position))), optional($.finally_block)),
+          $.finally_block
+        )
+      ),
 
     catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
 
-    finally_block: ($) => seq('finally', $.block),
+    finally_block: ($) =>
+      choice(prec(1, seq($._try_continuation_position, 'finally', $.block)), seq('finally', $.block)),
 
     return_expression: ($) =>
       prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
@@ -961,7 +973,7 @@ module.exports = grammar({
 
     label: () => token(/[a-zA-Z_][a-zA-Z_0-9]*@/),
 
-    _identifier: ($) => choice($.identifier, $._reserved_identifier),
+    _identifier: ($) => choice($.identifier, $._reserved_identifier, alias($._infix_get_identifier, $.identifier)),
 
     identifier: () => token(choice(/[\p{L}_][\p{L}_\p{Nd}]*/u, /`[^\r\n`]+`/)),
 

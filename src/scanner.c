@@ -43,6 +43,8 @@ enum TokenType {
     UNSEPARATED_MEMBER_START,
     INFIX_POSITION,
     COMPANION_NAME_POSITION,
+    TRY_CONTINUATION_POSITION,
+    INFIX_GET_IDENTIFIER,
 };
 
 #define MAX_WORD_SIZE 16
@@ -154,39 +156,36 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
     return skipped;
 }
 
-// Skips the rest of a block comment after its `/*`. Block comments nest in Kotlin.
-static void skip_block_comment_rest(TSLexer *lexer) {
+static void scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
     unsigned depth = 1;
     while (depth > 0 && !lexer->eof(lexer)) {
         int32_t c = lexer->lookahead;
-        skip(lexer);
+        lexer->advance(lexer, skip_chars);
         if (c == '*' && lexer->lookahead == '/') {
-            skip(lexer);
+            lexer->advance(lexer, skip_chars);
             depth--;
         } else if (c == '/' && lexer->lookahead == '*') {
-            skip(lexer);
+            lexer->advance(lexer, skip_chars);
             depth++;
         }
     }
 }
 
-// Skips whitespace and comments, but only up to the end of the line unless `across_lines` is set. Returns false when
-// it stops after consuming a `/` that starts no comment.
-static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
+static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool skip_chars) {
     for (;;) {
         while (across_lines ? iswspace(lexer->lookahead) : lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-            skip(lexer);
+            lexer->advance(lexer, skip_chars);
         }
         if (lexer->lookahead != '/') {
             return true;
         }
-        skip(lexer);
+        lexer->advance(lexer, skip_chars);
         if (lexer->lookahead == '*') {
-            skip(lexer);
-            skip_block_comment_rest(lexer);
+            lexer->advance(lexer, skip_chars);
+            scan_block_comment_rest(lexer, skip_chars);
         } else if (lexer->lookahead == '/') {
             while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
-                skip(lexer);
+                lexer->advance(lexer, skip_chars);
             }
             if (!across_lines) {
                 return true;
@@ -195,6 +194,10 @@ static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
             return false;
         }
     }
+}
+
+static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
+    return scan_whitespace_and_comments(lexer, across_lines, true);
 }
 
 // Bounds the recursion through string templates that nest strings, so that crafted input cannot overflow the stack.
@@ -285,6 +288,71 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     }
     skip_whitespace_and_comments(lexer, true);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
+}
+
+static bool scan_catch_parameter_type_end(TSLexer *lexer) {
+    skip(lexer);
+    if (lexer->lookahead == ':') return false;
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == ')') {
+            skip(lexer);
+            return skip_whitespace_and_comments(lexer, true) && lexer->lookahead == '{';
+        }
+        if (c == '{' || c == '}' || c == '=') return false;
+        skip(lexer);
+        if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+        if (c == '[' && !skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        if ((c == '\"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
+}
+
+static bool scan_catch_parameter_start(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') return false;
+    skip(lexer);
+    int32_t previous = 0;
+    bool object_name = false;
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == ':') {
+            return !object_name && (is_identifier_part(previous) || previous == '`') &&
+                   scan_catch_parameter_type_end(lexer);
+        }
+        if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}' || c == '?') return false;
+        if (is_identifier_part(c)) {
+            const char *word = "object";
+            bool matches = true;
+            do {
+                previous = lexer->lookahead;
+                if (!*word || previous != *word) matches = false;
+                else word++;
+                skip(lexer);
+            } while (is_identifier_part(lexer->lookahead));
+            object_name = matches && !*word;
+            continue;
+        }
+        object_name = false;
+        skip(lexer);
+        if (c == '@') {
+            while (is_identifier_part(lexer->lookahead) || lexer->lookahead == '.') skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (lexer->lookahead == ':') skip(lexer);
+        }
+        previous = c;
+        if (c == '(') {
+            if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+            previous = ')';
+        }
+        if (c == '[') {
+            if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+            previous = ']';
+        }
+        if ((c == '"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
 }
 
 // Kotlin's hard keywords other than `this`, which a string template cannot reference.
@@ -656,7 +724,7 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
     }
 }
 
-static bool scan_infix_get_position(TSLexer *lexer);
+static bool scan_infix_get_identifier(TSLexer *lexer);
 
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
@@ -830,8 +898,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     }
                     return false;
                 case 'g':
-                    if (!error_recovery && valid_symbols[INFIX_POSITION] && scan_infix_get_position(lexer)) {
-                        lexer->result_symbol = INFIX_POSITION;
+                    if (!error_recovery && valid_symbols[INFIX_GET_IDENTIFIER] && scan_infix_get_identifier(lexer)) {
+                        lexer->result_symbol = INFIX_GET_IDENTIFIER;
                         return true;
                     }
                     return false;
@@ -947,7 +1015,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 uint8_t index = -1;
                 bool res = scan_words(
                     lexer,
-                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where"},
+                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where", "catch", "finally"},
                     scanned_word, &index);
                 // Of these, only an accessor or a constructor follows modifiers; in `private as T`, `private` is a name.
                 if (skipped_modifiers && index != 3 && index != 4 && index != 5) {
@@ -994,6 +1062,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 else if (index == 8) {
                     return !valid_symbols[WHERE];
+                }
+                else if (index == 9 || index == 10) {
+                    if (error_recovery || !valid_symbols[TRY_CONTINUATION_POSITION]) return true;
+                    if (index == 9) return !scan_catch_parameter_start(lexer);
+                    return !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '{';
                 }
                 return !res;
             case ';':
@@ -1051,9 +1124,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         skip(lexer);
     }
 
-    if (!error_recovery && valid_symbols[INFIX_POSITION] && lexer->lookahead == 'g') {
-        bool infix = scan_infix_get_position(lexer);
-        if (infix) lexer->result_symbol = INFIX_POSITION;
+    if (!error_recovery && valid_symbols[INFIX_GET_IDENTIFIER] && lexer->lookahead == 'g') {
+        bool infix = scan_infix_get_identifier(lexer);
+        if (infix) lexer->result_symbol = INFIX_GET_IDENTIFIER;
         return infix;
     }
 
@@ -1190,13 +1263,17 @@ comment:
     return false;
 }
 
-static bool scan_infix_get_position(TSLexer *lexer) {
+static bool scan_infix_get_identifier(TSLexer *lexer) {
+    for (const char *word = "get"; *word; word++) {
+        if (lexer->lookahead != *word) return false;
+        advance(lexer);
+    }
+    if (is_identifier_part(lexer->lookahead)) return false;
     lexer->mark_end(lexer);
-    if (!scan_word(lexer, "get") || is_identifier_part(lexer->lookahead)) return false;
-    if (!skip_whitespace_and_comments(lexer, true)) return false;
+    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
     if (lexer->lookahead == '(') {
-        skip(lexer);
-        if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead == ')') return false;
+        advance(lexer);
+        if (!scan_whitespace_and_comments(lexer, true, false) || lexer->lookahead == ')') return false;
     }
     return !lexer->eof(lexer) && lexer->lookahead != '}' && lexer->lookahead != ';' && lexer->lookahead != '=';
 }
