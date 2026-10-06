@@ -338,6 +338,10 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       ['class C { val a = 1 get // boundary\nfun <T> b(t: T) = t }', 'getter'],
       ['class C { val a = 1 get\nconstructor() {} }', 'getter'],
       ['class C { val a = 1 get\ninit {} }', 'getter'],
+      ['class C { val a = 1 get\ncompanion object {} }', 'getter'],
+      ['class C { val a = 1 get\nprivate companion object {} }', 'getter'],
+      ['class C { val a = 1 get /* boundary */\ncompanion /* member */ object : Any() {} }', 'getter'],
+      ['class C { val a = 1 get\ncompanion object Named {} }', 'getter'],
     ] as const) {
       let text: string = original;
       let tree = parser.parse(text)!;
@@ -388,6 +392,11 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
         expect(node.startIndex).toBe(start);
         expect(node.text).toBe(kind === 'label' ? sourceText.slice(start, sourceText.indexOf('@', start) + 1) : 'get');
         if (kind === 'getter') expect(node.parent?.type).toBe('property_declaration');
+        if (sourceText.includes('companion')) {
+          const members = current.rootNode.descendantsOfType('companion_object');
+          expect(members).toHaveLength(1);
+          expect(members[0]!.parent?.type).toBe('class_body');
+        }
       }
     }
     for (const operand of [
@@ -396,6 +405,7 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       'fun() = 2',
       'fun String.() = length',
       'object {}',
+      'object : Any() {}',
       '@Label { 3 }',
       'constructor()',
     ]) {

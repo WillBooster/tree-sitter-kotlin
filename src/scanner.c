@@ -1298,6 +1298,7 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
 }
 
 static bool scan_get_following_declaration(TSLexer *lexer) {
+    bool companion = false;
     for (;;) {
         char word[MAX_WORD_SIZE] = {0};
         unsigned length = 0;
@@ -1324,13 +1325,14 @@ static bool scan_get_following_declaration(TSLexer *lexer) {
         }
         if (strcmp(word, "init") == 0 && lexer->lookahead == '{') return true;
         if (strcmp(word, "object") == 0) {
-            return lexer->eof(lexer) || lexer->lookahead == '}' || is_identifier_start(lexer->lookahead) ||
+            return companion || lexer->eof(lexer) || lexer->lookahead == '}' || is_identifier_start(lexer->lookahead) ||
                    lexer->lookahead == '`';
         }
         for (unsigned i = 0; DECLARATION_KEYWORDS[i][0]; i++) {
             if (strcmp(word, DECLARATION_KEYWORDS[i]) == 0) return true;
         }
         bool modifier = strcmp(word, "companion") == 0;
+        companion = companion || modifier;
         for (unsigned i = 0; MODIFIER_WORDS[i][0]; i++) {
             modifier = modifier || strcmp(word, MODIFIER_WORDS[i]) == 0;
         }
