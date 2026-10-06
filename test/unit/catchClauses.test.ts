@@ -153,6 +153,11 @@ test('keeps non-handler catch and finally expressions after a completed try', ()
       'catch(fun(x: Int): Int { return x })',
       'catch(fun String.(): Unit {})',
       'catch(fun(): Unit = println(1))',
+      'catch(object : Any {})',
+      'catch(object : Any() {})',
+      'catch(throw object : Exception() {})',
+      'catch(return object : Any() {})',
+      'catch(if (true) object : Any() {} else null)',
     ]) {
       const source = `fun f() { ${completeTry}\n${expression}\nprintln(1) }`;
       const tree = parser.parse(source)!;
@@ -246,6 +251,100 @@ test('retains whole catch-prefixed names in malformed member lists', () => {
             .map(({ node }) => [node.text, node.startIndex, node.endIndex])
         ).toEqual([[name, text.indexOf(name), text.indexOf(name) + name.length]]);
       }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('retains finally ownership when enclosing syntax changes around reused catch blocks', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(
+    language,
+    '(try_expression) @try (catch_block) @catch (finally_block) @finally (call_expression) @call'
+  );
+  try {
+    for (const separator of ['\n', '\r\n', '\n/* gap */\n']) {
+      for (const handlers of [
+        `catch(e: E) {}${separator}finally {}`,
+        `catch(e: E) {}${separator}catch(e: E) {}${separator}finally {}`,
+        'finally {}',
+      ]) {
+        for (const prefix of ['fun f() { ', 'class C { fun f() { ', 'fun f() { if (true) { ']) {
+          const source = `${prefix}try {}${separator}${handlers}${separator}println(1) }${prefix.startsWith('class') || prefix.includes('if') ? ' }' : ''}`;
+          const name = source.indexOf('f()');
+          const parameter = source.indexOf('(') + 1;
+          const block = source.indexOf('{}') + 1;
+          for (const [start, end, replacement] of [
+            [name, name + 1, ''],
+            [parameter, parameter, 'x: Int'],
+            [source.indexOf('try'), source.indexOf('try'), '/* enclosing */ '],
+            [block, block, 'println(2)'],
+          ] as const) {
+            const tree = parser.parse(source)!;
+            let incremental: Tree | undefined;
+            let fresh: Tree | undefined;
+            let restored: Tree | undefined;
+            let original: Tree | undefined;
+            const changed = source.slice(0, start) + replacement + source.slice(end);
+            try {
+              expect(tree.rootNode.hasError, source).toBe(false);
+              tree.edit(
+                new Edit({
+                  startIndex: start,
+                  oldEndIndex: end,
+                  newEndIndex: start + replacement.length,
+                  startPosition: position(source, start),
+                  oldEndPosition: position(source, end),
+                  newEndPosition: position(changed, start + replacement.length),
+                })
+              );
+              incremental = parser.parse(changed, tree)!;
+              fresh = parser.parse(changed)!;
+              expect(snapshot(incremental.rootNode), changed).toEqual(snapshot(fresh.rootNode));
+              expect(captures(incremental)).toEqual(captures(fresh));
+              if (!fresh.rootNode.hasError) {
+                const final = incremental.rootNode.descendantsOfType('finally_block');
+                expect(final, changed).toHaveLength(1);
+                expect(final[0]!.parent!.type).toBe('try_expression');
+              }
+              incremental.edit(
+                new Edit({
+                  startIndex: start,
+                  oldEndIndex: start + replacement.length,
+                  newEndIndex: end,
+                  startPosition: position(changed, start),
+                  oldEndPosition: position(changed, start + replacement.length),
+                  newEndPosition: position(source, end),
+                })
+              );
+              restored = parser.parse(source, incremental)!;
+              original = parser.parse(source)!;
+              expect(snapshot(restored.rootNode)).toEqual(snapshot(original.rootNode));
+              expect(captures(restored)).toEqual(captures(original));
+            } finally {
+              original?.delete();
+              restored?.delete();
+              fresh?.delete();
+              incremental?.delete();
+              tree.delete();
+            }
+          }
+        }
+      }
+    }
+    function captures(tree: Tree): unknown {
+      return query
+        .captures(tree.rootNode)
+        .map(({ name, node }) => [
+          name,
+          node.text,
+          node.startIndex,
+          node.endIndex,
+          node.startPosition,
+          node.endPosition,
+        ]);
     }
   } finally {
     query.delete();

@@ -833,7 +833,8 @@ module.exports = grammar({
 
     catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
 
-    finally_block: ($) => seq('finally', $.block),
+    finally_block: ($) =>
+      choice(prec(1, seq($._try_continuation_position, 'finally', $.block)), seq('finally', $.block)),
 
     return_expression: ($) =>
       prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
