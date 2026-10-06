@@ -1283,7 +1283,7 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
     if (!scan_whitespace_and_comments(lexer, false, false)) return false;
     bool newline = lexer->lookahead == '\n' || lexer->lookahead == '\r';
     if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-    if (newline && can_be_accessor && is_identifier_start(lexer->lookahead)) {
+    if (newline && can_be_accessor && (is_identifier_start(lexer->lookahead) || lexer->lookahead == '@')) {
         return !scan_get_following_declaration(lexer);
     }
     if (lexer->lookahead == ':') {
@@ -1300,6 +1300,42 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
 static bool scan_get_following_declaration(TSLexer *lexer) {
     bool companion = false;
     for (;;) {
+        while (lexer->lookahead == '@') {
+            advance(lexer);
+            if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+            for (;;) {
+                if (lexer->lookahead == '[') {
+                    advance(lexer);
+                    if (!scan_to_closing_bracket(lexer, '[', ']', 0, false) ||
+                        !scan_whitespace_and_comments(lexer, true, false)) return false;
+                    break;
+                }
+                if (lexer->lookahead == '`') {
+                    advance(lexer);
+                    if (!scan_literal_rest(lexer, '`', 0, false)) return false;
+                } else {
+                    if (!is_identifier_start(lexer->lookahead)) return false;
+                    do { advance(lexer); } while (is_identifier_part(lexer->lookahead));
+                }
+                if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+                if (lexer->lookahead == '<') {
+                    advance(lexer);
+                    if (!scan_to_closing_bracket(lexer, '<', '>', 0, false) ||
+                        !scan_whitespace_and_comments(lexer, true, false)) return false;
+                }
+                if (lexer->lookahead == '.' || lexer->lookahead == ':') {
+                    advance(lexer);
+                    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+                    continue;
+                }
+                if (lexer->lookahead == '(') {
+                    advance(lexer);
+                    if (!scan_to_closing_bracket(lexer, '(', ')', 0, false) ||
+                        !scan_whitespace_and_comments(lexer, true, false)) return false;
+                }
+                break;
+            }
+        }
         char word[MAX_WORD_SIZE] = {0};
         unsigned length = 0;
         while (is_identifier_part(lexer->lookahead)) {
@@ -1339,6 +1375,6 @@ static bool scan_get_following_declaration(TSLexer *lexer) {
         for (unsigned i = 0; OTHER_MODIFIER_WORDS[i][0]; i++) {
             modifier = modifier || strcmp(word, OTHER_MODIFIER_WORDS[i]) == 0;
         }
-        if (!modifier || !is_identifier_start(lexer->lookahead)) return false;
+        if (!modifier || !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@')) return false;
     }
 }

@@ -342,6 +342,15 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       ['class C { val a = 1 get\nprivate companion object {} }', 'getter'],
       ['class C { val a = 1 get /* boundary */\ncompanion /* member */ object : Any() {} }', 'getter'],
       ['class C { val a = 1 get\ncompanion object Named {} }', 'getter'],
+      ['class C { val a = 1 get\n@Ann val x = 2 }', 'getter'],
+      ['class C { val a = 1 get\n@Ann fun f() {} }', 'getter'],
+      ['class C { val a = 1 get\n@Ann object O }', 'getter'],
+      ['class C { val a = 1 get\n@A @B private val x = 2 }', 'getter'],
+      ['class C { val a = 1 get\n@get:Ann val x = 2 }', 'getter'],
+      ['class C { val a = 1 get\n@[A B] val x = 2 }', 'getter'],
+      ['class C { val a = 1 get\n@pkg.Ann("val", ["fun"]) val x = 2 }', 'getter'],
+      ['class C { val a = 1 get\n@`Ann` /* member */ val x = 2 }', 'getter'],
+      ['class C { val a = 1 get\nprivate @Ann val x = 2 }', 'getter'],
     ] as const) {
       let text: string = original;
       let tree = parser.parse(text)!;
@@ -407,6 +416,9 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       'object {}',
       'object : Any() {}',
       '@Label { 3 }',
+      '@A @B { 3 }',
+      '@Ann fun() = 2',
+      '@Ann object : Any() {}',
       'constructor()',
     ]) {
       const text = `class C { val value = row get\n${operand} }`;
