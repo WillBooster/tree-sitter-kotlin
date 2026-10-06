@@ -291,12 +291,13 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
 static bool scan_catch_parameter_start(TSLexer *lexer) {
     if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') return false;
     skip(lexer);
+    int32_t previous = 0;
     while (!lexer->eof(lexer)) {
         if (!skip_whitespace_and_comments(lexer, true)) return false;
         int32_t c = lexer->lookahead;
         if (c == ':') {
             skip(lexer);
-            return lexer->lookahead != ':';
+            return (is_identifier_part(previous) || previous == '`') && lexer->lookahead != ':';
         }
         if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}' || c == '?') return false;
         skip(lexer);
@@ -305,8 +306,15 @@ static bool scan_catch_parameter_start(TSLexer *lexer) {
             if (!skip_whitespace_and_comments(lexer, true)) return false;
             if (lexer->lookahead == ':') skip(lexer);
         }
-        if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
-        if (c == '[' && !skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        previous = c;
+        if (c == '(') {
+            if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+            previous = ')';
+        }
+        if (c == '[') {
+            if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+            previous = ']';
+        }
         if ((c == '"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, 0)) return false;
     }
     return false;
