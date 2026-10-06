@@ -821,23 +821,19 @@ module.exports = grammar({
     type_test: ($) => seq(choice('is', alias($._not_is, '!is')), $.type),
 
     try_expression: ($) =>
-      seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block)),
-
-    catch_block: ($) =>
       seq(
+        'try',
+        $.block,
         optional($._try_continuation_position),
-        'catch',
-        '(',
-        repeat($.annotation),
-        $.identifier,
-        ':',
-        $.type,
-        optional(','),
-        ')',
-        $.block
+        choice(
+          seq(repeat1(seq($.catch_block, optional($._try_continuation_position))), optional($.finally_block)),
+          $.finally_block
+        )
       ),
 
-    finally_block: ($) => seq(optional($._try_continuation_position), 'finally', $.block),
+    catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
+
+    finally_block: ($) => seq('finally', $.block),
 
     return_expression: ($) =>
       prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),

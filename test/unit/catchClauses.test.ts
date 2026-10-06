@@ -192,3 +192,53 @@ test('keeps non-handler catch and finally expressions after a completed try', ()
     parser.delete();
   }
 });
+
+test('retains whole catch-prefixed names in malformed member lists', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(identifier) @identifier');
+  try {
+    for (const name of ['catcher', 'catch_value', 'catch1']) {
+      const source = `class C { val x = println(1)\n${name}() }`;
+      const tree = parser.parse(source)!;
+      let edited: Tree | undefined;
+      let fresh: Tree | undefined;
+      try {
+        check(tree, source);
+        const start = source.indexOf(name);
+        const insertion = '\n/* member boundary */\n';
+        const changed = source.slice(0, start) + insertion + source.slice(start);
+        tree.edit(
+          new Edit({
+            startIndex: start,
+            oldEndIndex: start,
+            newEndIndex: start + insertion.length,
+            startPosition: position(source, start),
+            oldEndPosition: position(source, start),
+            newEndPosition: position(changed, start + insertion.length),
+          })
+        );
+        edited = parser.parse(changed, tree)!;
+        fresh = parser.parse(changed)!;
+        check(edited, changed);
+        check(fresh, changed);
+        expect(snapshot(edited.rootNode)).toEqual(snapshot(fresh.rootNode));
+      } finally {
+        fresh?.delete();
+        edited?.delete();
+        tree.delete();
+      }
+      function check(current: Tree, text: string): void {
+        expect(current.rootNode.hasError).toBe(true);
+        expect(
+          query
+            .captures(current.rootNode)
+            .filter(({ node }) => node.text === name)
+            .map(({ node }) => [node.text, node.startIndex, node.endIndex])
+        ).toEqual([[name, text.indexOf(name), text.indexOf(name) + name.length]]);
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
