@@ -708,7 +708,13 @@ module.exports = grammar({
     range_expression: ($) => prec.left(PREC.RANGE, seq($.expression, choice('..', '..<'), $.expression)),
 
     infix_expression: ($) =>
-      prec.left(PREC.INFIX, seq($.expression, optional($._infix_position), $.identifier, $.expression)),
+      prec.left(
+        PREC.INFIX,
+        choice(
+          seq($.expression, optional($._infix_position), $.identifier, $.expression),
+          seq($.expression, $._infix_position, alias('get', $.identifier), $.expression)
+        )
+      ),
 
     // Right-associative so that a trailing lambda after arguments belongs to the same call (`f(x) { … }`), as in
     // Kotlin, instead of calling the result of `f(x)`.

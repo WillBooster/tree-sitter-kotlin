@@ -656,6 +656,8 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
     }
 }
 
+static bool scan_infix_get_position(TSLexer *lexer);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     // During error recovery every token is valid, including string content and a semicolon, which never are
@@ -825,6 +827,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '?':
                     if (valid_symbols[Q_DOT]) {
                         goto q_dot_from_semi;
+                    }
+                    return false;
+                case 'g':
+                    if (!error_recovery && valid_symbols[INFIX_POSITION] && scan_infix_get_position(lexer)) {
+                        lexer->result_symbol = INFIX_POSITION;
+                        return true;
                     }
                     return false;
                 case 'i':
@@ -1043,6 +1051,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         skip(lexer);
     }
 
+    if (!error_recovery && valid_symbols[INFIX_POSITION] && lexer->lookahead == 'g') {
+        bool infix = scan_infix_get_position(lexer);
+        if (infix) lexer->result_symbol = INFIX_POSITION;
+        return infix;
+    }
+
     if (valid_symbols[DESTRUCTURING_TYPE_START] && !error_recovery && lexer->lookahead == ':') {
         advance(lexer);
         lexer->mark_end(lexer);
@@ -1174,4 +1188,15 @@ comment:
     }
 
     return false;
+}
+
+static bool scan_infix_get_position(TSLexer *lexer) {
+    lexer->mark_end(lexer);
+    if (!scan_word(lexer, "get") || is_identifier_part(lexer->lookahead)) return false;
+    if (!skip_whitespace_and_comments(lexer, true)) return false;
+    if (lexer->lookahead == '(') {
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead == ')') return false;
+    }
+    return !lexer->eof(lexer) && lexer->lookahead != '}' && lexer->lookahead != ';' && lexer->lookahead != '=';
 }
