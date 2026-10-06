@@ -43,6 +43,7 @@ enum TokenType {
     UNSEPARATED_MEMBER_START,
     INFIX_POSITION,
     COMPANION_NAME_POSITION,
+    TRY_CONTINUATION_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -285,6 +286,71 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
     }
     skip_whitespace_and_comments(lexer, true);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
+}
+
+static bool scan_catch_parameter_type_end(TSLexer *lexer) {
+    skip(lexer);
+    if (lexer->lookahead == ':') return false;
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == ')') {
+            skip(lexer);
+            return skip_whitespace_and_comments(lexer, true) && lexer->lookahead == '{';
+        }
+        if (c == '{' || c == '}' || c == '=') return false;
+        skip(lexer);
+        if (c == '(' && !skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+        if (c == '[' && !skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+        if ((c == '\"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
+}
+
+static bool scan_catch_parameter_start(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') return false;
+    skip(lexer);
+    int32_t previous = 0;
+    bool object_name = false;
+    while (!lexer->eof(lexer)) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        int32_t c = lexer->lookahead;
+        if (c == ':') {
+            return !object_name && (is_identifier_part(previous) || previous == '`') &&
+                   scan_catch_parameter_type_end(lexer);
+        }
+        if (c == ')' || c == '=' || c == ',' || c == '{' || c == '}' || c == '?') return false;
+        if (is_identifier_part(c)) {
+            const char *word = "object";
+            bool matches = true;
+            do {
+                previous = lexer->lookahead;
+                if (!*word || previous != *word) matches = false;
+                else word++;
+                skip(lexer);
+            } while (is_identifier_part(lexer->lookahead));
+            object_name = matches && !*word;
+            continue;
+        }
+        object_name = false;
+        skip(lexer);
+        if (c == '@') {
+            while (is_identifier_part(lexer->lookahead) || lexer->lookahead == '.') skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) return false;
+            if (lexer->lookahead == ':') skip(lexer);
+        }
+        previous = c;
+        if (c == '(') {
+            if (!skip_to_closing_bracket(lexer, '(', ')', 0)) return false;
+            previous = ')';
+        }
+        if (c == '[') {
+            if (!skip_to_closing_bracket(lexer, '[', ']', 0)) return false;
+            previous = ']';
+        }
+        if ((c == '"' || c == '\'' || c == '`') && !skip_literal_rest(lexer, c, 0)) return false;
+    }
+    return false;
 }
 
 // Kotlin's hard keywords other than `this`, which a string template cannot reference.
@@ -939,7 +1005,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 uint8_t index = -1;
                 bool res = scan_words(
                     lexer,
-                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where"},
+                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where", "catch", "finally"},
                     scanned_word, &index);
                 // Of these, only an accessor or a constructor follows modifiers; in `private as T`, `private` is a name.
                 if (skipped_modifiers && index != 3 && index != 4 && index != 5) {
@@ -986,6 +1052,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 else if (index == 8) {
                     return !valid_symbols[WHERE];
+                }
+                else if (index == 9 || index == 10) {
+                    if (error_recovery || !valid_symbols[TRY_CONTINUATION_POSITION]) return true;
+                    if (index == 9) return !scan_catch_parameter_start(lexer);
+                    return !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '{';
                 }
                 return !res;
             case ';':

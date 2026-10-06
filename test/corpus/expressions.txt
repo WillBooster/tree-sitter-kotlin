@@ -1948,3 +1948,110 @@ fun comparison(counter: Counter) = -counter.value < 1
             (identifier)
             (identifier)))
         right: (number_literal)))))
+
+==============================
+Handlers on following lines
+==============================
+
+fun f() {
+  try {
+    error("x")
+  }
+  catch (e: IllegalArgumentException) {
+    println(e)
+  }
+  catch (f: RuntimeException) {
+    println(f)
+  }
+  finally {
+    println("done")
+  }
+  println("after")
+}
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (try_expression
+          (block
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (string_literal
+                    (string_content))))))
+          (catch_block
+            (identifier)
+            (user_type
+              (identifier))
+            (block
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))))
+          (catch_block
+            (identifier)
+            (user_type
+              (identifier))
+            (block
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier))))))
+          (finally_block
+            (block
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (string_literal
+                      (string_content))))))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (string_literal
+                (string_content)))))))))
+
+==============================
+Ordinary catch call after a completed try
+==============================
+
+fun f() {
+  try {} catch (e: E) {}
+  catch(1)
+  println(2)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (try_expression
+          (block)
+          (catch_block
+            (identifier)
+            (user_type
+              (identifier))
+            (block)))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (number_literal))))
+        (call_expression
+          (identifier)
+          (value_arguments
+            (value_argument
+              (number_literal))))))))
