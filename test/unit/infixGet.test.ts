@@ -351,6 +351,10 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       ['class C { val a = 1 get\n@pkg.Ann("val", ["fun"]) val x = 2 }', 'getter'],
       ['class C { val a = 1 get\n@`Ann` /* member */ val x = 2 }', 'getter'],
       ['class C { val a = 1 get\nprivate @Ann val x = 2 }', 'getter'],
+      ['fun f() { val a = 1 get\nfor (i in 1..2) {} }', 'getter'],
+      ['fun f() { val a = 1 get\nwhile (x) {} }', 'getter'],
+      ['fun f() { val a = 1 get\ndo {} while (x) }', 'getter'],
+      ['fun f() { val a = 1 get\nx = 1 }', 'getter'],
     ] as const) {
       let text: string = original;
       let tree = parser.parse(text)!;
@@ -420,6 +424,9 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       '@Ann fun() = 2',
       '@Ann object : Any() {}',
       'constructor()',
+      'x / 2',
+      'x == 1',
+      'foo("a=b")',
     ]) {
       const text = `class C { val value = row get\n${operand} }`;
       const tree = parser.parse(text)!;

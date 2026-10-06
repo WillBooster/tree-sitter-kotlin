@@ -1271,7 +1271,8 @@ comment:
     return false;
 }
 
-static bool scan_get_following_declaration(TSLexer *lexer);
+static bool scan_get_following_statement(TSLexer *lexer);
+static bool scan_get_following_assignment(TSLexer *lexer);
 
 static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
     for (const char *word = "get"; *word; word++) {
@@ -1283,8 +1284,9 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
     if (!scan_whitespace_and_comments(lexer, false, false)) return false;
     bool newline = lexer->lookahead == '\n' || lexer->lookahead == '\r';
     if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-    if (newline && can_be_accessor && (is_identifier_start(lexer->lookahead) || lexer->lookahead == '@')) {
-        return !scan_get_following_declaration(lexer);
+    if (lexer->eof(lexer) || lexer->lookahead == '}' || lexer->lookahead == ';' || lexer->lookahead == '=') return false;
+    if (newline && can_be_accessor) {
+        return !scan_get_following_statement(lexer);
     }
     if (lexer->lookahead == ':') {
         advance(lexer);
@@ -1297,7 +1299,7 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
     return !lexer->eof(lexer) && lexer->lookahead != '}' && lexer->lookahead != ';' && lexer->lookahead != '=';
 }
 
-static bool scan_get_following_declaration(TSLexer *lexer) {
+static bool scan_get_following_statement(TSLexer *lexer) {
     bool companion = false;
     for (;;) {
         while (lexer->lookahead == '@') {
@@ -1339,11 +1341,16 @@ static bool scan_get_following_declaration(TSLexer *lexer) {
         char word[MAX_WORD_SIZE] = {0};
         unsigned length = 0;
         while (is_identifier_part(lexer->lookahead)) {
-            if (length == MAX_WORD_SIZE - 1) return false;
-            word[length++] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
+            if (length < MAX_WORD_SIZE - 1) word[length++] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
+            else word[MAX_WORD_SIZE - 2] = '?';
             advance(lexer);
         }
+        if (!scan_whitespace_and_comments(lexer, false, false)) return lexer->eof(lexer) || scan_get_following_assignment(lexer);
+        bool line_after_word = lexer->lookahead == '\n' || lexer->lookahead == '\r';
         if (!scan_whitespace_and_comments(lexer, true, false)) return true;
+        if (strcmp(word, "for") == 0 || strcmp(word, "while") == 0 || strcmp(word, "do") == 0) return true;
+        if (strcmp(word, "if") == 0 || strcmp(word, "when") == 0 || strcmp(word, "return") == 0 ||
+            strcmp(word, "throw") == 0 || strcmp(word, "continue") == 0 || strcmp(word, "break") == 0) return false;
         if (strcmp(word, "fun") == 0) {
             if (lexer->lookahead == '(') return false;
             int32_t previous = 0;
@@ -1375,6 +1382,35 @@ static bool scan_get_following_declaration(TSLexer *lexer) {
         for (unsigned i = 0; OTHER_MODIFIER_WORDS[i][0]; i++) {
             modifier = modifier || strcmp(word, OTHER_MODIFIER_WORDS[i]) == 0;
         }
-        if (!modifier || !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@')) return false;
+        if (!modifier && lexer->lookahead == '@') {
+            advance(lexer);
+            if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+            continue;
+        }
+        if (!modifier) return !line_after_word && scan_get_following_assignment(lexer);
+        if (!(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@')) return false;
     }
+}
+
+static bool scan_get_following_assignment(TSLexer *lexer) {
+    while (!lexer->eof(lexer)) {
+        int32_t c = lexer->lookahead;
+        if (c == '\n' || c == '\r' || c == '}' || c == ';') return false;
+        if (c == '/') {
+            if (!scan_whitespace_and_comments(lexer, false, false) && lexer->lookahead == '=') return true;
+            continue;
+        }
+        advance(lexer);
+        if (c == '=') return lexer->lookahead != '=';
+        if ((c == '+' || c == '-' || c == '*' || c == '%') && lexer->lookahead == '=') return true;
+        if (c == '<' || c == '>' || c == '!') {
+            if (lexer->lookahead == '=') advance(lexer);
+        } else if (c == '(' || c == '[' || c == '{') {
+            int32_t close = c == '(' ? ')' : c == '[' ? ']' : '}';
+            if (!scan_to_closing_bracket(lexer, c, close, 0, false)) return false;
+        } else if ((c == '"' || c == '\'' || c == '`') && !scan_literal_rest(lexer, c, 0, false)) {
+            return false;
+        }
+    }
+    return false;
 }
