@@ -43,6 +43,7 @@ enum TokenType {
     UNSEPARATED_MEMBER_START,
     INFIX_POSITION,
     COMPANION_NAME_POSITION,
+    TRY_CONTINUATION_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -939,7 +940,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 uint8_t index = -1;
                 bool res = scan_words(
                     lexer,
-                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where"},
+                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where", "catch", "finally"},
                     scanned_word, &index);
                 // Of these, only an accessor or a constructor follows modifiers; in `private as T`, `private` is a name.
                 if (skipped_modifiers && index != 3 && index != 4 && index != 5) {
@@ -986,6 +987,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 else if (index == 8) {
                     return !valid_symbols[WHERE];
+                }
+                else if (index == 9 || index == 10) {
+                    return error_recovery || !valid_symbols[TRY_CONTINUATION_POSITION];
                 }
                 return !res;
             case ';':

@@ -5951,6 +5951,18 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_try_continuation_position"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": "catch"
         },
@@ -6002,6 +6014,18 @@
     "finally_block": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_try_continuation_position"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
         {
           "type": "STRING",
           "value": "finally"
@@ -7644,6 +7668,10 @@
     {
       "type": "SYMBOL",
       "name": "_companion_name_position"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_try_continuation_position"
     }
   ],
   "inline": [

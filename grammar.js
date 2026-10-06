@@ -136,6 +136,7 @@ module.exports = grammar({
     $._unseparated_member_start,
     $._infix_position,
     $._companion_name_position,
+    $._try_continuation_position,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -822,9 +823,21 @@ module.exports = grammar({
     try_expression: ($) =>
       seq('try', $.block, choice(seq(repeat1($.catch_block), optional($.finally_block)), $.finally_block)),
 
-    catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
+    catch_block: ($) =>
+      seq(
+        optional($._try_continuation_position),
+        'catch',
+        '(',
+        repeat($.annotation),
+        $.identifier,
+        ':',
+        $.type,
+        optional(','),
+        ')',
+        $.block
+      ),
 
-    finally_block: ($) => seq('finally', $.block),
+    finally_block: ($) => seq(optional($._try_continuation_position), 'finally', $.block),
 
     return_expression: ($) =>
       prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
