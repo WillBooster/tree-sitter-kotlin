@@ -444,6 +444,69 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
   }
 });
 
+test('retains newline infix ownership through equality-operator edits', async () => {
+  await Parser.init();
+  const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(infix_expression) @infix (getter) @getter');
+  try {
+    for (const context of ['class C', 'fun f()']) {
+      let text = `${context} { val value = row get\nx !== 1 }`;
+      let tree = parser.parse(text)!;
+      try {
+        check(tree, text);
+        for (const operator of ['!=', '===', '==', '!==']) {
+          const start = text.indexOf('x ') + 2;
+          const end = text.indexOf(' 1', start);
+          const next = text.slice(0, start) + operator + text.slice(end);
+          const previous = tree;
+          let fresh: Tree | undefined;
+          try {
+            previous.edit(
+              new Edit({
+                startIndex: start,
+                oldEndIndex: end,
+                newEndIndex: start + operator.length,
+                startPosition: pointAt(text, start),
+                oldEndPosition: pointAt(text, end),
+                newEndPosition: pointAt(next, start + operator.length),
+              })
+            );
+            tree = parser.parse(next, previous)!;
+            fresh = parser.parse(next)!;
+            check(tree, next);
+            check(fresh, next);
+            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
+            expect(captures(query, tree)).toEqual(captures(query, fresh));
+          } finally {
+            fresh?.delete();
+            previous.delete();
+          }
+          text = next;
+        }
+      } finally {
+        tree.delete();
+      }
+      function check(current: Tree, sourceText: string): void {
+        expect(current.rootNode.hasError).toBe(false);
+        const result = query.captures(current.rootNode);
+        expect(result.filter(({ name }) => name === 'getter')).toHaveLength(0);
+        const infixes = result.filter(({ name }) => name === 'infix');
+        expect(infixes).toHaveLength(1);
+        const infix = infixes[0]!.node;
+        expect(infix.text).toBe('row get\nx');
+        expect(infix.parent?.type).toBe('binary_expression');
+        expect(infix.parent?.parent?.type).toBe('property_declaration');
+        expect(infix.startIndex).toBe(sourceText.indexOf('row'));
+        expect(infix.endIndex).toBe(sourceText.indexOf('x ') + 1);
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
 function pointAt(text: string, index: number): Point {
   const preceding = text.slice(0, index).split('\n');
   return { row: preceding.length - 1, column: preceding.at(-1)!.length };

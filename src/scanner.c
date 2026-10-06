@@ -1404,7 +1404,10 @@ static bool scan_get_following_assignment(TSLexer *lexer) {
         if (c == '=') return lexer->lookahead != '=';
         if ((c == '+' || c == '-' || c == '*' || c == '%') && lexer->lookahead == '=') return true;
         if (c == '<' || c == '>' || c == '!') {
-            if (lexer->lookahead == '=') advance(lexer);
+            if (lexer->lookahead == '=') {
+                advance(lexer);
+                if (c == '!' && lexer->lookahead == '=') advance(lexer);
+            }
         } else if (c == '(' || c == '[' || c == '{') {
             int32_t close = c == '(' ? ')' : c == '[' ? ']' : '}';
             if (!scan_to_closing_bracket(lexer, c, close, 0, false)) return false;
