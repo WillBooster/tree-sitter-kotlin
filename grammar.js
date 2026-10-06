@@ -137,6 +137,7 @@ module.exports = grammar({
     $._infix_position,
     $._companion_name_position,
     $._try_continuation_position,
+    $._infix_get_identifier,
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -709,7 +710,15 @@ module.exports = grammar({
     range_expression: ($) => prec.left(PREC.RANGE, seq($.expression, choice('..', '..<'), $.expression)),
 
     infix_expression: ($) =>
-      prec.left(PREC.INFIX, seq($.expression, optional($._infix_position), $.identifier, $.expression)),
+      prec.left(
+        PREC.INFIX,
+        seq(
+          $.expression,
+          optional($._infix_position),
+          choice($.identifier, alias($._infix_get_identifier, $.identifier)),
+          $.expression
+        )
+      ),
 
     // Right-associative so that a trailing lambda after arguments belongs to the same call (`f(x) { … }`), as in
     // Kotlin, instead of calling the result of `f(x)`.
@@ -964,7 +973,7 @@ module.exports = grammar({
 
     label: () => token(/[a-zA-Z_][a-zA-Z_0-9]*@/),
 
-    _identifier: ($) => choice($.identifier, $._reserved_identifier),
+    _identifier: ($) => choice($.identifier, $._reserved_identifier, alias($._infix_get_identifier, $.identifier)),
 
     identifier: () => token(choice(/[\p{L}_][\p{L}_\p{Nd}]*/u, /`[^\r\n`]+`/)),
 
