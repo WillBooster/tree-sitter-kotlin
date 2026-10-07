@@ -92,6 +92,12 @@ locked in `Cargo.lock` (`script/tree-sitter`), whose generator and runtime have 
 `script/fork-cli` downloads that CLI into `.tmp/` from its GitHub Release on first use, or builds it with `cargo` when
 the download fails or the release has no binary that runs here.
 
+`bun run generate` records a fresh ABI 16 generation profile from the applicable `test/corpus` cases and Git-tracked
+files in `examples/`, then generates compact parser tables. After changing a grammar, corpus case, or tracked example,
+regenerate and commit `src/`. Stage new example files before generation so they are included in the profile.
+Profiles in `.tmp/generation-profiles/` are temporary and must not be committed. `bun run build-wasm`, `bun run build/ci`,
+and the release build regenerate the parsers before compiling them.
+
 `bun run test` runs:
 
 - the corpus in `test/corpus`, with the native build and with the Wasm build (the first run downloads the WASI SDK);

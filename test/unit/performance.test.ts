@@ -11,10 +11,8 @@ await Parser.init();
 const parser = new Parser();
 parser.setLanguage(await Language.load(WasmPath));
 
-// Only `bun run build/ci` rebuilds the Wasm build, so a check against a stale one would pass after a source
-// edit that brings the slowdown back.
+// The tests load the existing Wasm build, so a check against a stale one would miss an edit that restores the slowdown.
 test('uses a Wasm build built from the current parser', () => {
-  // src/parser.c is generated from grammar.js, so an edit to the grammar alone also makes the Wasm build stale.
   const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c'].map(
     (name) => fs.statSync(path.join(Root, name)).mtimeMs
   );
