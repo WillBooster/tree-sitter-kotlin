@@ -2,6 +2,8 @@ import { expect, test } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { generationInputMtime } from '../helpers/generationInputs.js';
+
 import { Language, Parser } from '@willbooster/web-tree-sitter';
 
 const Root = path.join(import.meta.dirname, '../..');
@@ -17,7 +19,7 @@ test('uses a Wasm build built from the current parser', () => {
     (name) => fs.statSync(path.join(Root, name)).mtimeMs
   );
   expect(
-    Math.max(...sources) > fs.statSync(WasmPath).mtimeMs,
+    Math.max(generationInputMtime(Root), ...sources) > fs.statSync(WasmPath).mtimeMs,
     'grammar.js or src/ changed after the Wasm build was built; run `bun run build/ci`'
   ).toBe(false);
 });
