@@ -20,7 +20,7 @@ test('uses a Wasm build built from the current parser', () => {
   );
   expect(
     Math.max(generationInputMtime(Root), ...sources) > fs.statSync(WasmPath).mtimeMs,
-    'grammar.js or src/ changed after the Wasm build was built; run `bun run build/ci`'
+    'generation inputs or src/ changed after the Wasm build was built; run `bun run build/ci`'
   ).toBe(false);
 });
 
