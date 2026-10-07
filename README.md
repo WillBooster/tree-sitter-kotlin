@@ -18,7 +18,7 @@ This fork fixes parsing bugs and raises conformance with the Kotlin grammar.
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers.
+browsers, and Cloudflare Workers. The compact ABI 16 parser requires runtime 1.3.0 or later.
 
 In Node.js and Bun:
 
@@ -62,13 +62,12 @@ The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin) and on
 [willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime this package is tested and
-fuzzed with (the grammar also loads in the upstream `tree-sitter` crate 0.27, whose error recovery never ends on some
-malformed input):
+fuzzed with. The compact ABI 16 parser requires runtime 1.3.0 or later:
 
 ```toml
 [dependencies]
-tree-sitter = { package = "willbooster-tree-sitter", version = "1" }
-tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", version = "1" }
+tree-sitter = { package = "willbooster-tree-sitter", version = "1.3.0" }
+tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", version = "4" }
 ```
 
 ```rust
