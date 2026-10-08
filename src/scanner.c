@@ -1087,7 +1087,39 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
+                    unsigned parentheses = 0, comments = 0, quote_run = 0;
+                    int32_t quote = 0, previous = 0;
+                    bool escaped = false, ambiguous = false, line_comment = false;
                     while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
+                        int32_t c = lexer->lookahead;
+                        if (line_comment) {
+                            skip(lexer);
+                            continue;
+                        }
+                        quote_run = c == '"' ? quote_run + 1 : 0;
+                        ambiguous = ambiguous || quote_run >= 3;
+                        if (comments) {
+                            if (previous == '/' && c == '*') {
+                                comments++;
+                                c = 0;
+                            } else if (previous == '*' && c == '/') {
+                                comments--;
+                                c = 0;
+                            }
+                        } else if (quote) {
+                            if (escaped) escaped = false;
+                            else if (c == '\\' && quote != '`') escaped = true;
+                            else if (c == quote) quote = 0;
+                        } else if (previous == '/' && c == '*') {
+                            comments++;
+                            c = 0;
+                        } else if (previous == '/' && c == '/') {
+                            line_comment = true;
+                            c = 0;
+                        } else if (c == '"' || c == '\'' || c == '`') quote = c;
+                        else if (c == '(') parentheses++;
+                        else if (c == ')' && parentheses) parentheses--;
+                        previous = c;
                         skip(lexer);
                     }
                     while (iswspace(lexer->lookahead)) {
@@ -1096,6 +1128,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     char scanned_word[MAX_WORD_SIZE] = {0};
                     bool modifiers = skip_modifier_words(lexer, scanned_word, false);
                     if (!modifiers) return strncmp(scanned_word, "constructor", 11) != 0;
+                    if (parentheses || comments || quote || ambiguous || line_comment) return true;
                     if (!scan_words(lexer, (const char[16][16]){"constructor"}, scanned_word, NULL)) return true;
                     while (iswspace(lexer->lookahead)) skip(lexer);
                     return lexer->lookahead != '(';

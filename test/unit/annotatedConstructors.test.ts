@@ -90,3 +90,30 @@ test('retains local getter ownership after an unfinished nested comment', () => 
     parser.delete();
   }
 });
+
+test('does not read constructor modifiers from an annotation argument', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(function_declaration name: (identifier) @name) @function');
+  try {
+    for (const source of [
+      'class Foo\n@A( private public constructor())\nfun next()=2\n',
+      'class Foo\n@A(//)\n private public constructor())\nfun next()=2\n',
+    ]) {
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(false);
+        const captures = query.captures(tree.rootNode);
+        expect(captures.filter(({ name }) => name === 'name').map(({ node }) => node.text)).toEqual(['next']);
+        const declaration = captures.find(({ name }) => name === 'function')!.node;
+        expect(declaration.text).toBe(source.slice(source.indexOf('@A'), -1));
+        expect(declaration.startIndex).toBe(source.indexOf('@A'));
+        expect(declaration.endIndex).toBe(source.lastIndexOf('2') + 1);
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
