@@ -1100,7 +1100,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         }
                         bool interpolation = quote == '"' && c == '$' && !escaped;
                         quote_run = c == '"' ? quote_run + 1 : 0;
-                        ambiguous = ambiguous || quote_run >= 3;
+                        ambiguous = ambiguous || (!comments && quote_run >= 3);
                         if (comments) {
                             if (previous == '/' && c == '*') {
                                 comments++;
@@ -1130,9 +1130,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         skip(lexer);
                     }
                     char scanned_word[MAX_WORD_SIZE] = {0};
-                    bool modifiers = skip_modifier_words(lexer, scanned_word, false);
-                    if (!modifiers) return strncmp(scanned_word, "constructor", 11) != 0;
+                    bool visibility = scan_words(lexer, (const char[16][16]){"public", "private", "protected", "internal"}, scanned_word, NULL);
+                    if (!visibility) return strncmp(scanned_word, "constructor", 11) != 0;
                     if (parentheses || comments || quote || ambiguous || line_comment) return true;
+                    memset(scanned_word, 0, MAX_WORD_SIZE);
+                    while (iswspace(lexer->lookahead)) skip(lexer);
                     if (!scan_words(lexer, (const char[16][16]){"constructor"}, scanned_word, NULL)) return true;
                     while (iswspace(lexer->lookahead)) skip(lexer);
                     return lexer->lookahead != '(';

@@ -27,6 +27,8 @@ test('keeps annotated primary constructors with visibility modifiers attached to
       '@Marker',
       '@Marker(1)',
       '@Marker(/*c*/1)',
+      '@Marker(/*"""*/1)',
+      '@Marker(/*x/*"""*/x*/1)',
       '@Deprecated("constructor")',
       '@Deprecated("$")',
       '@Deprecated("$1")',
@@ -237,6 +239,31 @@ test('retains incomplete annotated constructor recovery nodes and ranges', () =>
       }
     }
   } finally {
+    parser.delete();
+  }
+});
+
+test('retains annotated assignments after a local class with conflicting visibility words', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(
+    language,
+    '(assignment left: (annotated_expression) @left right: (number_literal) @right) @assignment'
+  );
+  const source = 'fun f(){ class Foo\n@A\n public private constructor() = 1\n}';
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(tree.rootNode.descendantsOfType('primary_constructor')).toEqual([]);
+    expect(
+      query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+    ).toEqual([
+      ['assignment', '@A\n public private constructor() = 1', 19, 55],
+      ['left', '@A\n public private constructor()', 19, 51],
+      ['right', '1', 54, 55],
+    ]);
+  } finally {
+    tree.delete();
+    query.delete();
     parser.delete();
   }
 });
