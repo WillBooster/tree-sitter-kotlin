@@ -22,7 +22,15 @@ test('keeps annotated primary constructors with visibility modifiers attached to
   const parser = new Parser().setLanguage(language);
   const query = new Query(language, '(class_declaration name: (identifier) @class (primary_constructor) @constructor)');
   try {
-    for (const annotation of ['@Marker', '@Marker(1)', '@Marker(/*c*/1)', '@Deprecated("constructor")']) {
+    for (const annotation of [
+      '@Marker',
+      '@Marker(1)',
+      '@Marker(/*c*/1)',
+      '@Deprecated("constructor")',
+      '@Deprecated("$")',
+      '@Deprecated("$1")',
+      String.raw`@Deprecated("\$name")`,
+    ]) {
       for (const modifier of ['public', 'private', 'protected', 'internal']) {
         for (const newline of ['\n', '\r\n', '\n/*c*/\n']) {
           const source = `annotation class Marker(val value: Int = 0)\nclass Foo${newline} ${annotation}\n ${modifier} constructor(val x: Int = 1)\nfun next() = 2\n`;

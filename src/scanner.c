@@ -1096,6 +1096,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                             skip(lexer);
                             continue;
                         }
+                        bool interpolation = quote == '"' && c == '$' && !escaped;
                         quote_run = c == '"' ? quote_run + 1 : 0;
                         ambiguous = ambiguous || quote_run >= 3;
                         if (comments) {
@@ -1110,7 +1111,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                             if (escaped) escaped = false;
                             else if (c == '\\' && quote != '`') escaped = true;
                             else if (c == quote) quote = 0;
-                            else if (quote == '"' && c == '$') ambiguous = true;
                         } else if (previous == '/' && c == '*') {
                             comments++;
                             c = 0;
@@ -1122,6 +1122,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         else if (c == ')' && parentheses) parentheses--;
                         previous = c;
                         skip(lexer);
+                        if (interpolation && (lexer->lookahead == '{' || is_identifier_start(lexer->lookahead))) ambiguous = true;
                     }
                     while (iswspace(lexer->lookahead)) {
                         skip(lexer);
