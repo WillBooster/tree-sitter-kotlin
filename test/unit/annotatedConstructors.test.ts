@@ -98,6 +98,7 @@ test('does not read constructor modifiers from an annotation argument', () => {
     for (const source of [
       'class Foo\n@A( private public constructor())\nfun next()=2\n',
       'class Foo\n@A(//)\n private public constructor())\nfun next()=2\n',
+      'class Foo\n@A("${f(") private constructor()")}")\nfun next()=2\n',
     ]) {
       const tree = parser.parse(source)!;
       try {

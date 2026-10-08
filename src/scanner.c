@@ -1110,6 +1110,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                             if (escaped) escaped = false;
                             else if (c == '\\' && quote != '`') escaped = true;
                             else if (c == quote) quote = 0;
+                            else if (quote == '"' && c == '$') ambiguous = true;
                         } else if (previous == '/' && c == '*') {
                             comments++;
                             c = 0;
