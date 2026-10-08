@@ -1087,6 +1087,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
+                    // Full literal/comment scans cross the inherited prefix's whitespace boundary and alter separator recovery.
+                    // Track uncertainty only within that prefix; the grammar owns the rest of each annotation.
                     unsigned parentheses = 0, comments = 0, quote_run = 0;
                     int32_t quote = 0, previous = 0;
                     bool escaped = false, ambiguous = false, line_comment = false;

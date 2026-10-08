@@ -9,6 +9,7 @@ const snapshot = (node: NonNullable<ReturnType<Parser['parse']>>['rootNode']): u
   node.isNamed,
   node.isExtra,
   node.isMissing,
+  node.isError,
   node.hasError,
   node.startIndex,
   node.endIndex,
@@ -49,16 +50,17 @@ test('keeps annotated primary constructors with visibility modifiers attached to
             expect(constructor.startIndex, source).toBe(source.indexOf(annotation));
             expect(constructor.endIndex, source).toBe(source.indexOf(')\nfun next') + 1);
             const index = source.indexOf(modifier, source.indexOf(annotation));
-            const after = source.slice(0, index) + 'internal' + source.slice(index + modifier.length);
+            const replacement = modifier === 'internal' ? 'private' : 'internal';
+            const after = source.slice(0, index) + replacement + source.slice(index + modifier.length);
             const point = { row: source.slice(0, index).split('\n').length - 1, column: 1 };
             tree.edit(
               new Edit({
                 startIndex: index,
                 oldEndIndex: index + modifier.length,
-                newEndIndex: index + 8,
+                newEndIndex: index + replacement.length,
                 startPosition: point,
                 oldEndPosition: { ...point, column: 1 + modifier.length },
-                newEndPosition: { ...point, column: 9 },
+                newEndPosition: { ...point, column: 1 + replacement.length },
               })
             );
             const edited = parser.parse(after, tree)!;
@@ -123,6 +125,118 @@ test('does not read constructor modifiers from an annotation argument', () => {
     }
   } finally {
     query.delete();
+    parser.delete();
+  }
+});
+
+test('retains constructors without modifiers when annotation strings contain constructor words', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(class_declaration name: (identifier) @class (primary_constructor) @constructor)');
+  const source = 'class Foo\n@Deprecated("public constructor(")\nconstructor(val x: Int = 1)\nprivate fun f() = 1\n';
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(
+      query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+    ).toEqual([
+      ['class', 'Foo', 6, 9],
+      ['constructor', '@Deprecated("public constructor(")\nconstructor(val x: Int = 1)', 10, 72],
+    ]);
+    expect(tree.rootNode.lastNamedChild?.text).toBe('private fun f() = 1');
+  } finally {
+    tree.delete();
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('keeps constructor text inside unfinished literals and comments out of class headers', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(class_declaration name: (identifier) @class (primary_constructor) @constructor)');
+  try {
+    for (const source of [
+      'class Foo\n@Marker/*\n public constructor(val x: Int)\nfun next() = 2\n',
+      'class Foo\n@Marker"public private\n constructor(val x: Int)\nfun next() = 2\n',
+      'class Foo\n@Marker""""\n public constructor(val x: Int)\nfun next() = 2\n',
+    ]) {
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(true);
+        expect(query.captures(tree.rootNode), source).toEqual([]);
+        expect(tree.rootNode.firstNamedChild?.text, source).toBe('class Foo');
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('retains annotated function ownership after constructor text in a line comment', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(function_declaration name: (identifier) @name) @function');
+  const source = 'class Foo\n@Marker// public constructor(val x: Int)\nfun next() = 2\n';
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(tree.rootNode.firstNamedChild?.text).toBe('class Foo');
+    expect(
+      query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+    ).toEqual([
+      ['function', source.slice(10, -1), 10, 65],
+      ['name', 'next', 55, 59],
+    ]);
+  } finally {
+    tree.delete();
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('retains incomplete annotated constructor recovery nodes and ranges', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    for (const [source, expectedTree, expectedChildren] of [
+      [
+        'public class Foo\n    @JvmOverloads\n    constructor',
+        '(source_file (class_declaration (modifiers (visibility_modifier)) name: (identifier)) (ERROR (modifiers (annotation (user_type (identifier))))))',
+        [
+          ['class_declaration', 'public class Foo', 0, 16],
+          ['ERROR', '@JvmOverloads\n    constructor', 21, 50],
+        ],
+      ],
+      [
+        'class Foo\n @Marker\n constructor',
+        '(source_file (class_declaration name: (identifier)) (ERROR (modifiers (annotation (user_type (identifier))))))',
+        [
+          ['class_declaration', 'class Foo', 0, 9],
+          ['ERROR', '@Marker\n constructor', 11, 31],
+        ],
+      ],
+      [
+        'class Foo\n @Marker\n public constructor',
+        '(source_file (class_declaration name: (identifier)) (ERROR (annotation (user_type (identifier))) (identifier) (identifier)))',
+        [
+          ['class_declaration', 'class Foo', 0, 9],
+          ['ERROR', '@Marker\n public constructor', 11, 38],
+        ],
+      ],
+    ] as const) {
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(true);
+        expect(tree.rootNode.toString(), source).toBe(expectedTree);
+        expect(
+          tree.rootNode.namedChildren.map((node) => [node.type, node.text, node.startIndex, node.endIndex]),
+          source
+        ).toEqual(expectedChildren);
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
     parser.delete();
   }
 });
