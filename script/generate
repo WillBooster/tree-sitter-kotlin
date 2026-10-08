@@ -30,6 +30,7 @@ node -e 'const {grammars} = require("./tree-sitter.json"); console.log([...new S
     cp -Rp "$grammar/src" "$backup"
     trap 'status=$?; if (( status != 0 )); then rm -rf "$grammar/src"; mv "$backup" "$grammar/src"; fi' EXIT
     script/tree-sitter generate "$grammar/grammar.js" --abi 16
+    # Profiling compiles the scanner, so its ranges must match the baseline parser.
     bun script/generateLetterRanges.js
     name=$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).name)' "$grammar/src/grammar.json")
     profile="$workspace/$name.json"
