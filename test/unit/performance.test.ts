@@ -2,6 +2,8 @@ import { expect, test } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { generationInputMtime } from '../helpers/generationInputs.js';
+
 import { Language, Parser } from '@willbooster/web-tree-sitter';
 
 const Root = path.join(import.meta.dirname, '../..');
@@ -11,16 +13,14 @@ await Parser.init();
 const parser = new Parser();
 parser.setLanguage(await Language.load(WasmPath));
 
-// Only `bun run build/ci` rebuilds the Wasm build, so a check against a stale one would pass after a source
-// edit that brings the slowdown back.
+// The tests load the existing Wasm build, so a check against a stale one would miss an edit that restores the slowdown.
 test('uses a Wasm build built from the current parser', () => {
-  // src/parser.c is generated from grammar.js, so an edit to the grammar alone also makes the Wasm build stale.
-  const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c'].map(
+  const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c', 'src/tree_sitter/parser.h'].map(
     (name) => fs.statSync(path.join(Root, name)).mtimeMs
   );
   expect(
-    Math.max(...sources) > fs.statSync(WasmPath).mtimeMs,
-    'grammar.js or src/ changed after the Wasm build was built; run `bun run build/ci`'
+    Math.max(generationInputMtime(Root), ...sources) > fs.statSync(WasmPath).mtimeMs,
+    'generation inputs or src/ changed after the Wasm build was built; run `bun run build/ci`'
   ).toBe(false);
 });
 
@@ -35,22 +35,8 @@ test('uses a Wasm build built from the current parser', () => {
 // and in alternation, each keeping its fastest run, give 9.8 to 11.7 locally; 18 leaves a margin over that and fails
 // for growth faster than about n^1.25.
 test('recovers from an error on each line in linear time', { timeout: 60_000 }, () => {
-  expectLinearRecovery('$ a\n'.repeat(2000), '$ a\n'.repeat(20_000));
-});
-
-test('recovers from unfinished annotation arguments in linear time', { timeout: 60_000 }, () => {
-  expectLinearRecovery('class X\n@A(\n'.repeat(1000), 'class X\n@A(\n'.repeat(10_000));
-});
-
-test('recovers from unfinished annotation lambdas in linear time', { timeout: 60_000 }, () => {
-  expectLinearRecovery('class X\n@A({\n'.repeat(1000), 'class X\n@A({\n'.repeat(10_000));
-});
-
-test('recovers from unfinished property annotations in linear time', { timeout: 60_000 }, () => {
-  expectLinearRecovery('val a = 1\n@A(\n'.repeat(2000) + ')\n', 'val a = 1\n@A(\n'.repeat(20_000) + ')\n');
-});
-
-function expectLinearRecovery(small: string, large: string): void {
+  const small = '$ a\n'.repeat(2000);
+  const large = '$ a\n'.repeat(20_000);
   parseCpuTime(large);
   parseCpuTime(large);
   let smallFastest = Infinity;
@@ -62,7 +48,7 @@ function expectLinearRecovery(small: string, large: string): void {
   expect(largeFastest / smallFastest).toBeLessThan(18);
   // process.threadCpuUsage reports microseconds.
   expect(largeFastest).toBeLessThan(5_000_000);
-}
+});
 
 test('recovers from repeated unfinished destructuring types in linear time', { timeout: 60_000 }, () => {
   const small = `fun f() {\n${'  xs.map { (a, b):\n  println(i\n'.repeat(500)}}\n`;
