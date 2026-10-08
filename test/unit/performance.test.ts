@@ -2,6 +2,8 @@ import { expect, test } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { generationInputMtime } from '../helpers/generationInputs.js';
+
 import { Language, Parser } from '@willbooster/web-tree-sitter';
 
 const Root = path.join(import.meta.dirname, '../..');
@@ -11,16 +13,14 @@ await Parser.init();
 const parser = new Parser();
 parser.setLanguage(await Language.load(WasmPath));
 
-// Only `bun run build/ci` rebuilds the Wasm build, so a check against a stale one would pass after a source
-// edit that brings the slowdown back.
+// The tests load the existing Wasm build, so a check against a stale one would miss an edit that restores the slowdown.
 test('uses a Wasm build built from the current parser', () => {
-  // src/parser.c is generated from grammar.js, so an edit to the grammar alone also makes the Wasm build stale.
-  const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c'].map(
+  const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c', 'src/tree_sitter/parser.h'].map(
     (name) => fs.statSync(path.join(Root, name)).mtimeMs
   );
   expect(
-    Math.max(...sources) > fs.statSync(WasmPath).mtimeMs,
-    'grammar.js or src/ changed after the Wasm build was built; run `bun run build/ci`'
+    Math.max(generationInputMtime(Root), ...sources) > fs.statSync(WasmPath).mtimeMs,
+    'generation inputs or src/ changed after the Wasm build was built; run `bun run build/ci`'
   ).toBe(false);
 });
 
