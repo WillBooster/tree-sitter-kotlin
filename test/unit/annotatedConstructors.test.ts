@@ -267,3 +267,92 @@ test('retains annotated assignments after a local class with conflicting visibil
     parser.delete();
   }
 });
+
+test('retains annotated infix expressions and assignments after a local class', () => {
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '(annotated_expression (infix_expression) @infix) @annotated');
+  try {
+    for (const modifier of ['public', 'private', 'protected', 'internal']) {
+      for (const operand of ['x', '1', 'x + 1', 'call()', 'x::class', '`x`::class']) {
+        for (const suffix of ['', ' = 1']) {
+          const expression = `@A\n ${modifier} constructor(${operand})`;
+          const source = `fun f(){ class Foo\n${expression}${suffix}\n}`;
+          const tree = parser.parse(source)!;
+          try {
+            expect(tree.rootNode.hasError, source).toBe(false);
+            expect(tree.rootNode.descendantsOfType('primary_constructor'), source).toEqual([]);
+            const annotated = query.captures(tree.rootNode).find(({ name }) => name === 'annotated')!.node;
+            expect([annotated.text, annotated.startIndex, annotated.endIndex], source).toEqual([
+              expression,
+              source.indexOf('@A'),
+              source.indexOf('@A') + expression.length,
+            ]);
+            const index = source.indexOf('constructor(') + 'constructor('.length;
+            const replacement = operand === '1' ? 'x' : '1';
+            const after = source.slice(0, index) + replacement + source.slice(index + operand.length);
+            const point = { row: 2, column: index - source.lastIndexOf('\n', index) - 1 };
+            tree.edit(
+              new Edit({
+                startIndex: index,
+                oldEndIndex: index + operand.length,
+                newEndIndex: index + replacement.length,
+                startPosition: point,
+                oldEndPosition: { ...point, column: point.column + operand.length },
+                newEndPosition: { ...point, column: point.column + replacement.length },
+              })
+            );
+            const edited = parser.parse(after, tree)!;
+            const fresh = parser.parse(after)!;
+            try {
+              expect(edited.rootNode.hasError, after).toBe(false);
+              expect(edited.rootNode.descendantsOfType('primary_constructor'), after).toEqual([]);
+              expect(snapshot(edited.rootNode), after).toEqual(snapshot(fresh.rootNode));
+            } finally {
+              edited.delete();
+              fresh.delete();
+            }
+          } finally {
+            tree.delete();
+          }
+        }
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
+test('recognizes annotated constructors with empty or typed first parameters', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    for (const parameters of [
+      '',
+      'value: Int',
+      'val value: Int',
+      'var value: Int',
+      'vararg values: Int',
+      '`value name`: Int',
+      '_value: Int',
+      '値: Int',
+      '/*before*/ value /*after*/: Int',
+      'private val value: Int',
+    ]) {
+      const constructor = `@A\n public constructor(${parameters})`;
+      const source = `class Foo\n${constructor}\nclass After\n`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(false);
+        expect(
+          tree.rootNode.descendantsOfType('primary_constructor').map((node) => [node.text, node.parent?.text]),
+          source
+        ).toEqual([[constructor, `class Foo\n${constructor}`]]);
+        expect(tree.rootNode.lastNamedChild?.text, source).toBe('class After');
+      } finally {
+        tree.delete();
+      }
+    }
+  } finally {
+    parser.delete();
+  }
+});
