@@ -42,27 +42,27 @@
   "devDependencies": {
     "@tsconfig/bun": "1.0.11",
     "@types/bun": "1.4.2",
-    "@vitest/browser-playwright": "5.0.2",
+    "@vitest/browser-playwright": "5.0.3",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "22.18.0",
-    "@willbooster/web-tree-sitter": "1.4.2",
+    "@willbooster/wb": "22.24.0",
+    "@willbooster/web-tree-sitter": "2.0.1",
     "conventional-changelog-conventionalcommits": "10.4.0",
-    "lefthook": "2.1.14",
-    "oxfmt": "0.70.0",
-    "oxlint": "1.85.0",
+    "lefthook": "2.1.16",
+    "oxfmt": "0.71.0",
+    "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
     "playwright": "1.63.0",
     "semantic-release": "25.0.9",
     "sort-package-json": "4.0.0",
     "tree-sitter-cli": "0.27.0",
     "typescript": "7.0.2",
-    "vite": "8.3.1",
-    "vitest": "5.0.2",
-    "wrangler": "4.141.0"
+    "vite": "8.3.2",
+    "vitest": "5.0.3",
+    "wrangler": "4.147.0"
   },
   "peerDependencies": {
-    "@willbooster/web-tree-sitter": "^1.4.2"
+    "@willbooster/web-tree-sitter": "^2.0.0"
   },
   "peerDependenciesMeta": {
     "@willbooster/web-tree-sitter": {

@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@v5.0.1
+      - uses: jdx/mise-action@v5.1.1
       - run: bun install --frozen-lockfile
       - run: bun run test/ci-setup
       - run: bun run build/ci
@@ -88,7 +88,7 @@ jobs:
           mkdir -p .tmp/fuzz-out .tmp/fuzz-artifacts
           .tmp/fuzzer .tmp/fuzz-out .tmp/fuzz-seeds -dict=.tmp/fuzz-dict -artifact_prefix=.tmp/fuzz-artifacts/ \
             -timeout=10 -max_total_time=300 -max_len=4096
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         if: failure()
         with:
           name: fuzzer-artifacts

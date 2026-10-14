@@ -5,7 +5,7 @@
 [![Test](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test.yml)
 [![Test rust](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test-rust.yml/badge.svg)](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test-rust.yml)
 [![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)
-[![wbfy](https://img.shields.io/badge/wbfy-20.28.7-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
+[![wbfy](https://img.shields.io/badge/wbfy-20.36.11-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
 [![crates.io](https://img.shields.io/crates/v/willbooster-tree-sitter-kotlin.svg)](https://crates.io/crates/willbooster-tree-sitter-kotlin)
 
 Kotlin grammar for [tree-sitter](https://github.com/tree-sitter/tree-sitter), forked from
@@ -18,7 +18,8 @@ This fork fixes parsing bugs and raises conformance with the Kotlin grammar.
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers. The compact ABI 16 parser requires runtime 1.4.2 or later.
+browsers, and Cloudflare Workers. The parser loads only with this runtime, version 2.0.0 or later: the upstream
+Tree-sitter runtime rejects it.
 
 In Node.js and Bun:
 
@@ -62,12 +63,12 @@ The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin) and on
 [willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime this package is tested and
-fuzzed with. The compact ABI 16 parser requires runtime 1.4.2 or later:
+fuzzed with. The parser loads only with this runtime, version 2.0.0 or later:
 
 ```toml
 [dependencies]
-tree-sitter = { package = "willbooster-tree-sitter", version = "1.4.2" }
-tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", version = "4" }
+tree-sitter = { package = "willbooster-tree-sitter", version = "2" }
+tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", version = "5" }
 ```
 
 ```rust
@@ -92,7 +93,7 @@ locked in `Cargo.lock` (`script/tree-sitter`), whose generator and runtime have 
 `script/fork-cli` downloads that CLI into `.tmp/` from its GitHub Release on first use, or builds it with `cargo` when
 the download fails or the release has no binary that runs here.
 
-`bun run generate` records a fresh ABI 16 generation profile from the applicable `test/corpus` cases and Git-tracked
+`bun run generate` records a fresh generation profile from the applicable `test/corpus` cases and Git-tracked
 files in `examples/`, then generates compact parser tables. The parser also embeds metadata from `tree-sitter.json`. After changing a grammar,
 `tree-sitter.json`, a corpus case, or a tracked example,
 regenerate and commit `src/`. Stage added or removed examples with `git add -A examples` before generation so the profile uses the intended file list.
