@@ -1,5 +1,11 @@
-/// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
+
+// The CLI injects the DSL before loading this CommonJS grammar.
+const { grammar, alias, choice, field, optional, prec, repeat, repeat1, seq, sym, token } =
+  /** @type {typeof globalThis & import('@willbooster/web-tree-sitter/dsl').DSL} */ (globalThis);
+
+/** @typedef {import('@willbooster/web-tree-sitter/dsl').RuleOrLiteral} RuleOrLiteral */
+/** @typedef {import('@willbooster/web-tree-sitter/dsl').GrammarSymbols<'value_argument'>} GrammarSymbols */
 
 const PREC = {
   SPREAD: 1,
@@ -85,26 +91,26 @@ module.exports = grammar({
     [$._receiver_type],
   ],
 
-  extras: ($) => [/\s/, $.line_comment, $.block_comment],
+  extras: ($) => [/\s/, $.line_comment, sym('block_comment')],
 
-  externals: ($) => [
-    $._destructuring_type_start,
-    $._semi,
-    $._class_member_semi,
+  externals: () => [
+    sym('_destructuring_type_start'),
+    sym('_semi'),
+    sym('_class_member_semi'),
     // Unlike properties, these declarations can end before another member on the same line.
-    $._same_line_member_end,
-    $.block_comment,
+    sym('_same_line_member_end'),
+    sym('block_comment'),
     // also lexed by the scanner, since the generated lexer stops at a NUL character
-    $.line_comment,
-    $._not_is,
-    $._in,
-    $._q_dot,
-    $._multiline_string_content,
-    $._multi_dollar_string_start,
-    $._multi_dollar_multiline_string_start,
-    $._multi_dollar_string_content,
-    $._multi_dollar_interpolation_start,
-    $._multi_dollar_string_end,
+    sym('line_comment'),
+    sym('_not_is'),
+    sym('_in'),
+    sym('_q_dot'),
+    sym('_multiline_string_content'),
+    sym('_multi_dollar_string_start'),
+    sym('_multi_dollar_multiline_string_start'),
+    sym('_multi_dollar_string_content'),
+    sym('_multi_dollar_interpolation_start'),
+    sym('_multi_dollar_string_end'),
     // used to check if a preceding annoation should not have an automatic _semi inserted
     'constructor',
     'get',
@@ -114,30 +120,30 @@ module.exports = grammar({
     // used to check if a modifier alone on its line belongs to a declaration on the next line
     'val',
     // never scanned: it tells the scanner where a primary constructor may start
-    $._primary_constructor_position,
+    sym('_primary_constructor_position'),
     // empty: it ends a delegation expression in a class header before `{` (see `explicit_delegation`)
-    $._delegation_end,
+    sym('_delegation_end'),
     // the `)` that ends a call's arguments (see `value_arguments`)
-    $._arguments_end,
+    sym('_arguments_end'),
     // empty: they tell the scanner when a statement list or the member list of a class body opens in braces, and when
     // either closes (see `frames` in the scanner)
-    $._open_statements,
-    $._open_members,
-    $._close_braces,
-    $._top_level_statement_end,
+    sym('_open_statements'),
+    sym('_open_members'),
+    sym('_close_braces'),
+    sym('_top_level_statement_end'),
     // empty: it ends a context list of types among modifiers, except directly in a statement list (see `modifiers`)
-    $._context_end,
+    sym('_context_end'),
     // a hard keyword other than `this` right after the `$` of a string template (see `_template_name`)
-    $._keyword_reference,
+    sym('_keyword_reference'),
     // never scanned: see `_template_name`
-    $._keyword_reference_end,
+    sym('_keyword_reference_end'),
     'where',
-    $._separated_member_start,
-    $._unseparated_member_start,
-    $._infix_position,
-    $._companion_name_position,
-    $._try_continuation_position,
-    $._infix_get_identifier,
+    sym('_separated_member_start'),
+    sym('_unseparated_member_start'),
+    sym('_infix_position'),
+    sym('_companion_name_position'),
+    sym('_try_continuation_position'),
+    sym('_infix_get_identifier'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body],
@@ -199,11 +205,17 @@ module.exports = grammar({
         repeat($.import),
         // The scanner clears its brace frames after each top-level statement, so that a brace that error recovery
         // consumed affects no later statement.
-        repeat(seq($.statement, $._semi, $._top_level_statement_end))
+        repeat(seq($.statement, sym('_semi'), sym('_top_level_statement_end')))
       ),
 
     file_annotation: ($) =>
-      seq('@', 'file', ':', choice(seq('[', repeat1($._unescaped_annotation), ']'), $._unescaped_annotation), $._semi),
+      seq(
+        '@',
+        'file',
+        ':',
+        choice(seq('[', repeat1($._unescaped_annotation), ']'), $._unescaped_annotation),
+        sym('_semi')
+      ),
 
     package_header: ($) => seq('package', $.qualified_identifier, optional(';')),
 
@@ -217,11 +229,11 @@ module.exports = grammar({
       prec.right(
         seq(
           optional($.modifiers),
-          choice('class', seq(optional(seq('fun', optional($._unseparated_member_start))), 'interface')),
-          optional($._unseparated_member_start),
+          choice('class', seq(optional(seq('fun', optional(sym('_unseparated_member_start')))), 'interface')),
+          optional(sym('_unseparated_member_start')),
           field('name', $.identifier),
           optional($.type_parameters),
-          optional(seq(optional($._primary_constructor_position), $.primary_constructor)),
+          optional(seq(optional(sym('_primary_constructor_position')), $.primary_constructor)),
           optional(seq(':', $.delegation_specifiers)),
           optional($.type_constraints),
           optional(choice($.class_body, $.enum_class_body))
@@ -233,7 +245,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'object',
-          optional($._unseparated_member_start),
+          optional(sym('_unseparated_member_start')),
           field('name', $.identifier),
           optional(seq(':', $.delegation_specifiers)),
           optional($.class_body)
@@ -245,7 +257,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           choice('val', 'var'),
-          optional($._separated_member_start),
+          optional(sym('_separated_member_start')),
           optional($.type_parameters),
           optional(seq($._receiver_type, optional('.'))),
           choice($.variable_declaration, $.multi_variable_declaration),
@@ -261,7 +273,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'typealias',
-          optional($._separated_member_start),
+          optional(sym('_separated_member_start')),
           field('type', $.identifier),
           optional($.type_parameters),
           '=',
@@ -274,19 +286,19 @@ module.exports = grammar({
         optional($.modifiers),
         'companion',
         'object',
-        optional($._unseparated_member_start),
-        optional(seq(optional($._companion_name_position), field('name', $.identifier))),
+        optional(sym('_unseparated_member_start')),
+        optional(seq(optional(sym('_companion_name_position')), field('name', $.identifier))),
         optional(seq(':', $.delegation_specifiers)),
         optional($.class_body)
       ),
 
-    anonymous_initializer: ($) => seq('init', optional($._unseparated_member_start), $.block),
+    anonymous_initializer: ($) => seq('init', optional(sym('_unseparated_member_start')), $.block),
 
     secondary_constructor: ($) =>
       seq(
         optional($.modifiers),
         'constructor',
-        optional($._unseparated_member_start),
+        optional(sym('_unseparated_member_start')),
         $.function_value_parameters,
         optional(seq(':', $.constructor_delegation_call)),
         optional($.block)
@@ -324,7 +336,7 @@ module.exports = grammar({
         seq(
           optional($.modifiers),
           'fun',
-          optional($._unseparated_member_start),
+          optional(sym('_unseparated_member_start')),
           optional($.type_parameters),
           optional(seq($._receiver_type, optional('.'))),
           field('name', $._identifier),
@@ -359,7 +371,7 @@ module.exports = grammar({
 
     // As in Kotlin, a `{` after the delegation expression starts the class body, never a trailing lambda, also after the
     // last operand of an operator (`B by a ?: b { … }`): the scanner ends the expression before it.
-    explicit_delegation: ($) => seq($.type, 'by', $.expression, optional($._delegation_end)),
+    explicit_delegation: ($) => seq($.type, 'by', $.expression, optional(sym('_delegation_end'))),
 
     getter: ($) =>
       prec.right(
@@ -389,7 +401,7 @@ module.exports = grammar({
 
     function_body: ($) => choice($.block, seq('=', $.expression)),
 
-    block: ($) => seq('{', $._open_statements, optional($._statements), '}', $._close_braces),
+    block: ($) => seq('{', sym('_open_statements'), optional($._statements), '}', sym('_close_braces')),
 
     for_statement: ($) =>
       prec.right(
@@ -433,10 +445,11 @@ module.exports = grammar({
 
     _loop_prefix: ($) => prec.dynamic(1, repeat1(choice($.annotation, $.label))),
 
-    class_body: ($) => seq('{', $._open_members, repeat($._class_member_with_separator), '}', $._close_braces),
+    class_body: ($) =>
+      seq('{', sym('_open_members'), repeat($._class_member_with_separator), '}', sym('_close_braces')),
 
     _class_member_with_separator: ($) =>
-      seq($.class_member_declaration, optional($._same_line_member_end), $._class_member_semi),
+      seq($.class_member_declaration, optional(sym('_same_line_member_end')), sym('_class_member_semi')),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),
@@ -446,11 +459,11 @@ module.exports = grammar({
     enum_class_body: ($) =>
       seq(
         '{',
-        $._open_members,
+        sym('_open_members'),
         optionalCommaSep1($.enum_entry),
         optional(seq(';', repeat($._class_member_with_separator))),
         '}',
-        $._close_braces
+        sym('_close_braces')
       ),
 
     // Only annotations can modify an enum entry, and with the full modifier list a `context` after an annotation would
@@ -467,7 +480,7 @@ module.exports = grammar({
 
     value_argument: ($) => seq(optional(seq($._identifier, '=')), optional('*'), $.expression),
 
-    _statements: ($) => seq($.statement, repeat(seq($._semi, $.statement)), optional($._semi)),
+    _statements: ($) => seq($.statement, repeat(seq(sym('_semi'), $.statement)), optional(sym('_semi'))),
 
     statement: ($) =>
       choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
@@ -580,7 +593,7 @@ module.exports = grammar({
         'context',
         '(',
         choice(
-          seq(commaSep1($.type), optional(','), ')', $._context_end),
+          seq(commaSep1($.type), optional(','), ')', sym('_context_end')),
           seq(
             repeat(seq($.type, ',')),
             seq(optional($.parameter_modifiers), $.parameter),
@@ -659,6 +672,7 @@ module.exports = grammar({
     labeled_expression: ($) => seq($.label, $.expression),
 
     binary_expression: ($) => {
+      /** @type {[string, number][]} */
       const table = [
         ['+', PREC.ADD],
         ['-', PREC.ADD],
@@ -682,12 +696,7 @@ module.exports = grammar({
         ...table.map(([operator, precedence]) => {
           return prec.left(
             precedence,
-            seq(
-              field('left', $.expression),
-              // @ts-ignore
-              field('operator', operator),
-              field('right', $.expression)
-            )
+            seq(field('left', $.expression), field('operator', operator), field('right', $.expression))
           );
         })
       );
@@ -699,7 +708,7 @@ module.exports = grammar({
     is_expression: ($) =>
       prec.left(
         PREC.IN,
-        seq(field('left', $.expression), choice('is', alias($._not_is, '!is')), field('right', $.type))
+        seq(field('left', $.expression), choice('is', alias(sym('_not_is'), '!is')), field('right', $.type))
       ),
 
     as_expression: ($) =>
@@ -714,8 +723,8 @@ module.exports = grammar({
         PREC.INFIX,
         seq(
           $.expression,
-          optional($._infix_position),
-          choice($.identifier, alias($._infix_get_identifier, $.identifier)),
+          optional(sym('_infix_position')),
+          choice($.identifier, alias(sym('_infix_get_identifier'), $.identifier)),
           $.expression
         )
       ),
@@ -737,11 +746,11 @@ module.exports = grammar({
     lambda_literal: ($) =>
       seq(
         '{',
-        $._open_statements,
+        sym('_open_statements'),
         optional(seq(optional($.lambda_parameters), '->')),
-        optionalSep1($.statement, $._semi),
+        optionalSep1($.statement, sym('_semi')),
         '}',
-        $._close_braces
+        sym('_close_braces')
       ),
 
     lambda_parameters: ($) => seq(commaSep1($._lambda_parameter), optional(',')),
@@ -750,7 +759,10 @@ module.exports = grammar({
       choice($.variable_declaration, alias($._destructuring_lambda_parameter, $.multi_variable_declaration)),
 
     _destructuring_lambda_parameter: ($) =>
-      seq($._multi_variable_declaration, optional(seq(alias($._destructuring_type_start, ':'), field('type', $.type)))),
+      seq(
+        $._multi_variable_declaration,
+        optional(seq(alias(sym('_destructuring_type_start'), ':'), field('type', $.type)))
+      ),
 
     anonymous_function: ($) =>
       prec.right(
@@ -809,7 +821,15 @@ module.exports = grammar({
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) =>
-      seq('when', optional($.when_subject), '{', $._open_statements, repeat($.when_entry), '}', $._close_braces),
+      seq(
+        'when',
+        optional($.when_subject),
+        '{',
+        sym('_open_statements'),
+        repeat($.when_entry),
+        '}',
+        sym('_close_braces')
+      ),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),
@@ -820,21 +840,21 @@ module.exports = grammar({
         optional(seq('if', field('guard', $.expression))),
         '->',
         field('body', choice($.block, $.statement)),
-        optional($._semi)
+        optional(sym('_semi'))
       ),
 
     _when_condition: ($) => choice($.expression, $.range_test, $.type_test),
 
-    range_test: ($) => seq(choice(alias($._in, 'in'), '!in'), $.expression),
+    range_test: ($) => seq(choice(alias(sym('_in'), 'in'), '!in'), $.expression),
 
-    type_test: ($) => seq(choice('is', alias($._not_is, '!is')), $.type),
+    type_test: ($) => seq(choice('is', alias(sym('_not_is'), '!is')), $.type),
 
     try_expression: ($) =>
       seq(
         'try',
         $.block,
         choice(
-          seq(repeat1(seq($.catch_block, optional($._try_continuation_position))), optional($.finally_block)),
+          seq(repeat1(seq($.catch_block, optional(sym('_try_continuation_position')))), optional($.finally_block)),
           $.finally_block
         )
       ),
@@ -842,7 +862,7 @@ module.exports = grammar({
     catch_block: ($) => seq('catch', '(', repeat($.annotation), $.identifier, ':', $.type, optional(','), ')', $.block),
 
     finally_block: ($) =>
-      choice(prec(1, seq($._try_continuation_position, 'finally', $.block)), seq('finally', $.block)),
+      choice(prec(1, seq(sym('_try_continuation_position'), 'finally', $.block)), seq('finally', $.block)),
 
     return_expression: ($) =>
       prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
@@ -859,7 +879,7 @@ module.exports = grammar({
       prec(
         PREC.CALL,
         choice(
-          seq($.expression, choice('.', alias($._q_dot, '?.')), $.identifier),
+          seq($.expression, choice('.', alias(sym('_q_dot'), '?.')), $.identifier),
           seq($.expression, '::', choice($.identifier, 'class'))
         )
       ),
@@ -874,7 +894,7 @@ module.exports = grammar({
             choice(
               alias(
                 choice(token.immediate(prec(2, seq('\\', /[^bnrt'"\\$]/))), token.immediate(prec(1, /[^"\\$]+/)), '$'),
-                $.string_content
+                sym('string_content')
               ),
               $.escape_sequence,
               $.interpolation
@@ -883,30 +903,34 @@ module.exports = grammar({
           '"'
         ),
         seq(
-          $._multi_dollar_string_start,
+          sym('_multi_dollar_string_start'),
           repeat(
             choice(
-              alias($._multi_dollar_string_content, $.string_content),
+              alias(sym('_multi_dollar_string_content'), sym('string_content')),
               $.escape_sequence,
               alias($._multi_dollar_interpolation, $.interpolation)
             )
           ),
-          $._multi_dollar_string_end
+          sym('_multi_dollar_string_end')
         )
       ),
 
     multiline_string_literal: ($) =>
       choice(
-        seq('"""', repeat(choice(alias($._multiline_string_content, $.string_content), $.interpolation)), '"""'),
         seq(
-          $._multi_dollar_multiline_string_start,
+          '"""',
+          repeat(choice(alias(sym('_multiline_string_content'), sym('string_content')), $.interpolation)),
+          '"""'
+        ),
+        seq(
+          sym('_multi_dollar_multiline_string_start'),
           repeat(
             choice(
-              alias($._multi_dollar_string_content, $.string_content),
+              alias(sym('_multi_dollar_string_content'), sym('string_content')),
               alias($._multi_dollar_interpolation, $.interpolation)
             )
           ),
-          $._multi_dollar_string_end
+          sym('_multi_dollar_string_end')
         )
       ),
 
@@ -922,13 +946,19 @@ module.exports = grammar({
         // As in Kotlin, another hard keyword after `$` is an error: the scanner lexes it, and the grammar then expects
         // `_keyword_reference_end`, which is never scanned. The first alias keeps a name required in `interpolation`; the
         // second makes the end visible when error recovery inserts it as missing, which a hidden token would not be.
-        seq(alias($._keyword_reference, $.identifier), alias($._keyword_reference_end, 'keyword_reference_end'))
+        seq(
+          alias(sym('_keyword_reference'), $.identifier),
+          alias(sym('_keyword_reference_end'), 'keyword_reference_end')
+        )
       ),
 
     // In a string prefixed with n dollars (Kotlin 2.1), exactly n dollars start an interpolation; the scanner
     // returns them as one token only where they do.
     _multi_dollar_interpolation: ($) =>
-      seq($._multi_dollar_interpolation_start, choice($._template_name, seq(token.immediate('{'), $.expression, '}'))),
+      seq(
+        sym('_multi_dollar_interpolation_start'),
+        choice($._template_name, seq(token.immediate('{'), $.expression, '}'))
+      ),
 
     character_literal: ($) => seq("'", choice(token.immediate(prec(1, /[^'\\\r\n]/)), $.escape_sequence), "'"),
 
@@ -973,7 +1003,7 @@ module.exports = grammar({
 
     label: () => token(/[a-zA-Z_][a-zA-Z_0-9]*@/),
 
-    _identifier: ($) => choice($.identifier, $._reserved_identifier, alias($._infix_get_identifier, $.identifier)),
+    _identifier: ($) => choice($.identifier, $._reserved_identifier, alias(sym('_infix_get_identifier'), $.identifier)),
 
     identifier: () => token(choice(/[\p{L}_][\p{L}_\p{Nd}]*/u, /`[^\r\n`]+`/)),
 
@@ -1019,50 +1049,30 @@ module.exports = grammar({
 });
 
 /**
- * Creates a rule to match one or more of the rules separated by `separator`
- *
  * @param {RuleOrLiteral} rule
- *
  * @param {RuleOrLiteral} separator
- *
- * @returns {SeqRule}
  */
 function sep1(rule, separator) {
   return seq(rule, repeat(seq(separator, rule)));
 }
 
 /**
- * Creates a rule to optionally match one or more of the rules separated by `separator`
- * and optionally ending with `separator`
- *
  * @param {RuleOrLiteral} rule
- *
  * @param {RuleOrLiteral} separator
- *
- * @returns {ChoiceRule}
  */
 function optionalSep1(rule, separator) {
   return optional(seq(rule, repeat(seq(separator, rule)), optional(separator)));
 }
 
 /**
- * Creates a rule to match one or more of the rules separated by a comma
- *
- * @param {Rule} rule
- *
- * @returns {SeqRule}
+ * @param {RuleOrLiteral} rule
  */
 function commaSep1(rule) {
   return seq(rule, repeat(seq(',', rule)));
 }
 
 /**
- * Creates a rule to optionally match one or more of the rules separated by a comma
- * and optionally ending with a comma
- *
- * @param {Rule} rule
- *
- * @returns {ChoiceRule}
+ * @param {RuleOrLiteral} rule
  */
 function optionalCommaSep1(rule) {
   return optional(seq(rule, repeat(seq(',', rule)), optional(',')));
@@ -1073,11 +1083,10 @@ function optionalCommaSep1(rule) {
  * its arguments, which the lookahead of the scanned `)` reaches, so an edit there makes incremental parsing reparse the
  * call instead of reusing a call without the lambda.
  *
- * @param {GrammarSymbols<string>} $
+ * @param {GrammarSymbols} $
  * @param {RuleOrLiteral} open
  *
- * @returns {SeqRule}
  */
 function valueArguments($, open) {
-  return seq(open, optionalCommaSep1($.value_argument), alias($._arguments_end, ')'));
+  return seq(open, optionalCommaSep1($.value_argument), alias(sym('_arguments_end'), ')'));
 }
