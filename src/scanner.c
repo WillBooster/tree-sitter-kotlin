@@ -734,6 +734,8 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
 
 static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor);
 
+static bool scan_constructor_parameter_start(TSLexer *lexer);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     // During error recovery every token is valid, including string content and a semicolon, which never are
@@ -1087,20 +1089,57 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
+                    // Full literal/comment scans cross the inherited prefix's whitespace boundary and alter separator recovery.
+                    // Track uncertainty only within that prefix; the grammar owns the rest of each annotation.
+                    unsigned parentheses = 0, comments = 0, quote_run = 0;
+                    int32_t quote = 0, previous = 0;
+                    bool escaped = false, ambiguous = false, line_comment = false;
                     while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
+                        int32_t c = lexer->lookahead;
+                        if (line_comment) {
+                            skip(lexer);
+                            continue;
+                        }
+                        bool interpolation = quote == '"' && c == '$' && !escaped;
+                        quote_run = c == '"' ? quote_run + 1 : 0;
+                        ambiguous = ambiguous || (!comments && quote_run >= 3);
+                        if (comments) {
+                            if (previous == '/' && c == '*') {
+                                comments++;
+                                c = 0;
+                            } else if (previous == '*' && c == '/') {
+                                comments--;
+                                c = 0;
+                            }
+                        } else if (quote) {
+                            if (escaped) escaped = false;
+                            else if (c == '\\' && quote != '`') escaped = true;
+                            else if (c == quote) quote = 0;
+                        } else if (previous == '/' && c == '*') {
+                            comments++;
+                            c = 0;
+                        } else if (previous == '/' && c == '/') {
+                            line_comment = true;
+                            c = 0;
+                        } else if (c == '"' || c == '\'' || c == '`') quote = c;
+                        else if (c == '(') parentheses++;
+                        else if (c == ')' && parentheses) parentheses--;
+                        previous = c;
                         skip(lexer);
+                        if (interpolation && (lexer->lookahead == '{' || is_identifier_start(lexer->lookahead))) ambiguous = true;
                     }
                     while (iswspace(lexer->lookahead)) {
                         skip(lexer);
                     }
-                    char ctor[12] = "constructor";
-                    for (uint8_t i = 0; i < 11; i++) {
-                        if (lexer->lookahead != ctor[i]) {
-                            return true;
-                        }
-                        skip(lexer);
-                    }
-                    return false;
+                    char scanned_word[MAX_WORD_SIZE] = {0};
+                    bool visibility = scan_words(lexer, (const char[16][16]){"public", "private", "protected", "internal"}, scanned_word, NULL);
+                    if (!visibility) return strncmp(scanned_word, "constructor", 11) != 0;
+                    if (parentheses || comments || quote || ambiguous || line_comment) return true;
+                    memset(scanned_word, 0, MAX_WORD_SIZE);
+                    while (iswspace(lexer->lookahead)) skip(lexer);
+                    if (!scan_words(lexer, (const char[16][16]){"constructor"}, scanned_word, NULL)) return true;
+                    while (iswspace(lexer->lookahead)) skip(lexer);
+                    return !scan_constructor_parameter_start(lexer);
                 }
                 if (valid_symbols[GET] || valid_symbols[SET]) {
                     bool saw_paren = false;
@@ -1269,6 +1308,34 @@ comment:
     }
 
     return false;
+}
+
+static bool scan_constructor_parameter_start(TSLexer *lexer) {
+    if (lexer->lookahead != '(') return false;
+    skip(lexer);
+    if (!skip_whitespace_and_comments(lexer, true)) return false;
+    if (lexer->lookahead == ')') return true;
+    for (;;) {
+        bool modifier = false;
+        if (lexer->lookahead == '`') {
+            skip(lexer);
+            if (!scan_literal_rest(lexer, '`', 0, true)) return false;
+        } else {
+            if (!is_identifier_start(lexer->lookahead)) return false;
+            char word[MAX_WORD_SIZE] = {0};
+            modifier = scan_words(lexer, MODIFIER_WORDS, word, NULL) || !strcmp(word, "val") || !strcmp(word, "var");
+            while (is_identifier_part(lexer->lookahead)) {
+                modifier = false;
+                skip(lexer);
+            }
+        }
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == ':') {
+            skip(lexer);
+            return lexer->lookahead != ':';
+        }
+        if (!modifier) return false;
+    }
 }
 
 static bool scan_get_following_statement(TSLexer *lexer);
