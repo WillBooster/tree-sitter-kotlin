@@ -1494,3 +1494,75 @@ fun dynamic(dynamic: Int): Int {
           (value_arguments))
         (return_expression
           (identifier))))))
+
+==================
+Nullable function returns and parenthesized nullable functions
+==================
+
+val f: () -> @A dynamic? = x
+val g: () -> dynamic? = x
+val h: () -> @A Foo? = x
+val i: (() -> @A dynamic)? = x
+val j: () -> () -> @A dynamic? = x
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (nullable_type
+          (type_modifiers
+            (annotation
+              (user_type
+                (identifier)))))))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (nullable_type)))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (nullable_type
+          (user_type
+            (type_modifiers
+              (annotation
+                (user_type
+                  (identifier))))
+            (identifier)))))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (nullable_type
+        (parenthesized_type
+          (function_type
+            (function_type_parameters)
+            (user_type
+              (type_modifiers
+                (annotation
+                  (user_type
+                    (identifier))))
+              (identifier))))))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (function_type
+          (function_type_parameters)
+          (nullable_type
+            (type_modifiers
+              (annotation
+                (user_type
+                  (identifier))))))))
+    (identifier)))

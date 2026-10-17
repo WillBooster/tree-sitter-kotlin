@@ -3173,15 +3173,24 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "_non_function_type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "function_type"
+        }
+      ]
+    },
+    "_non_function_type": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
           "name": "user_type"
         },
         {
           "type": "SYMBOL",
           "name": "nullable_type"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "function_type"
         },
         {
           "type": "SYMBOL",
@@ -3281,7 +3290,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "type"
+          "name": "_non_function_type"
         },
         {
           "type": "STRING",
@@ -7376,6 +7385,19 @@
       "_reserved_identifier"
     ],
     [
+      "nullable_type",
+      "_reserved_identifier"
+    ],
+    [
+      "type",
+      "nullable_type",
+      "_reserved_identifier"
+    ],
+    [
+      "type",
+      "nullable_type"
+    ],
+    [
       "type",
       "_receiver_type",
       "_reserved_identifier"
@@ -7740,7 +7762,8 @@
   "inline": [
     "_statements",
     "_identifier",
-    "_control_structure_body"
+    "_control_structure_body",
+    "_non_function_type"
   ],
   "supertypes": [
     "class_member_declaration",
