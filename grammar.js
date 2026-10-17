@@ -42,6 +42,9 @@ module.exports = grammar({
     [$.user_type],
     [$._simple_user_type, $.primary_expression],
     [$.type, $._receiver_type],
+    [$._receiver_type, $._reserved_identifier],
+    [$.type, $._reserved_identifier],
+    [$.type, $._receiver_type, $._reserved_identifier],
 
     [$.modifiers, $.annotated_lambda],
     [$.modifiers, $.annotated_expression],
@@ -1016,6 +1019,7 @@ module.exports = grammar({
           'const',
           'constructor',
           'data',
+          'dynamic',
           'enum',
           'expect',
           'external',

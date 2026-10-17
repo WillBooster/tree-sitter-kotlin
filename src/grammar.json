@@ -7193,6 +7193,10 @@
           },
           {
             "type": "STRING",
+            "value": "dynamic"
+          },
+          {
+            "type": "STRING",
             "value": "enum"
           },
           {
@@ -7362,6 +7366,19 @@
     [
       "type",
       "_receiver_type"
+    ],
+    [
+      "_receiver_type",
+      "_reserved_identifier"
+    ],
+    [
+      "type",
+      "_reserved_identifier"
+    ],
+    [
+      "type",
+      "_receiver_type",
+      "_reserved_identifier"
     ],
     [
       "modifiers",

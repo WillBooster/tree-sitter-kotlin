@@ -1438,3 +1438,59 @@ class C { fun f() = 1 private fun g() = 2 }
         (function_value_parameters)
         (function_body
           (number_literal))))))
+
+==================
+Dynamic identifiers and dynamic types
+==================
+
+val value: dynamic = source
+fun dynamic.method(): dynamic = this
+fun use(value: dynamic) = value as dynamic
+fun dynamic(dynamic: Int): Int {
+  val dynamic = dynamic
+  dynamic.toString()
+  return dynamic
+}
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (identifier))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (this_expression)))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)))
+    (function_body
+      (as_expression
+        (identifier))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (identifier))
+        (call_expression
+          (navigation_expression
+            (identifier)
+            (identifier))
+          (value_arguments))
+        (return_expression
+          (identifier))))))
