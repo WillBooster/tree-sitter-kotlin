@@ -42,6 +42,12 @@ module.exports = grammar({
     [$.user_type],
     [$._simple_user_type, $.primary_expression],
     [$.type, $._receiver_type],
+    [$._receiver_type, $._reserved_identifier],
+    [$.type, $._reserved_identifier],
+    [$.nullable_type, $._reserved_identifier],
+    [$.type, $.nullable_type, $._reserved_identifier],
+    [$.type, $.nullable_type],
+    [$.type, $._receiver_type, $._reserved_identifier],
 
     [$.modifiers, $.annotated_lambda],
     [$.modifiers, $.annotated_expression],
@@ -146,7 +152,7 @@ module.exports = grammar({
     sym('_infix_get_identifier'),
   ],
 
-  inline: ($) => [$._statements, $._identifier, $._control_structure_body],
+  inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
 
   precedences: ($) => [
     [$.block, $.lambda_literal],
@@ -550,14 +556,16 @@ module.exports = grammar({
 
     _annotation_arguments: ($) => valueArguments($, alias(token.immediate('('), '(')),
 
-    type: ($) =>
-      choice($.user_type, $.nullable_type, $.function_type, $.non_nullable_type, $.parenthesized_type, 'dynamic'),
+    type: ($) => choice($._non_function_type, $.function_type),
+
+    _non_function_type: ($) =>
+      choice($.user_type, $.nullable_type, $.non_nullable_type, $.parenthesized_type, 'dynamic'),
 
     user_type: ($) => seq(optional($.type_modifiers), sep1($._simple_user_type, '.')),
 
     _simple_user_type: ($) => prec.right(seq($._identifier, optional($.type_arguments))),
 
-    nullable_type: ($) => seq(optional($.type_modifiers), $.type, '?'),
+    nullable_type: ($) => seq(optional($.type_modifiers), $._non_function_type, '?'),
 
     non_nullable_type: ($) =>
       prec.right(seq(optional($.type_modifiers), $.type, '&', optional($.type_modifiers), $.type)),
@@ -1016,6 +1024,7 @@ module.exports = grammar({
           'const',
           'constructor',
           'data',
+          'dynamic',
           'enum',
           'expect',
           'external',

@@ -1438,3 +1438,131 @@ class C { fun f() = 1 private fun g() = 2 }
         (function_value_parameters)
         (function_body
           (number_literal))))))
+
+==================
+Dynamic identifiers and dynamic types
+==================
+
+val value: dynamic = source
+fun dynamic.method(): dynamic = this
+fun use(value: dynamic) = value as dynamic
+fun dynamic(dynamic: Int): Int {
+  val dynamic = dynamic
+  dynamic.toString()
+  return dynamic
+}
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (identifier))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (this_expression)))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)))
+    (function_body
+      (as_expression
+        (identifier))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (user_type
+      (identifier))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (identifier))
+        (call_expression
+          (navigation_expression
+            (identifier)
+            (identifier))
+          (value_arguments))
+        (return_expression
+          (identifier))))))
+
+==================
+Nullable function returns and parenthesized nullable functions
+==================
+
+val f: () -> @A dynamic? = x
+val g: () -> dynamic? = x
+val h: () -> @A Foo? = x
+val i: (() -> @A dynamic)? = x
+val j: () -> () -> @A dynamic? = x
+
+---
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (nullable_type
+          (type_modifiers
+            (annotation
+              (user_type
+                (identifier)))))))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (nullable_type)))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (nullable_type
+          (user_type
+            (type_modifiers
+              (annotation
+                (user_type
+                  (identifier))))
+            (identifier)))))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (nullable_type
+        (parenthesized_type
+          (function_type
+            (function_type_parameters)
+            (user_type
+              (type_modifiers
+                (annotation
+                  (user_type
+                    (identifier))))
+              (identifier))))))
+    (identifier))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (function_type
+        (function_type_parameters)
+        (function_type
+          (function_type_parameters)
+          (nullable_type
+            (type_modifiers
+              (annotation
+                (user_type
+                  (identifier))))))))
+    (identifier)))
