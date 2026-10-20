@@ -1181,8 +1181,9 @@ val f = 2
     (variable_declaration
       (identifier))
     (string_literal
-      (ERROR
-        (identifier))
+      (interpolation
+        (identifier)
+        (MISSING "keyword_reference_end"))
       (escape_sequence)))
   (property_declaration
     (variable_declaration
