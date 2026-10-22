@@ -5,7 +5,7 @@
 [![Test](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test.yml)
 [![Test rust](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test-rust.yml/badge.svg)](https://github.com/WillBooster/tree-sitter-kotlin/actions/workflows/test-rust.yml)
 [![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)
-[![wbfy](https://img.shields.io/badge/wbfy-20.41.8-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
+[![wbfy](https://img.shields.io/badge/wbfy-20.43.2-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
 [![crates.io](https://img.shields.io/crates/v/willbooster-tree-sitter-kotlin.svg)](https://crates.io/crates/willbooster-tree-sitter-kotlin)
 
 Kotlin grammar for [tree-sitter](https://github.com/tree-sitter/tree-sitter), forked from
