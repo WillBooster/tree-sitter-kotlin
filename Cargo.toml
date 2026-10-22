@@ -25,4 +25,4 @@ tree-sitter-language = "0.1"
 cc = "1.2"
 
 [dev-dependencies]
-tree-sitter = { package = "willbooster-tree-sitter", version = "10.0.2" }
+tree-sitter = { package = "willbooster-tree-sitter", version = "13.0.0" }
