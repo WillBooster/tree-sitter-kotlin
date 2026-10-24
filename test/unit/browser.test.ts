@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
-import runtimeUrl from '@willbooster/web-tree-sitter/web-tree-sitter.wasm?url';
 import { Language, Parser } from '@willbooster/web-tree-sitter';
+import runtimeUrl from '@willbooster/web-tree-sitter/web-tree-sitter.wasm?url';
 import { expect, test } from 'vitest';
 
 import kotlinUrl from '../../tree-sitter-kotlin.wasm?url';

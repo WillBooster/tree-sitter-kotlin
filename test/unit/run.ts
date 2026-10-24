@@ -1,6 +1,7 @@
-import { expect, test } from 'vitest';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+
+import { expect, test } from 'vitest';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '../..');
 

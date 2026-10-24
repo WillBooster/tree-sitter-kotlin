@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest';
 import { Edit, Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { expect, test } from 'vitest';
 
 await Parser.init();
 const language = await Language.load('tree-sitter-kotlin.wasm');

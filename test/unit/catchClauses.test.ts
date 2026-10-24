@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Edit, Language, Parser, Query, type Node, type Tree } from '@willbooster/web-tree-sitter';
+import { Edit, Language, type Node, Parser, Query, type Tree } from '@willbooster/web-tree-sitter';
 import { beforeAll, expect, test } from 'vitest';
 
 let language: Language;
