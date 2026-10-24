@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Edit, Language, Parser, Query, type Node, type Point, type Tree } from '@willbooster/web-tree-sitter';
+import { Edit, Language, type Node, Parser, type Point, Query, type Tree } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 const source = `class Row(val id: Int) {
