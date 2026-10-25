@@ -52,6 +52,14 @@ typedef struct {
   uint32_t column;
 } TSLexerPosition;
 
+/**
+ * Checkpoints may only restore marks during the lex invocation that captured them.
+ * Their contents must not be inspected or serialized as scanner state.
+ */
+typedef struct {
+  uint32_t _opaque[3];
+} TSLexerCheckpoint;
+
 struct TSLexer {
   int32_t lookahead;
   TSSymbol result_symbol;
@@ -62,10 +70,12 @@ struct TSLexer {
   bool (*eof)(const TSLexer *);
   void (*log)(const TSLexer *, const char *, ...);
   void (*get_position)(const TSLexer *, TSLexerPosition *);
-  void (*mark_start)(TSLexer *, const TSLexerPosition *);
-  void (*mark_end_at)(TSLexer *, const TSLexerPosition *);
+  void (*mark_start)(TSLexer *, const TSLexerCheckpoint *);
+  void (*mark_end_at)(TSLexer *, const TSLexerCheckpoint *);
   void (*get_mark_end)(const TSLexer *, TSLexerPosition *);
   uint32_t (*get_display_column)(TSLexer *, uint32_t tab_width);
+  void (*get_checkpoint)(const TSLexer *, TSLexerCheckpoint *);
+  void (*get_mark_end_checkpoint)(const TSLexer *, TSLexerCheckpoint *);
 };
 
 typedef enum {
@@ -156,7 +166,7 @@ struct TSLanguage {
     unsigned (*serialize)(void *, char *);
     void (*deserialize)(void *, const char *, unsigned);
   } external_scanner;
-  const TSStateId *primary_state_ids;
+  const uint8_t *primary_state_bitmap;
   const char *name;
   const TSSymbol *reserved_words;
   uint16_t max_reserved_word_set_size;
@@ -167,7 +177,7 @@ struct TSLanguage {
   TSLanguageMetadata metadata;
   const uint32_t *alias_sequence_offsets;
   uint32_t alias_sequence_count;
-  const uint16_t *lex_mode_ids;
+  const void *lex_mode_ids;
   uint32_t lex_mode_count;
   const TSMapSlice *reserved_word_slices;
   uint32_t external_state_stride;
