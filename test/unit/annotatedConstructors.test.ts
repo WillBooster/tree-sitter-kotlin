@@ -19,6 +19,38 @@ const snapshot = (node: NonNullable<ReturnType<Parser['parse']>>['rootNode']): u
   node.children.map(snapshot),
 ];
 
+test('keeps next-line actual primary constructors and their members attached to the class', () => {
+  const parser = new Parser().setLanguage(language);
+  try {
+    for (const newline of ['\n', '\r\n', '\n/* header */\n']) {
+      for (const modifiers of ['actual', 'actual private', 'private actual']) {
+        const constructor = `${modifiers} constructor(value: T, configure: T.() -> Unit)`;
+        const declaration = `actual class Server<T>${newline}${constructor} { fun work() {} }`;
+        const source = `${declaration}\nfun after() {}\n`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError, source).toBe(false);
+          expect(
+            tree.rootNode.descendantsOfType('primary_constructor').map((node) => node.text),
+            source
+          ).toEqual([constructor]);
+          const classNode = tree.rootNode.descendantsOfType('class_declaration')[0]!;
+          expect(classNode.text, source).toBe(declaration);
+          expect(
+            classNode.descendantsOfType('function_declaration').map((node) => node.text),
+            source
+          ).toEqual(['fun work() {}']);
+          expect(tree.rootNode.lastNamedChild?.text, source).toBe('fun after() {}');
+        } finally {
+          tree.delete();
+        }
+      }
+    }
+  } finally {
+    parser.delete();
+  }
+});
+
 test.each([
   '@Marker',
   '@Marker(1)',
