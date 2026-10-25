@@ -14,10 +14,10 @@
 //! assert!(!tree.root_node().has_error());
 //! ```
 //!
-//! The parser loads only with [willbooster-tree-sitter] 13.0.0 or later in the 13.x series; the upstream
+//! The parser loads only with [willbooster-tree-sitter] 15.0.0 or later in the 15.x series; the upstream
 //! tree-sitter runtime rejects it.
 //!
-//! [`Parser`]: https://docs.rs/willbooster-tree-sitter/13.0.0/tree_sitter/struct.Parser.html
+//! [`Parser`]: https://docs.rs/willbooster-tree-sitter/15.0.0/tree_sitter/struct.Parser.html
 //! [willbooster-tree-sitter]: https://crates.io/crates/willbooster-tree-sitter
 //! [tree-sitter]: https://tree-sitter.github.io/
 
