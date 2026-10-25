@@ -478,6 +478,7 @@ typedef struct {
     // (`$$name`), or a keyword reference right after one.
     uint8_t after_short_template;
     uint8_t same_line_member_end;
+    uint8_t newline_before_comment;
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
     uint8_t frames[MAX_FRAMES / 8];
@@ -535,7 +536,7 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
     size += sizeof(uint32_t);
     buffer[size++] = (char)scanner->after_short_template;
-    buffer[size++] = (char)scanner->same_line_member_end;
+    buffer[size++] = (char)(scanner->same_line_member_end | (scanner->newline_before_comment << 1));
     memcpy(buffer + size, scanner->frames, frame_bytes(scanner->depth));
     size += frame_bytes(scanner->depth);
     memcpy(buffer + size, scanner->separated_members, frame_bytes(scanner->depth));
@@ -550,6 +551,7 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
     scanner->surplus_dollars = 0;
     scanner->after_short_template = 0;
     scanner->same_line_member_end = 0;
+    scanner->newline_before_comment = 0;
     memset(scanner->frames, 0, sizeof(scanner->frames));
     memset(scanner->separated_members, 0, sizeof(scanner->separated_members));
     scanner->length = 0;
@@ -560,7 +562,9 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
         memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
         size += sizeof(uint32_t);
         scanner->after_short_template = (uint8_t)buffer[size++];
-        scanner->same_line_member_end = (uint8_t)buffer[size++];
+        uint8_t flags = (uint8_t)buffer[size++];
+        scanner->same_line_member_end = flags & 1;
+        scanner->newline_before_comment = (flags >> 1) & 1;
         memcpy(scanner->frames, buffer + size, frame_bytes(scanner->depth));
         size += frame_bytes(scanner->depth);
         memcpy(scanner->separated_members, buffer + size, frame_bytes(scanner->depth));
@@ -736,8 +740,12 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor);
 
 static bool scan_constructor_parameter_start(TSLexer *lexer);
 
+static bool comment_or_prefix_follows(TSLexer *lexer);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
+    bool newline_before_comment = scanner->newline_before_comment;
+    scanner->newline_before_comment = 0;
     // During error recovery every token is valid, including string content and a semicolon, which never are
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
@@ -894,11 +902,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             return true;
         }
         if (lexer->lookahead == '/') {
+            scanner->newline_before_comment = saw_newline || newline_before_comment;
             goto comment;
         }
 
         if (!saw_newline) {
             switch (lexer->lookahead) {
+                case '+':
+                case '-':
+                    return newline_before_comment;
                 case '!':
                     skip(lexer);
                     goto continue_not_is_from_semi;
@@ -974,20 +986,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '&':
             case '/':
                 return false;
-            // Insert a semicolon before `--` and `++`, but not before binary `+` or `-`.
-            // Insert before +/-{float}
             case '+':
-                skip(lexer);
-                if (lexer->lookahead == '+') {
-                    return true;
-                }
-                return iswdigit(lexer->lookahead);
             case '-':
-                skip(lexer);
-                if (lexer->lookahead == '-') {
-                    return true;
-                }
-                return iswdigit(lexer->lookahead);
+                return true;
             // Don't insert a semicolon before `!=`, but do insert one before a unary `!`.
             case '!':
                 skip(lexer);
@@ -1266,6 +1267,7 @@ comment:
             }
             lexer->mark_end(lexer);
             lexer->result_symbol = LINE_COMMENT;
+            scanner->newline_before_comment = scanner->newline_before_comment && comment_or_prefix_follows(lexer);
             return true;
         }
         if (lexer->lookahead != '*') {
@@ -1289,6 +1291,7 @@ comment:
                         if (nesting_depth == 0) {
                             lexer->result_symbol = BLOCK_COMMENT;
                             lexer->mark_end(lexer);
+                            scanner->newline_before_comment = scanner->newline_before_comment && comment_or_prefix_follows(lexer);
                             return true;
                         }
                     } else {
@@ -1309,6 +1312,15 @@ comment:
     }
 
     return false;
+}
+
+static bool comment_or_prefix_follows(TSLexer *lexer) {
+    while (iswspace(lexer->lookahead)) skip(lexer);
+    if (lexer->lookahead == '/') {
+        skip(lexer);
+        return lexer->lookahead == '/' || lexer->lookahead == '*';
+    }
+    return lexer->lookahead == '+' || lexer->lookahead == '-';
 }
 
 static bool scan_constructor_parameter_start(TSLexer *lexer) {
