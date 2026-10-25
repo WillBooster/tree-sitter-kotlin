@@ -420,7 +420,7 @@ module.exports = grammar({
           'in',
           $.expression,
           ')',
-          optional(field('body', $._control_structure_body))
+          choice(field('body', $._control_structure_body), ';')
         )
       ),
 
@@ -432,7 +432,7 @@ module.exports = grammar({
           '(',
           field('condition', $.expression),
           ')',
-          optional(choice(field('body', $._control_structure_body), ';'))
+          choice(field('body', $._control_structure_body), ';')
         )
       ),
 
