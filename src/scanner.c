@@ -102,8 +102,8 @@ static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
 };
 
-// The other modifiers. Only a declaration after a lone modifier skips them: after an expression, the words above are
-// skipped just so that accessor modifiers (`internal set`) reach the accessor check, and these are common names.
+// These common names are modifiers only before a declaration or in a primary constructor position. After an
+// expression, only the words above are skipped so that accessor modifiers (`internal set`) reach the accessor check.
 static const char OTHER_MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
     "data",  "enum",     "sealed",  "inner", "value",  "annotation",
     "const", "operator", "tailrec", "infix", "expect", "actual",
@@ -1020,7 +1020,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case 'c':
             case 'b':
             case 'w':
-                skipped_modifiers = skip_modifier_words(lexer, scanned_word, false);
+                skipped_modifiers = skip_modifier_words(
+                    lexer, scanned_word, valid_symbols[PRIMARY_CONSTRUCTOR_POSITION] && !error_recovery);
             keywords:;
                 uint8_t index = -1;
                 bool res = scan_words(
