@@ -244,6 +244,173 @@ test('invalidates comment lookahead when navigation becomes a prefix and is undo
   }
 });
 
+test.each(['\n', '\r\n', '\n/* arrow */ ', '\n/* first */ /* second */ ', '\n/* first */\n/* second */ '])(
+  'keeps lambda and function-type arrows across %j',
+  async (boundary) => {
+    await Parser.init();
+    const language = await Language.load('tree-sitter-kotlin.wasm');
+    const parser = new Parser().setLanguage(language);
+    const query = new Query(language, '(lambda_literal (lambda_parameters) @parameters) (function_type) @type');
+    const functionType = `(Int)${boundary}-> Int`;
+    const source = `typealias Transform = ${functionType}\nfun make(): ${functionType} = { value${boundary}-> value }\nfun f() {\nval typed: ${functionType} = { value${boundary}-> value }\nval inferred = { value: Int${boundary}-> value }\nval accepted = "value".takeIf { value${boundary}-> value.isNotEmpty() }\n}\n`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(false);
+      const captures = query.captures(tree.rootNode);
+      expect(
+        captures.filter(({ name }) => name === 'type').map(({ node }) => node.text),
+        source
+      ).toEqual([functionType, functionType, functionType]);
+      expect(
+        captures.filter(({ name }) => name === 'parameters').map(({ node }) => node.text),
+        source
+      ).toEqual(['value', 'value', 'value: Int', 'value']);
+      expect(tree.rootNode.descendantsOfType('unary_expression'), source).toEqual([]);
+    } finally {
+      tree.delete();
+      query.delete();
+      parser.delete();
+    }
+  }
+);
+
+test('updates comment lookahead when a lambda arrow becomes a prefix and is undone', async () => {
+  await Parser.init();
+  const language = await Language.load('tree-sitter-kotlin.wasm');
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '[(lambda_parameters) (unary_expression)] @expression');
+  const source = 'fun f() { val value = 2; val transform: (Int)->Int = { value\n/* gap */ ->value }\n}';
+  const index = source.lastIndexOf('->');
+  const after = source.slice(0, index) + '+' + source.slice(index + 2);
+  const tree = parser.parse(source)!;
+  const trees = [tree];
+  const startPosition = { row: 1, column: 10 };
+  const oldEndPosition = { row: 1, column: 12 };
+  const newEndPosition = { row: 1, column: 11 };
+  try {
+    expect(tree.rootNode.hasError, source).toBe(false);
+    expect(
+      query.captures(tree.rootNode).map(({ node }) => [node.type, node.text]),
+      source
+    ).toEqual([['lambda_parameters', 'value']]);
+    tree.edit(
+      new Edit({
+        startIndex: index,
+        oldEndIndex: index + 2,
+        newEndIndex: index + 1,
+        startPosition,
+        oldEndPosition,
+        newEndPosition,
+      })
+    );
+    const edited = parser.parse(after, tree)!;
+    const fresh = parser.parse(after)!;
+    trees.push(edited, fresh);
+    expect(edited.rootNode.hasError, after).toBe(false);
+    expect(captureRanges(query, edited), after).toEqual(captureRanges(query, fresh));
+    expect(
+      query.captures(edited.rootNode).map(({ node }) => [node.type, node.text]),
+      after
+    ).toEqual([['unary_expression', '+value']]);
+    edited.edit(
+      new Edit({
+        startIndex: index,
+        oldEndIndex: index + 1,
+        newEndIndex: index + 2,
+        startPosition,
+        oldEndPosition: newEndPosition,
+        newEndPosition: oldEndPosition,
+      })
+    );
+    const undone = parser.parse(source, edited)!;
+    const original = parser.parse(source)!;
+    trees.push(undone, original);
+    expect(undone.rootNode.hasError, source).toBe(false);
+    expect(captureRanges(query, undone), source).toEqual(captureRanges(query, original));
+    expect(
+      query.captures(undone.rootNode).map(({ node }) => node.type),
+      source
+    ).toEqual(['lambda_parameters']);
+  } finally {
+    for (const parsed of trees) parsed.delete();
+    query.delete();
+    parser.delete();
+  }
+});
+
+test.each([
+  ['/* x */', ['/* x */']],
+  ['// line\n', ['// line']],
+  ['/* αβ */', ['/* αβ */']],
+  ['/* first */ /* second */', ['/* first */', '/* second */']],
+  ['/* first */\r\n// 引用\r\n/* last */', ['/* first */', '// 引用\r', '/* last */']],
+] as const)('retains comment text and ranges across prefix lookahead in %j', async (trivia, comments) => {
+  await Parser.init();
+  const language = await Language.load('tree-sitter-kotlin.wasm');
+  const parser = new Parser().setLanguage(language);
+  const query = new Query(language, '[(line_comment) (block_comment) (unary_expression)] @capture');
+  const source = `fun f() { previous\n${trivia}\t    +next\n}`;
+  const index = source.lastIndexOf('\t    ');
+  const after = source.slice(0, index) + '\n' + source.slice(index + 1);
+  const lines = source.slice(0, index).split('\n');
+  const startPosition = { row: lines.length - 1, column: lines.at(-1)!.length };
+  const oldEndPosition = { ...startPosition, column: startPosition.column + 1 };
+  const newEndPosition = { row: startPosition.row + 1, column: 0 };
+  const tree = parser.parse(source)!;
+  const trees = [tree];
+  try {
+    expect(tree.rootNode.hasError, source).toBe(false);
+    expect(
+      tree.rootNode
+        .descendantsOfType(['line_comment', 'block_comment'])
+        .map((node) => [node.text, node.startIndex, node.endIndex]),
+      source
+    ).toEqual(comments.map((text) => [text, source.indexOf(text), source.indexOf(text) + text.length]));
+    tree.edit(
+      new Edit({
+        startIndex: index,
+        oldEndIndex: index + 1,
+        newEndIndex: index + 1,
+        startPosition,
+        oldEndPosition,
+        newEndPosition,
+      })
+    );
+    const edited = parser.parse(after, tree)!;
+    const fresh = parser.parse(after)!;
+    trees.push(edited, fresh);
+    expect(edited.rootNode.hasError, after).toBe(false);
+    expect(captureRanges(query, edited), after).toEqual(captureRanges(query, fresh));
+    expect(
+      edited.rootNode.descendantsOfType(['line_comment', 'block_comment']).map((node) => node.text),
+      after
+    ).toEqual(comments);
+    edited.edit(
+      new Edit({
+        startIndex: index,
+        oldEndIndex: index + 1,
+        newEndIndex: index + 1,
+        startPosition,
+        oldEndPosition: newEndPosition,
+        newEndPosition: oldEndPosition,
+      })
+    );
+    const undone = parser.parse(source, edited)!;
+    const original = parser.parse(source)!;
+    trees.push(undone, original);
+    expect(undone.rootNode.hasError, source).toBe(false);
+    expect(captureRanges(query, undone), source).toEqual(captureRanges(query, original));
+    expect(
+      undone.rootNode.descendantsOfType(['line_comment', 'block_comment']).map((node) => node.text),
+      source
+    ).toEqual(comments);
+  } finally {
+    for (const parsed of trees) parsed.delete();
+    query.delete();
+    parser.delete();
+  }
+});
+
 test('keeps postfix operators inside prefix operands and before following calls', async () => {
   await Parser.init();
   const parser = new Parser();

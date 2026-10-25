@@ -742,6 +742,8 @@ static bool scan_constructor_parameter_start(TSLexer *lexer);
 
 static bool comment_or_prefix_follows(TSLexer *lexer);
 
+static bool scan_prefix_sign(TSLexer *lexer);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     bool newline_before_comment = scanner->newline_before_comment;
@@ -910,7 +912,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             switch (lexer->lookahead) {
                 case '+':
                 case '-':
-                    return newline_before_comment;
+                    return newline_before_comment && scan_prefix_sign(lexer);
                 case '!':
                     skip(lexer);
                     goto continue_not_is_from_semi;
@@ -988,7 +990,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 return false;
             case '+':
             case '-':
-                return true;
+                return scan_prefix_sign(lexer);
             // Don't insert a semicolon before `!=`, but do insert one before a unary `!`.
             case '!':
                 skip(lexer);
@@ -1315,12 +1317,19 @@ comment:
 }
 
 static bool comment_or_prefix_follows(TSLexer *lexer) {
-    while (iswspace(lexer->lookahead)) skip(lexer);
+    while (iswspace(lexer->lookahead)) advance(lexer);
     if (lexer->lookahead == '/') {
-        skip(lexer);
+        advance(lexer);
         return lexer->lookahead == '/' || lexer->lookahead == '*';
     }
-    return lexer->lookahead == '+' || lexer->lookahead == '-';
+    return scan_prefix_sign(lexer);
+}
+
+static bool scan_prefix_sign(TSLexer *lexer) {
+    int32_t sign = lexer->lookahead;
+    if (sign != '+' && sign != '-') return false;
+    advance(lexer);
+    return lexer->lookahead != '=' && (sign != '-' || lexer->lookahead != '>');
 }
 
 static bool scan_constructor_parameter_start(TSLexer *lexer) {
