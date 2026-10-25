@@ -1242,9 +1242,6 @@ q_dot_from_semi:
         }
         if (lexer->lookahead == '?') {
             advance(lexer);
-            while (iswspace(lexer->lookahead)) {
-                skip(lexer);
-            }
             if (lexer->lookahead == '.') {
                 advance(lexer);
                 lexer->result_symbol = Q_DOT;

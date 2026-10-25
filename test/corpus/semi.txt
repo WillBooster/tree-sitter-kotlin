@@ -338,12 +338,25 @@ fun test() {
                   (string_content))))))))))
 
 =========================================
-?. split by a newline
+Reject a newline within safe navigation
+:error
 =========================================
 
 fun test() {
     val a = b?
         .c
+        ?.d
+}
+
+---
+
+=========================================
+Newlines around complete safe-navigation operators
+=========================================
+
+fun test() {
+    val a = b
+        ?.c
         ?.d
 }
 
