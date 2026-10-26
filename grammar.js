@@ -89,7 +89,6 @@ module.exports = grammar({
     [$._modifier_context_parameters],
     [$.secondary_constructor, $._reserved_identifier],
     [$.enum_entry, $.modifiers],
-    [$.qualified_identifier],
     [$.constructor_invocation, $._unescaped_annotation],
     [$.nullable_type],
     [$.non_nullable_type],
@@ -150,6 +149,8 @@ module.exports = grammar({
     sym('_companion_name_position'),
     sym('_try_continuation_position'),
     sym('_infix_get_identifier'),
+    sym('_import_end'),
+    sym('_import_continue'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -226,7 +227,13 @@ module.exports = grammar({
     package_header: ($) => seq('package', $.qualified_identifier, optional(';')),
 
     import: ($) =>
-      seq('import', $.qualified_identifier, optional(choice(seq('.', '*'), seq('as', $.identifier))), optional(';')),
+      seq(
+        'import',
+        alias($._import_qualified_identifier, $.qualified_identifier),
+        sym('_import_end'),
+        optional(choice(seq('.', '*'), seq('as', $.identifier))),
+        optional(';')
+      ),
 
     declaration: ($) =>
       choice($.class_declaration, $.object_declaration, $.function_declaration, $.property_declaration, $.type_alias),
@@ -1006,6 +1013,8 @@ module.exports = grammar({
     variance_modifier: () => choice('in', 'out'),
 
     type_parameter_modifiers: ($) => repeat1(choice($.reification_modifier, $.variance_modifier, $.annotation)),
+
+    _import_qualified_identifier: ($) => seq($.identifier, repeat(seq(sym('_import_continue'), '.', $.identifier))),
 
     qualified_identifier: ($) => seq($.identifier, repeat(seq('.', $.identifier))),
 

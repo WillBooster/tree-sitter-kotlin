@@ -149,8 +149,17 @@
           "value": "import"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_import_qualified_identifier"
+          },
+          "named": true,
+          "value": "qualified_identifier"
+        },
+        {
           "type": "SYMBOL",
-          "name": "qualified_identifier"
+          "name": "_import_end"
         },
         {
           "type": "CHOICE",
@@ -7093,6 +7102,35 @@
         ]
       }
     },
+    "_import_qualified_identifier": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_import_continue"
+              },
+              {
+                "type": "STRING",
+                "value": "."
+              },
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              }
+            ]
+          }
+        }
+      ]
+    },
     "qualified_identifier": {
       "type": "SEQ",
       "members": [
@@ -7551,9 +7589,6 @@
       "modifiers"
     ],
     [
-      "qualified_identifier"
-    ],
-    [
       "constructor_invocation",
       "_unescaped_annotation"
     ],
@@ -7750,6 +7785,14 @@
     {
       "type": "SYMBOL",
       "name": "_infix_get_identifier"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_import_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_import_continue"
     }
   ],
   "inline": [
