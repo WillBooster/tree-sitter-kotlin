@@ -1517,6 +1517,6 @@ static bool scan_import_end(TSLexer *lexer) {
     lexer->result_symbol = IMPORT_END;
     if (lexer->lookahead != '.') return true;
     advance(lexer);
-    return scan_whitespace_and_comments(lexer, false, false) &&
-        (lexer->lookahead == '*' || lexer->lookahead == '\n' || lexer->lookahead == '\r');
+    if (!scan_whitespace_and_comments(lexer, false, false)) return true;
+    return !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '`');
 }

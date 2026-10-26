@@ -53,6 +53,39 @@ test.each([
   }
 });
 
+test.each(['', ';', '}'])('retains an import before a trailing dot followed by %j', (ending) => {
+  const source = `import a.b.${ending}`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(true);
+    expect(tree.rootNode.descendantsOfType('qualified_identifier').map((node) => node.text)).toEqual(['a.b']);
+    expect(
+      tree.rootNode
+        .descendantsOfType('ERROR')
+        .map((node) => node.text)
+        .join('')
+    ).toContain('.');
+  } finally {
+    tree.delete();
+  }
+});
+
+test.each([';', '}', ' /* comment */ ;', ' /* comment */ }'])(
+  'keeps later imports and declarations after a trailing dot and %j',
+  (ending) => {
+    const source = `import a.b.${ending}\nimport c.d\nclass After {}`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(true);
+      expect(tree.rootNode.descendantsOfType('qualified_identifier').map((node) => node.text)).toEqual(['a.b', 'c.d']);
+      expect(tree.rootNode.descendantsOfType('import').filter((node) => node.isNamed)).toHaveLength(2);
+      expect(tree.rootNode.descendantsOfType('class_declaration').map((node) => node.text)).toEqual(['class After {}']);
+    } finally {
+      tree.delete();
+    }
+  }
+);
+
 test.each([
   ['import kotlin.math.abs\nimport kotlin.math.max', []],
   ['import kotlin.math.abs import kotlin.math.max', []],
