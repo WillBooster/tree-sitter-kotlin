@@ -1566,3 +1566,42 @@ val j: () -> () -> @A dynamic? = x
                 (user_type
                   (identifier))))))))
     (identifier)))
+
+==============================
+Recover a following import after a trailing dot and comment
+:error
+==============================
+
+import foo.bar.
+/* next */ import baz.qux
+class After {}
+
+---
+
+==============================
+Import continuation before dots and wildcards
+==============================
+
+import kotlin
+. math.abs
+import sample.import.Target
+import kotlin.math.
+*
+
+---
+
+(source_file
+  (import
+    (qualified_identifier
+      (identifier)
+      (identifier)
+      (identifier)))
+  (import
+    (qualified_identifier
+      (identifier)
+      (identifier)
+      (identifier)))
+  (import
+    (qualified_identifier
+      (identifier)
+      (identifier))))

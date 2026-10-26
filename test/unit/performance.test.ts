@@ -64,6 +64,20 @@ test('recovers from repeated unfinished destructuring types in linear time', { t
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
+test('recovers from repeated trailing-dot imports with comments in linear time', { timeout: 60_000 }, () => {
+  const small = 'import a.\n/* next */ import b.c\n'.repeat(2000);
+  const large = 'import a.\n/* next */ import b.c\n'.repeat(20_000);
+  parseCpuTime(large);
+  let smallFastest = Infinity;
+  let largeFastest = Infinity;
+  for (let run = 0; run < 3; run++) {
+    smallFastest = Math.min(smallFastest, parseCpuTime(small));
+    largeFastest = Math.min(largeFastest, parseCpuTime(large));
+  }
+  expect(largeFastest / smallFastest).toBeLessThan(18);
+  expect(largeFastest).toBeLessThan(5_000_000);
+});
+
 function parseCpuTime(source: string): number {
   const start = process.threadCpuUsage();
   const tree = parser.parse(source);

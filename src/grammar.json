@@ -153,6 +153,10 @@
           "name": "qualified_identifier"
         },
         {
+          "type": "SYMBOL",
+          "name": "_import_end"
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
@@ -7551,9 +7555,6 @@
       "modifiers"
     ],
     [
-      "qualified_identifier"
-    ],
-    [
       "constructor_invocation",
       "_unescaped_annotation"
     ],
@@ -7750,6 +7751,10 @@
     {
       "type": "SYMBOL",
       "name": "_infix_get_identifier"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_import_end"
     }
   ],
   "inline": [

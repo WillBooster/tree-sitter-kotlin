@@ -45,6 +45,7 @@ enum TokenType {
     COMPANION_NAME_POSITION,
     TRY_CONTINUATION_POSITION,
     INFIX_GET_IDENTIFIER,
+    IMPORT_END,
 };
 
 #define MAX_WORD_SIZE 16
@@ -744,6 +745,8 @@ static bool comment_or_prefix_follows(TSLexer *lexer);
 
 static bool scan_prefix_sign(TSLexer *lexer);
 
+static bool scan_import_end(TSLexer *lexer);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     bool newline_before_comment = scanner->newline_before_comment;
@@ -752,6 +755,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    if (!error_recovery && valid_symbols[IMPORT_END]) {
+        lexer->mark_end(lexer);
+        while (iswspace(lexer->lookahead)) skip(lexer);
+        if (lexer->lookahead == '/') goto comment;
+        return scan_import_end(lexer);
+    }
     if (!error_recovery && scanner->same_line_member_end && valid_symbols[CLASS_MEMBER_SEMI]) {
         scanner->same_line_member_end = 0;
         lexer->mark_end(lexer);
@@ -1502,4 +1511,12 @@ static bool scan_get_following_assignment(TSLexer *lexer) {
         }
     }
     return false;
+}
+
+static bool scan_import_end(TSLexer *lexer) {
+    lexer->result_symbol = IMPORT_END;
+    if (lexer->lookahead != '.') return true;
+    advance(lexer);
+    return scan_whitespace_and_comments(lexer, false, false) &&
+        (lexer->lookahead == '*' || lexer->lookahead == '\n' || lexer->lookahead == '\r');
 }
