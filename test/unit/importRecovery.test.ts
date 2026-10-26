@@ -53,6 +53,46 @@ test.each([
   }
 });
 
+test.each(['// section', '/* section */', '/** Documentation */', '/* first\nsecond */'])(
+  'keeps %j after an import outside its range',
+  (comment) => {
+    const source = `import a.b\n${comment}\nfun after() = 1`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      expect(tree.rootNode.namedChildren.map((node) => node.type)).toEqual([
+        'import',
+        comment.startsWith('//') ? 'line_comment' : 'block_comment',
+        'function_declaration',
+      ]);
+      const declaration = tree.rootNode.firstNamedChild!;
+      expect([declaration.text, declaration.startIndex, declaration.endIndex]).toEqual(['import a.b', 0, 10]);
+      const commentNode = tree.rootNode.namedChildren[1]!;
+      expect([commentNode.text, commentNode.startIndex, commentNode.endIndex]).toEqual([
+        comment,
+        11,
+        11 + comment.length,
+      ]);
+    } finally {
+      tree.delete();
+    }
+  }
+);
+
+test('keeps an import-line comment outside the import', () => {
+  const tree = parser.parse('import a.b // trailing\nclass After {}')!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(tree.rootNode.namedChildren.map((node) => [node.type, node.text])).toEqual([
+      ['import', 'import a.b'],
+      ['line_comment', '// trailing'],
+      ['class_declaration', 'class After {}'],
+    ]);
+  } finally {
+    tree.delete();
+  }
+});
+
 test.each(['', ';', '}'])('retains an import before a trailing dot followed by %j', (ending) => {
   const source = `import a.b.${ending}`;
   const tree = parser.parse(source)!;
@@ -89,6 +129,7 @@ test.each([';', '}', ' /* comment */ ;', ' /* comment */ }'])(
 test.each([
   ['import kotlin.math.abs\nimport kotlin.math.max', []],
   ['import kotlin.math.abs import kotlin.math.max', []],
+  ['import kotlin /* path */ . math.abs', ['/* path */']],
   ['import kotlin\n. math\n. abs', []],
   ['import kotlin.math.\n*', []],
   ['import kotlin.math. // wildcard\n*', ['// wildcard']],

@@ -149,8 +149,13 @@
           "value": "import"
         },
         {
-          "type": "SYMBOL",
-          "name": "qualified_identifier"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_import_qualified_identifier"
+          },
+          "named": true,
+          "value": "qualified_identifier"
         },
         {
           "type": "SYMBOL",
@@ -7097,6 +7102,35 @@
         ]
       }
     },
+    "_import_qualified_identifier": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_import_continue"
+              },
+              {
+                "type": "STRING",
+                "value": "."
+              },
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              }
+            ]
+          }
+        }
+      ]
+    },
     "qualified_identifier": {
       "type": "SEQ",
       "members": [
@@ -7755,6 +7789,10 @@
     {
       "type": "SYMBOL",
       "name": "_import_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_import_continue"
     }
   ],
   "inline": [

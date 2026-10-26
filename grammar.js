@@ -150,6 +150,7 @@ module.exports = grammar({
     sym('_try_continuation_position'),
     sym('_infix_get_identifier'),
     sym('_import_end'),
+    sym('_import_continue'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -228,7 +229,7 @@ module.exports = grammar({
     import: ($) =>
       seq(
         'import',
-        $.qualified_identifier,
+        alias($._import_qualified_identifier, $.qualified_identifier),
         sym('_import_end'),
         optional(choice(seq('.', '*'), seq('as', $.identifier))),
         optional(';')
@@ -1012,6 +1013,8 @@ module.exports = grammar({
     variance_modifier: () => choice('in', 'out'),
 
     type_parameter_modifiers: ($) => repeat1(choice($.reification_modifier, $.variance_modifier, $.annotation)),
+
+    _import_qualified_identifier: ($) => seq($.identifier, repeat(seq(sym('_import_continue'), '.', $.identifier))),
 
     qualified_identifier: ($) => seq($.identifier, repeat(seq('.', $.identifier))),
 

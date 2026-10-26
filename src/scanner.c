@@ -46,6 +46,7 @@ enum TokenType {
     TRY_CONTINUATION_POSITION,
     INFIX_GET_IDENTIFIER,
     IMPORT_END,
+    IMPORT_CONTINUE,
 };
 
 #define MAX_WORD_SIZE 16
@@ -755,11 +756,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
-    if (!error_recovery && valid_symbols[IMPORT_END]) {
+    if (!error_recovery && (valid_symbols[IMPORT_END] || valid_symbols[IMPORT_CONTINUE])) {
         lexer->mark_end(lexer);
-        while (iswspace(lexer->lookahead)) skip(lexer);
-        if (lexer->lookahead == '/') goto comment;
-        return scan_import_end(lexer);
+        bool ends = !scan_whitespace_and_comments(lexer, true, false) || scan_import_end(lexer);
+        lexer->result_symbol = ends ? IMPORT_END : IMPORT_CONTINUE;
+        return valid_symbols[lexer->result_symbol];
     }
     if (!error_recovery && scanner->same_line_member_end && valid_symbols[CLASS_MEMBER_SEMI]) {
         scanner->same_line_member_end = 0;
@@ -1514,7 +1515,6 @@ static bool scan_get_following_assignment(TSLexer *lexer) {
 }
 
 static bool scan_import_end(TSLexer *lexer) {
-    lexer->result_symbol = IMPORT_END;
     if (lexer->lookahead != '.') return true;
     advance(lexer);
     if (!scan_whitespace_and_comments(lexer, false, false)) return true;
