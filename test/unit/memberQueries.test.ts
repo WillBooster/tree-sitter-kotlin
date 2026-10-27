@@ -220,3 +220,16 @@ test('retains immediate super labels before same-line members', () => {
     }
   }
 });
+
+test('recovers from unfinished type arguments in annotated member headers', () => {
+  for (const header of ['<', '<T', '<T ', '<List<', '<T /* unfinished', '<List<() -> Unit>']) {
+    const source = `class C { fun f() {} @Ann fun ${header}`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(true);
+      expect(tree.rootNode.endIndex, source).toBe(source.length);
+    } finally {
+      tree.delete();
+    }
+  }
+});

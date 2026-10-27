@@ -1586,7 +1586,7 @@ static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars) {
     unsigned depth = 1;
     lexer->advance(lexer, skip_chars);
     while (depth) {
-        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars) || lexer->eof(lexer)) return false;
         int32_t c = lexer->lookahead;
         lexer->advance(lexer, skip_chars);
         if (c == '<') {
