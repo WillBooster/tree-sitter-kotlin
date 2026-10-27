@@ -894,6 +894,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             }
             bool declaration = scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL);
             if (declaration && strcmp(scanned_word, "fun") == 0 && !scan_named_function(lexer, true)) return false;
+            if (declaration && strcmp(scanned_word, "object") == 0 &&
+                (!scan_whitespace_and_comments(lexer, true, true) ||
+                 !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '`'))) return false;
             if (declaration ||
                 (!valid_symbols[INFIX_POSITION] && !valid_symbols[COMPANION_NAME_POSITION] &&
                  (strcmp(scanned_word, "init") == 0 ||

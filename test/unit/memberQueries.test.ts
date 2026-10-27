@@ -139,6 +139,8 @@ test('keeps annotated same-line members separate across edits', () => {
     '@Ann /* outer /* inner */ */ constructor() {}',
     '@Ann companion object {}',
     '@Ann class Nested {}',
+    '@Ann object Named {}',
+    '@Ann object `named()` {}',
   ]) {
     const source = `class C { ${first} ${second} }`;
     const tree = parser.parse(source)!;
@@ -181,7 +183,7 @@ test('keeps annotated same-line members separate across edits', () => {
   }
 });
 
-test('keeps annotated function literals inside member expressions', () => {
+test('keeps annotated function and object literals inside member expressions', () => {
   for (const expression of [
     'call() @Ann {}',
     'call() @Ann(")") { value() }',
@@ -191,6 +193,8 @@ test('keeps annotated function literals inside member expressions', () => {
     '1 private @Ann fun List<() -> Unit>.() {}',
     '1 private @Ann fun List<() -> (Pair<Int, Int>)>.() {}',
     '1 private @Ann fun @TypeAnn(")") List<() -> Unit>.() {}',
+    '1 private @Ann object {}',
+    '1 private @Ann object : Base() {}',
   ]) {
     const member = `fun f() = ${expression}`;
     const tree = parser.parse(`class C { ${member} }`)!;
