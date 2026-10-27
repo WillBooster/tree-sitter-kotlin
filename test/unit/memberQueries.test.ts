@@ -128,6 +128,8 @@ test('keeps annotated same-line members separate across edits', () => {
     '@Ann fun second() {}',
     '@Ann fun (Int).second() {}',
     '@Ann fun ((Int) -> Int).second() {}',
+    '@Ann fun List<() -> Unit>.second() {}',
+    '@Ann fun `name(with_paren`() {}',
     '@Ann(")") private fun second() {}',
     '@pkg.Ann @Other fun second() {}',
     '@[First Second("]")] fun second() {}',
@@ -183,6 +185,9 @@ test('keeps annotated function literals inside member expressions', () => {
     '1 use @Ann fun(x: Int) = x',
     '1 private @Ann fun(x: Int) = x',
     '1 private @Ann fun Int.(x: Int) = x',
+    '1 private @Ann fun List<() -> Unit>.() {}',
+    '1 private @Ann fun List<() -> (Pair<Int, Int>)>.() {}',
+    '1 private @Ann fun @TypeAnn(")") List<() -> Unit>.() {}',
   ]) {
     const member = `fun f() = ${expression}`;
     const tree = parser.parse(`class C { ${member} }`)!;
