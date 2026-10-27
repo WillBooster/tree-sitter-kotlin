@@ -1515,7 +1515,7 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
     while (!lexer->eof(lexer)) {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) break;
         int32_t c = lexer->lookahead;
-        if (c == '(' || c == '}' || c == ';') break;
+        if (c == '(' || c == '{' || c == '}' || c == ';') break;
         switch (c) {
             case '<':
                 if (!scan_function_type_arguments(lexer, skip_chars)) return false;

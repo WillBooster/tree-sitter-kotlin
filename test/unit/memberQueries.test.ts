@@ -233,3 +233,24 @@ test('recovers from unfinished type arguments in annotated member headers', () =
     }
   }
 });
+
+test('keeps functional interfaces separate without scanning their member bodies', () => {
+  const first = 'fun first() {}';
+  const declaration = 'fun interface I { val f: Int.() -> Unit get() = {}; fun run() }';
+  const last = 'fun after() {}';
+  for (const annotation of ['', '@Ann ']) {
+    const member = annotation + declaration;
+    const tree = parser.parse(`class C { ${first} ${member} ${last} }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      expect(
+        query
+          .captures(tree.rootNode)
+          .map(({ node }) => node.text)
+          .filter((text) => [first, member, last].includes(text))
+      ).toEqual([first, member, last]);
+    } finally {
+      tree.delete();
+    }
+  }
+});
