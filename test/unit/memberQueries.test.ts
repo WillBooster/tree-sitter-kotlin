@@ -175,7 +175,13 @@ test('keeps annotated same-line members separate across edits', () => {
 });
 
 test('keeps annotated function literals inside member expressions', () => {
-  for (const expression of ['call() @Ann {}', 'call() @Ann(")") { value() }', '1 use @Ann fun(x: Int) = x']) {
+  for (const expression of [
+    'call() @Ann {}',
+    'call() @Ann(")") { value() }',
+    '1 use @Ann fun(x: Int) = x',
+    '1 private @Ann fun(x: Int) = x',
+    '1 private @Ann fun Int.(x: Int) = x',
+  ]) {
     const member = `fun f() = ${expression}`;
     const tree = parser.parse(`class C { ${member} }`)!;
     try {

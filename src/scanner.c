@@ -750,6 +750,8 @@ static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer);
 
+static bool scan_named_function(TSLexer *lexer, bool skip_chars);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     bool newline_before_comment = scanner->newline_before_comment;
@@ -886,7 +888,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 if (!skip_whitespace_and_comments(lexer, true)) return false;
             }
-            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL) ||
+            bool declaration = scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL);
+            if (declaration && strcmp(scanned_word, "fun") == 0 && !scan_named_function(lexer, true)) return false;
+            if (declaration ||
                 (!valid_symbols[INFIX_POSITION] && !valid_symbols[COMPANION_NAME_POSITION] &&
                  (strcmp(scanned_word, "init") == 0 ||
                   (strcmp(scanned_word, "constructor") == 0 && !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) ||
@@ -1460,13 +1464,7 @@ static bool scan_get_following_statement(TSLexer *lexer) {
         if (strcmp(word, "if") == 0 || strcmp(word, "when") == 0 || strcmp(word, "return") == 0 ||
             strcmp(word, "throw") == 0 || strcmp(word, "continue") == 0 || strcmp(word, "break") == 0) return false;
         if (strcmp(word, "fun") == 0) {
-            if (lexer->lookahead == '(') return false;
-            int32_t previous = 0;
-            while (!lexer->eof(lexer) && lexer->lookahead != '(' && lexer->lookahead != '}' && lexer->lookahead != ';') {
-                if (!iswspace(lexer->lookahead)) previous = lexer->lookahead;
-                advance(lexer);
-            }
-            return previous != '.';
+            return scan_named_function(lexer, false);
         }
         if (strcmp(word, "constructor") == 0 && lexer->lookahead == '(') {
             advance(lexer);
@@ -1559,4 +1557,18 @@ static bool scan_member_annotation(TSLexer *lexer) {
         return skip_to_closing_bracket(lexer, '(', ')', 0);
     }
     return true;
+}
+
+
+static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
+    if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return true;
+    if (lexer->lookahead == '(') return false;
+    int32_t previous = 0;
+    while (!lexer->eof(lexer) && lexer->lookahead != '(' && lexer->lookahead != '}' && lexer->lookahead != ';') {
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) break;
+        if (lexer->lookahead == '(' || lexer->lookahead == '}' || lexer->lookahead == ';') break;
+        previous = lexer->lookahead;
+        lexer->advance(lexer, skip_chars);
+    }
+    return previous != '.';
 }
