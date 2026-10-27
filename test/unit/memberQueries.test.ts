@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Edit, Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 let parser: Parser;
@@ -118,6 +118,74 @@ test('retains contextual companion object names and bodies', () => {
       } finally {
         tree.delete();
       }
+    }
+  }
+});
+
+test('keeps annotated same-line members separate across edits', () => {
+  const first = 'fun first() {}';
+  for (const second of [
+    '@Ann fun second() {}',
+    '@Ann(")") private fun second() {}',
+    '@pkg.Ann @Other fun second() {}',
+    '@[First Second("]")] fun second() {}',
+    '@Ann /* outer /* inner */ */ constructor() {}',
+    '@Ann companion object {}',
+    '@Ann class Nested {}',
+  ]) {
+    const source = `class C { ${first} ${second} }`;
+    const tree = parser.parse(source)!;
+    let edited: ReturnType<Parser['parse']> | undefined;
+    let fresh: ReturnType<Parser['parse']> | undefined;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(false);
+      expect(
+        query.captures(tree.rootNode).map(({ node }) => node.text),
+        source
+      ).toEqual([first, second]);
+      const start = source.indexOf(second);
+      const insertion = '@Added ';
+      const changed = source.slice(0, start) + insertion + source.slice(start);
+      tree.edit(
+        new Edit({
+          startIndex: start,
+          oldEndIndex: start,
+          newEndIndex: start + insertion.length,
+          startPosition: { row: 0, column: start },
+          oldEndPosition: { row: 0, column: start },
+          newEndPosition: { row: 0, column: start + insertion.length },
+        })
+      );
+      edited = parser.parse(changed, tree);
+      fresh = parser.parse(changed);
+      for (const result of [edited!, fresh!]) {
+        expect(result.rootNode.hasError, changed).toBe(false);
+        expect(query.captures(result.rootNode).map(({ node }) => [node.text, node.startIndex, node.endIndex])).toEqual([
+          [first, source.indexOf(first), source.indexOf(first) + first.length],
+          [insertion + second, start, start + insertion.length + second.length],
+        ]);
+      }
+      expect(edited!.rootNode.toString()).toBe(fresh!.rootNode.toString());
+    } finally {
+      fresh?.delete();
+      edited?.delete();
+      tree.delete();
+    }
+  }
+});
+
+test('keeps annotated function literals inside member expressions', () => {
+  for (const expression of ['call() @Ann {}', 'call() @Ann(")") { value() }', '1 use @Ann fun(x: Int) = x']) {
+    const member = `fun f() = ${expression}`;
+    const tree = parser.parse(`class C { ${member} }`)!;
+    try {
+      expect(tree.rootNode.hasError, member).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([member]);
+      expect(
+        tree.rootNode.descendantsOfType(['annotated_lambda', 'annotated_expression']).map((node) => node.text)
+      ).toEqual([expression.slice(expression.indexOf('@'))]);
+    } finally {
+      tree.delete();
     }
   }
 });

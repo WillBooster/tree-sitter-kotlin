@@ -748,6 +748,8 @@ static bool scan_prefix_sign(TSLexer *lexer);
 
 static bool scan_import_end(TSLexer *lexer);
 
+static bool scan_member_annotation(TSLexer *lexer);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     bool newline_before_comment = scanner->newline_before_comment;
@@ -867,11 +869,17 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
         lexer->mark_end(lexer);
         while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') skip(lexer);
-        if (iswalpha(lexer->lookahead)) {
+        if (lexer->lookahead == '@' || iswalpha(lexer->lookahead)) {
             char scanned_word[16] = {0};
-            while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
-                   scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL)) {
-                memset(scanned_word, 0, MAX_WORD_SIZE);
+            for (;;) {
+                if (lexer->lookahead == '@') {
+                    if (!scan_member_annotation(lexer)) return false;
+                } else if (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
+                           scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL)) {
+                    memset(scanned_word, 0, MAX_WORD_SIZE);
+                } else {
+                    break;
+                }
                 if (!skip_whitespace_and_comments(lexer, true)) return false;
             }
             if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL) ||
@@ -1519,4 +1527,32 @@ static bool scan_import_end(TSLexer *lexer) {
     advance(lexer);
     if (!scan_whitespace_and_comments(lexer, false, false)) return true;
     return !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '`');
+}
+
+static bool scan_member_annotation(TSLexer *lexer) {
+    skip(lexer);
+    for (;;) {
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead == '[') {
+            skip(lexer);
+            return skip_to_closing_bracket(lexer, '[', ']', 0);
+        }
+        if (lexer->lookahead == '`') {
+            skip(lexer);
+            if (!skip_literal_rest(lexer, '`', 0)) return false;
+        } else {
+            if (!is_identifier_start(lexer->lookahead)) return false;
+            do {
+                skip(lexer);
+            } while (is_identifier_part(lexer->lookahead));
+        }
+        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
+        skip(lexer);
+    }
+    if (lexer->lookahead == '(') {
+        skip(lexer);
+        return skip_to_closing_bracket(lexer, '(', ')', 0);
+    }
+    return true;
 }
