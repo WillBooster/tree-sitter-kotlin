@@ -748,6 +748,14 @@ static bool scan_prefix_sign(TSLexer *lexer);
 
 static bool scan_import_end(TSLexer *lexer);
 
+static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
+
+static bool scan_named_function(TSLexer *lexer, bool skip_chars);
+
+static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
+
+static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars);
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     Scanner *scanner = (Scanner *)payload;
     bool newline_before_comment = scanner->newline_before_comment;
@@ -866,15 +874,30 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     if (!error_recovery && valid_symbols[SAME_LINE_MEMBER_END] && scanner->depth > 0 && !in_statements(scanner) &&
         !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
         lexer->mark_end(lexer);
-        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') skip(lexer);
-        if (iswalpha(lexer->lookahead)) {
+        bool has_horizontal_space = false;
+        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') {
+            has_horizontal_space = true;
+            skip(lexer);
+        }
+        if ((has_horizontal_space && lexer->lookahead == '@') || iswalpha(lexer->lookahead)) {
             char scanned_word[16] = {0};
-            while (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
-                   scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL)) {
-                memset(scanned_word, 0, MAX_WORD_SIZE);
+            for (;;) {
+                if (lexer->lookahead == '@') {
+                    if (!scan_member_annotation(lexer, true)) return false;
+                } else if (scan_words(lexer, MODIFIER_WORDS, scanned_word, NULL) ||
+                           scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL)) {
+                    memset(scanned_word, 0, MAX_WORD_SIZE);
+                } else {
+                    break;
+                }
                 if (!skip_whitespace_and_comments(lexer, true)) return false;
             }
-            if (scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL) ||
+            bool declaration = scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL);
+            if (declaration && strcmp(scanned_word, "fun") == 0 && !scan_named_function(lexer, true)) return false;
+            if (declaration && strcmp(scanned_word, "object") == 0 &&
+                (!scan_whitespace_and_comments(lexer, true, true) ||
+                 !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '`'))) return false;
+            if (declaration ||
                 (!valid_symbols[INFIX_POSITION] && !valid_symbols[COMPANION_NAME_POSITION] &&
                  (strcmp(scanned_word, "init") == 0 ||
                   (strcmp(scanned_word, "constructor") == 0 && !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) ||
@@ -1399,40 +1422,7 @@ static bool scan_get_following_statement(TSLexer *lexer) {
     bool companion = false;
     for (;;) {
         while (lexer->lookahead == '@') {
-            advance(lexer);
-            if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-            for (;;) {
-                if (lexer->lookahead == '[') {
-                    advance(lexer);
-                    if (!scan_to_closing_bracket(lexer, '[', ']', 0, false) ||
-                        !scan_whitespace_and_comments(lexer, true, false)) return false;
-                    break;
-                }
-                if (lexer->lookahead == '`') {
-                    advance(lexer);
-                    if (!scan_literal_rest(lexer, '`', 0, false)) return false;
-                } else {
-                    if (!is_identifier_start(lexer->lookahead)) return false;
-                    do { advance(lexer); } while (is_identifier_part(lexer->lookahead));
-                }
-                if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-                if (lexer->lookahead == '<') {
-                    advance(lexer);
-                    if (!scan_to_closing_bracket(lexer, '<', '>', 0, false) ||
-                        !scan_whitespace_and_comments(lexer, true, false)) return false;
-                }
-                if (lexer->lookahead == '.' || lexer->lookahead == ':') {
-                    advance(lexer);
-                    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-                    continue;
-                }
-                if (lexer->lookahead == '(') {
-                    advance(lexer);
-                    if (!scan_to_closing_bracket(lexer, '(', ')', 0, false) ||
-                        !scan_whitespace_and_comments(lexer, true, false)) return false;
-                }
-                break;
-            }
+            if (!scan_member_annotation(lexer, false) || !scan_whitespace_and_comments(lexer, true, false)) return false;
         }
         char word[MAX_WORD_SIZE] = {0};
         unsigned length = 0;
@@ -1448,13 +1438,7 @@ static bool scan_get_following_statement(TSLexer *lexer) {
         if (strcmp(word, "if") == 0 || strcmp(word, "when") == 0 || strcmp(word, "return") == 0 ||
             strcmp(word, "throw") == 0 || strcmp(word, "continue") == 0 || strcmp(word, "break") == 0) return false;
         if (strcmp(word, "fun") == 0) {
-            if (lexer->lookahead == '(') return false;
-            int32_t previous = 0;
-            while (!lexer->eof(lexer) && lexer->lookahead != '(' && lexer->lookahead != '}' && lexer->lookahead != ';') {
-                if (!iswspace(lexer->lookahead)) previous = lexer->lookahead;
-                advance(lexer);
-            }
-            return previous != '.';
+            return scan_named_function(lexer, false);
         }
         if (strcmp(word, "constructor") == 0 && lexer->lookahead == '(') {
             advance(lexer);
@@ -1519,4 +1503,106 @@ static bool scan_import_end(TSLexer *lexer) {
     advance(lexer);
     if (!scan_whitespace_and_comments(lexer, false, false)) return true;
     return !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '`');
+}
+
+static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
+    if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return true;
+    while (lexer->lookahead == '@') {
+        if (!scan_member_annotation(lexer, skip_chars) || !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+    }
+    int32_t previous = 0;
+    if (lexer->lookahead == '(') {
+        if (!scan_parenthesized_receiver(lexer, skip_chars)) return false;
+        previous = '.';
+    }
+    while (!lexer->eof(lexer)) {
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) break;
+        int32_t c = lexer->lookahead;
+        if (c == '(' || c == '{' || c == '}' || c == ';') break;
+        switch (c) {
+            case '<':
+                if (!scan_function_type_arguments(lexer, skip_chars)) return false;
+                previous = '>';
+                break;
+            case '@':
+                if (!scan_member_annotation(lexer, skip_chars)) return false;
+                break;
+            case '`':
+                lexer->advance(lexer, skip_chars);
+                if (!scan_literal_rest(lexer, c, 0, skip_chars)) return false;
+                previous = c;
+                break;
+            default:
+                previous = c;
+                lexer->advance(lexer, skip_chars);
+        }
+    }
+    return previous != '.';
+}
+
+static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
+    lexer->advance(lexer, skip_chars);
+    for (;;) {
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+        if (lexer->lookahead == '[') {
+            lexer->advance(lexer, skip_chars);
+            return scan_to_closing_bracket(lexer, '[', ']', 0, skip_chars);
+        }
+        if (lexer->lookahead == '`') {
+            lexer->advance(lexer, skip_chars);
+            if (!scan_literal_rest(lexer, '`', 0, skip_chars)) return false;
+        } else {
+            if (!is_identifier_start(lexer->lookahead)) return false;
+            do {
+                lexer->advance(lexer, skip_chars);
+            } while (is_identifier_part(lexer->lookahead));
+        }
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+        if (lexer->lookahead == '<') {
+            if (!scan_function_type_arguments(lexer, skip_chars) ||
+                !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+        }
+        if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
+        lexer->advance(lexer, skip_chars);
+    }
+    if (lexer->lookahead == '(') {
+        lexer->advance(lexer, skip_chars);
+        return scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars);
+    }
+    return true;
+}
+
+static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars) {
+    lexer->advance(lexer, skip_chars);
+    if (!scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars) ||
+        !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+    while (lexer->lookahead == '?') {
+        lexer->advance(lexer, skip_chars);
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+    }
+    if (lexer->lookahead != '.') return false;
+    lexer->advance(lexer, skip_chars);
+    return true;
+}
+
+static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars) {
+    unsigned depth = 1;
+    lexer->advance(lexer, skip_chars);
+    while (depth) {
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars) || lexer->eof(lexer)) return false;
+        int32_t c = lexer->lookahead;
+        lexer->advance(lexer, skip_chars);
+        if (c == '<') {
+            depth++;
+        } else if (c == '>') {
+            depth--;
+        } else if (c == '-' && lexer->lookahead == '>') {
+            lexer->advance(lexer, skip_chars);
+        } else if (c == '(') {
+            if (!scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars)) return false;
+        } else if ((c == '"' || c == '\'' || c == '`') && !scan_literal_rest(lexer, c, 0, skip_chars)) {
+            return false;
+        }
+    }
+    return true;
 }

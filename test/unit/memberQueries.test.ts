@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Edit, Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 let parser: Parser;
@@ -118,6 +118,143 @@ test('retains contextual companion object names and bodies', () => {
       } finally {
         tree.delete();
       }
+    }
+  }
+});
+
+test('keeps annotated same-line members separate across edits', () => {
+  const first = 'fun first() {}';
+  for (const second of [
+    '@Ann fun second() {}',
+    '@Ann fun (Int).second() {}',
+    '@Ann fun (Int)?.second() {}',
+    '@Ann fun (Int) ? /* bound */ .second() {}',
+    '@Ann fun ((Int) -> Int)?.second() {}',
+    '@Ann fun ((Int) -> Int).second() {}',
+    '@Ann fun List<() -> Unit>.second() {}',
+    '@Ann fun `name(with_paren`() {}',
+    '@Ann(")") private fun second() {}',
+    '@pkg.Ann @Other fun second() {}',
+    '@[First Second("]")] fun second() {}',
+    '@Ann /* outer /* inner */ */ constructor() {}',
+    '@Ann companion object {}',
+    '@Ann class Nested {}',
+    '@Ann object Named {}',
+    '@Ann object `named()` {}',
+  ]) {
+    const source = `class C { ${first} ${second} }`;
+    const tree = parser.parse(source)!;
+    let edited: ReturnType<Parser['parse']> | undefined;
+    let fresh: ReturnType<Parser['parse']> | undefined;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(false);
+      expect(
+        query.captures(tree.rootNode).map(({ node }) => node.text),
+        source
+      ).toEqual([first, second]);
+      const start = source.indexOf(second);
+      const insertion = '@Added ';
+      const changed = source.slice(0, start) + insertion + source.slice(start);
+      tree.edit(
+        new Edit({
+          startIndex: start,
+          oldEndIndex: start,
+          newEndIndex: start + insertion.length,
+          startPosition: { row: 0, column: start },
+          oldEndPosition: { row: 0, column: start },
+          newEndPosition: { row: 0, column: start + insertion.length },
+        })
+      );
+      edited = parser.parse(changed, tree);
+      fresh = parser.parse(changed);
+      for (const result of [edited!, fresh!]) {
+        expect(result.rootNode.hasError, changed).toBe(false);
+        expect(query.captures(result.rootNode).map(({ node }) => [node.text, node.startIndex, node.endIndex])).toEqual([
+          [first, source.indexOf(first), source.indexOf(first) + first.length],
+          [insertion + second, start, start + insertion.length + second.length],
+        ]);
+      }
+      expect(edited!.rootNode.toString()).toBe(fresh!.rootNode.toString());
+    } finally {
+      fresh?.delete();
+      edited?.delete();
+      tree.delete();
+    }
+  }
+});
+
+test('keeps annotated function and object literals inside member expressions', () => {
+  for (const expression of [
+    'call() @Ann {}',
+    'call() @Ann(")") { value() }',
+    '1 use @Ann fun(x: Int) = x',
+    '1 private @Ann fun(x: Int) = x',
+    '1 private @Ann fun Int.(x: Int) = x',
+    '1 private @Ann fun List<() -> Unit>.() {}',
+    '1 private @Ann fun List<() -> (Pair<Int, Int>)>.() {}',
+    '1 private @Ann fun @TypeAnn(")") List<() -> Unit>.() {}',
+    '1 private @Ann object {}',
+    '1 private @Ann object : Base() {}',
+  ]) {
+    const member = `fun f() = ${expression}`;
+    const tree = parser.parse(`class C { ${member} }`)!;
+    try {
+      expect(tree.rootNode.hasError, member).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([member]);
+      expect(
+        tree.rootNode.descendantsOfType(['annotated_lambda', 'annotated_expression']).map((node) => node.text)
+      ).toEqual([expression.slice(expression.indexOf('@'))]);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test('retains immediate super labels before same-line members', () => {
+  for (const target of ['super@C', 'super<A>@C']) {
+    const first = `fun f() = ${target}.foo()`;
+    const second = 'fun g() {}';
+    const tree = parser.parse(`class C : A { ${first} ${second} }`)!;
+    try {
+      expect(tree.rootNode.hasError, first).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([first, second]);
+      expect(tree.rootNode.descendantsOfType('super_expression').map((node) => node.text)).toEqual([target]);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test('recovers from unfinished type arguments in annotated member headers', () => {
+  for (const header of ['<', '<T', '<T ', '<List<', '<T /* unfinished', '<List<() -> Unit>']) {
+    const source = `class C { fun f() {} @Ann fun ${header}`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(true);
+      expect(tree.rootNode.endIndex, source).toBe(source.length);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test('keeps functional interfaces separate without scanning their member bodies', () => {
+  const first = 'fun first() {}';
+  const declaration = 'fun interface I { val f: Int.() -> Unit get() = {}; fun run() }';
+  const last = 'fun after() {}';
+  for (const annotation of ['', '@Ann ']) {
+    const member = annotation + declaration;
+    const tree = parser.parse(`class C { ${first} ${member} ${last} }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      expect(
+        query
+          .captures(tree.rootNode)
+          .map(({ node }) => node.text)
+          .filter((text) => [first, member, last].includes(text))
+      ).toEqual([first, member, last]);
+    } finally {
+      tree.delete();
     }
   }
 });
