@@ -1562,8 +1562,14 @@ static bool scan_member_annotation(TSLexer *lexer) {
 
 static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
     if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return true;
-    if (lexer->lookahead == '(') return false;
     int32_t previous = 0;
+    if (lexer->lookahead == '(') {
+        lexer->advance(lexer, skip_chars);
+        if (!scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars) ||
+            !scan_whitespace_and_comments(lexer, true, skip_chars) || lexer->lookahead != '.') return false;
+        previous = '.';
+        lexer->advance(lexer, skip_chars);
+    }
     while (!lexer->eof(lexer) && lexer->lookahead != '(' && lexer->lookahead != '}' && lexer->lookahead != ';') {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) break;
         if (lexer->lookahead == '(' || lexer->lookahead == '}' || lexer->lookahead == ';') break;

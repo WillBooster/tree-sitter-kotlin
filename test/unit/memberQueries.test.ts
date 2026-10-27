@@ -126,6 +126,8 @@ test('keeps annotated same-line members separate across edits', () => {
   const first = 'fun first() {}';
   for (const second of [
     '@Ann fun second() {}',
+    '@Ann fun (Int).second() {}',
+    '@Ann fun ((Int) -> Int).second() {}',
     '@Ann(")") private fun second() {}',
     '@pkg.Ann @Other fun second() {}',
     '@[First Second("]")] fun second() {}',
