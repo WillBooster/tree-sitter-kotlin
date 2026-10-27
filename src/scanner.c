@@ -868,8 +868,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     if (!error_recovery && valid_symbols[SAME_LINE_MEMBER_END] && scanner->depth > 0 && !in_statements(scanner) &&
         !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
         lexer->mark_end(lexer);
-        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') skip(lexer);
-        if (lexer->lookahead == '@' || iswalpha(lexer->lookahead)) {
+        bool has_horizontal_space = false;
+        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') {
+            has_horizontal_space = true;
+            skip(lexer);
+        }
+        if ((has_horizontal_space && lexer->lookahead == '@') || iswalpha(lexer->lookahead)) {
             char scanned_word[16] = {0};
             for (;;) {
                 if (lexer->lookahead == '@') {

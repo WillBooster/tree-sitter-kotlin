@@ -189,3 +189,18 @@ test('keeps annotated function literals inside member expressions', () => {
     }
   }
 });
+
+test('retains immediate super labels before same-line members', () => {
+  for (const target of ['super@C', 'super<A>@C']) {
+    const first = `fun f() = ${target}.foo()`;
+    const second = 'fun g() {}';
+    const tree = parser.parse(`class C : A { ${first} ${second} }`)!;
+    try {
+      expect(tree.rootNode.hasError, first).toBe(false);
+      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([first, second]);
+      expect(tree.rootNode.descendantsOfType('super_expression').map((node) => node.text)).toEqual([target]);
+    } finally {
+      tree.delete();
+    }
+  }
+});
