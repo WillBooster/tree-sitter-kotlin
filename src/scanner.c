@@ -752,6 +752,8 @@ static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 
+static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
+
 static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars);
 
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
@@ -1507,25 +1509,29 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
     }
     int32_t previous = 0;
     if (lexer->lookahead == '(') {
-        lexer->advance(lexer, skip_chars);
-        if (!scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars) ||
-            !scan_whitespace_and_comments(lexer, true, skip_chars) || lexer->lookahead != '.') return false;
+        if (!scan_parenthesized_receiver(lexer, skip_chars)) return false;
         previous = '.';
-        lexer->advance(lexer, skip_chars);
     }
     while (!lexer->eof(lexer)) {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) break;
         int32_t c = lexer->lookahead;
         if (c == '(' || c == '}' || c == ';') break;
-        if (c == '<') {
-            if (!scan_function_type_arguments(lexer, skip_chars)) return false;
-            previous = '>';
-        } else if (c == '@') {
-            if (!scan_member_annotation(lexer, skip_chars)) return false;
-        } else {
-            previous = c;
-            lexer->advance(lexer, skip_chars);
-            if (c == '`' && !scan_literal_rest(lexer, c, 0, skip_chars)) return false;
+        switch (c) {
+            case '<':
+                if (!scan_function_type_arguments(lexer, skip_chars)) return false;
+                previous = '>';
+                break;
+            case '@':
+                if (!scan_member_annotation(lexer, skip_chars)) return false;
+                break;
+            case '`':
+                lexer->advance(lexer, skip_chars);
+                if (!scan_literal_rest(lexer, c, 0, skip_chars)) return false;
+                previous = c;
+                break;
+            default:
+                previous = c;
+                lexer->advance(lexer, skip_chars);
         }
     }
     return previous != '.';
@@ -1560,6 +1566,19 @@ static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
         lexer->advance(lexer, skip_chars);
         return scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars);
     }
+    return true;
+}
+
+static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars) {
+    lexer->advance(lexer, skip_chars);
+    if (!scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars) ||
+        !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+    while (lexer->lookahead == '?') {
+        lexer->advance(lexer, skip_chars);
+        if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+    }
+    if (lexer->lookahead != '.') return false;
+    lexer->advance(lexer, skip_chars);
     return true;
 }
 

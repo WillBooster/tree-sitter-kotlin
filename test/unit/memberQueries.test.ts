@@ -127,6 +127,9 @@ test('keeps annotated same-line members separate across edits', () => {
   for (const second of [
     '@Ann fun second() {}',
     '@Ann fun (Int).second() {}',
+    '@Ann fun (Int)?.second() {}',
+    '@Ann fun (Int) ? /* bound */ .second() {}',
+    '@Ann fun ((Int) -> Int)?.second() {}',
     '@Ann fun ((Int) -> Int).second() {}',
     '@Ann fun List<() -> Unit>.second() {}',
     '@Ann fun `name(with_paren`() {}',
