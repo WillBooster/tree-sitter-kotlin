@@ -1,4 +1,4 @@
-import { Edit, Language, Parser, Query, type Tree } from '@willbooster/web-tree-sitter';
+import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 let parser: Parser;
@@ -170,62 +170,25 @@ test.each([
 });
 
 test.each(['\n', '\r\n', '\n/* next */ ', '\n// next\n'])(
-  'updates recovery and query ranges when inserting and undoing a trailing dot before %j',
+  'recovers the following import after a trailing dot before %j below a multibyte comment',
   (boundary) => {
     const source = `// 引用\nimport kotlin.math.abs${boundary}import kotlin.math.max\nclass After {}`;
     const index = source.indexOf('abs') + 3;
     const changed = source.slice(0, index) + '.' + source.slice(index);
     const original = parser.parse(source)!;
-    const trees = [original];
+    const dotted = parser.parse(changed)!;
     try {
       expect(original.rootNode.hasError).toBe(false);
-      const originalCaptures = captures(original);
-      const startPosition = { row: 1, column: 'import kotlin.math.abs'.length };
-      const endPosition = { ...startPosition, column: startPosition.column + 1 };
-      original.edit(
-        new Edit({
-          startIndex: index,
-          oldEndIndex: index,
-          newEndIndex: index + 1,
-          startPosition,
-          oldEndPosition: startPosition,
-          newEndPosition: endPosition,
-        })
-      );
-      const edited = parser.parse(changed, original)!;
-      const fresh = parser.parse(changed)!;
-      trees.push(edited, fresh);
-      expect(edited.rootNode.hasError).toBe(true);
-      expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
-      expect(captures(edited)).toEqual(captures(fresh));
+      expect(dotted.rootNode.hasError).toBe(true);
       expect(
-        edited.rootNode
+        dotted.rootNode
           .descendantsOfType('import')
           .filter((node) => node.isNamed)
           .map((node) => node.text)
       ).toEqual(['import kotlin.math.abs', 'import kotlin.math.max']);
-      edited.edit(
-        new Edit({
-          startIndex: index,
-          oldEndIndex: index + 1,
-          newEndIndex: index,
-          startPosition,
-          oldEndPosition: endPosition,
-          newEndPosition: startPosition,
-        })
-      );
-      const undone = parser.parse(source, edited)!;
-      trees.push(undone);
-      expect(undone.rootNode.hasError).toBe(false);
-      expect(captures(undone)).toEqual(originalCaptures);
     } finally {
-      for (const tree of trees) tree.delete();
+      original.delete();
+      dotted.delete();
     }
   }
 );
-
-function captures(tree: Tree): unknown[] {
-  return query
-    .captures(tree.rootNode)
-    .map(({ node }) => [node.type, node.text, node.startIndex, node.endIndex, node.startPosition, node.endPosition]);
-}

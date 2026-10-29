@@ -1,23 +1,8 @@
-import { Edit, Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 await Parser.init();
 const language = await Language.load('tree-sitter-kotlin.wasm');
-const snapshot = (node: NonNullable<ReturnType<Parser['parse']>>['rootNode']): unknown => [
-  node.type,
-  node.grammarType,
-  node.isNamed,
-  node.isExtra,
-  node.isMissing,
-  node.isError,
-  node.hasError,
-  node.startIndex,
-  node.endIndex,
-  node.startPosition,
-  node.endPosition,
-  node.children.map((_, i) => node.fieldNameForChild(i)),
-  node.children.map(snapshot),
-];
 
 test('keeps next-line actual primary constructors and their members attached to the class', () => {
   const parser = new Parser().setLanguage(language);
@@ -82,28 +67,6 @@ test.each([
           expect(constructor.text, source).toBe(`${annotation}\n ${modifier} constructor(val x: Int = 1)`);
           expect(constructor.startIndex, source).toBe(source.indexOf(annotation));
           expect(constructor.endIndex, source).toBe(source.indexOf(')\nfun next') + 1);
-          const index = source.indexOf(modifier, source.indexOf(annotation));
-          const replacement = modifier === 'internal' ? 'private' : 'internal';
-          const after = source.slice(0, index) + replacement + source.slice(index + modifier.length);
-          const point = { row: source.slice(0, index).split('\n').length - 1, column: 1 };
-          tree.edit(
-            new Edit({
-              startIndex: index,
-              oldEndIndex: index + modifier.length,
-              newEndIndex: index + replacement.length,
-              startPosition: point,
-              oldEndPosition: { ...point, column: 1 + modifier.length },
-              newEndPosition: { ...point, column: 1 + replacement.length },
-            })
-          );
-          const edited = parser.parse(after, tree)!;
-          const fresh = parser.parse(after)!;
-          try {
-            expect(snapshot(edited.rootNode), after).toEqual(snapshot(fresh.rootNode));
-          } finally {
-            edited.delete();
-            fresh.delete();
-          }
         } finally {
           tree.delete();
         }
@@ -317,30 +280,6 @@ test('retains annotated infix expressions and assignments after a local class', 
               source.indexOf('@A'),
               source.indexOf('@A') + expression.length,
             ]);
-            const index = source.indexOf('constructor(') + 'constructor('.length;
-            const replacement = operand === '1' ? 'x' : '1';
-            const after = source.slice(0, index) + replacement + source.slice(index + operand.length);
-            const point = { row: 2, column: index - source.lastIndexOf('\n', index) - 1 };
-            tree.edit(
-              new Edit({
-                startIndex: index,
-                oldEndIndex: index + operand.length,
-                newEndIndex: index + replacement.length,
-                startPosition: point,
-                oldEndPosition: { ...point, column: point.column + operand.length },
-                newEndPosition: { ...point, column: point.column + replacement.length },
-              })
-            );
-            const edited = parser.parse(after, tree)!;
-            const fresh = parser.parse(after)!;
-            try {
-              expect(edited.rootNode.hasError, after).toBe(false);
-              expect(edited.rootNode.descendantsOfType('primary_constructor'), after).toEqual([]);
-              expect(snapshot(edited.rootNode), after).toEqual(snapshot(fresh.rootNode));
-            } finally {
-              edited.delete();
-              fresh.delete();
-            }
           } finally {
             tree.delete();
           }

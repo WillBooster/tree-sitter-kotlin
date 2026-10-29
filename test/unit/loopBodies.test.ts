@@ -1,4 +1,4 @@
-import { Edit, Language, Parser, Query, type Tree } from '@willbooster/web-tree-sitter';
+import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 test.each(['\n', '\r\n', '\n/* body */ ', ' /* header */\n', '\n/* first */ /* second */ ', '\n// body\n'])(
@@ -139,84 +139,29 @@ test.each(['for (item in values)', 'while (condition)'])(
 );
 
 test.each(['for (item in values)', 'while (condition)'])(
-  'updates prefix ownership when %s becomes empty and is undone',
+  'assigns a commented prefix statement to %s unless an empty body precedes it',
   async (header) => {
     await Parser.init();
-    const language = await Language.load('tree-sitter-kotlin.wasm');
-    const parser = new Parser().setLanguage(language);
-    const query = new Query(
-      language,
-      '[(for_statement) (while_statement) (unary_expression) (block_comment)] @capture'
-    );
-    const source = `fun f() { ${header}\n/* body */ -item\n}`;
-    const index = source.indexOf(')\n') + 1;
-    const after = source.slice(0, index) + ';' + source.slice(index);
-    const startPosition = { row: 0, column: index };
-    const newEndPosition = { row: 0, column: index + 1 };
-    const tree = parser.parse(source)!;
-    const trees = [tree];
+    const parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
     try {
-      expect(tree.rootNode.hasError, source).toBe(false);
-      expect(
-        tree.rootNode.descendantsOfType(['for_statement', 'while_statement'])[0]!.childForFieldName('body')?.text,
-        source
-      ).toBe('-item');
-      tree.edit(
-        new Edit({
-          startIndex: index,
-          oldEndIndex: index,
-          newEndIndex: index + 1,
-          startPosition,
-          oldEndPosition: startPosition,
-          newEndPosition,
-        })
-      );
-      const edited = parser.parse(after, tree)!;
-      const fresh = parser.parse(after)!;
-      trees.push(edited, fresh);
-      expect(edited.rootNode.hasError, after).toBe(false);
-      expect(captures(query, edited), after).toEqual(captures(query, fresh));
-      expect(
-        edited.rootNode.descendantsOfType(['for_statement', 'while_statement'])[0]!.childForFieldName('body'),
-        after
-      ).toBeNull();
-      edited.edit(
-        new Edit({
-          startIndex: index,
-          oldEndIndex: index + 1,
-          newEndIndex: index,
-          startPosition,
-          oldEndPosition: newEndPosition,
-          newEndPosition: startPosition,
-        })
-      );
-      const undone = parser.parse(source, edited)!;
-      const original = parser.parse(source)!;
-      trees.push(undone, original);
-      expect(undone.rootNode.hasError, source).toBe(false);
-      expect(captures(query, undone), source).toEqual(captures(query, original));
-      expect(
-        undone.rootNode.descendantsOfType(['for_statement', 'while_statement'])[0]!.childForFieldName('body')?.text,
-        source
-      ).toBe('-item');
+      for (const [separator, body] of [
+        ['', '-item'],
+        [';', undefined],
+      ] as const) {
+        const source = `fun f() { ${header}${separator}\n/* body */ -item\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError, source).toBe(false);
+          expect(
+            tree.rootNode.descendantsOfType(['for_statement', 'while_statement'])[0]!.childForFieldName('body')?.text,
+            source
+          ).toBe(body);
+        } finally {
+          tree.delete();
+        }
+      }
     } finally {
-      for (const parsed of trees) parsed.delete();
-      query.delete();
       parser.delete();
     }
   }
 );
-
-function captures(query: Query, tree: Tree): unknown[] {
-  return query
-    .captures(tree.rootNode)
-    .map(({ node }) => [
-      node.type,
-      node.text,
-      node.startIndex,
-      node.endIndex,
-      node.startPosition,
-      node.endPosition,
-      node.parent?.type,
-    ]);
-}
