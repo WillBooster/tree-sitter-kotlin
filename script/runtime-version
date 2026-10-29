@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Prints the version of the WillBooster/tree-sitter runtime (the willbooster-tree-sitter crate) that Cargo.lock locks,
-# which the Rust tests, the fuzz job, and the incremental check run on; fails unless Cargo.lock locks exactly one.
+# which the Rust tests, the fuzz job, and script/fork-cli's CLI run on; fails unless Cargo.lock locks exactly one.
 
 set -euo pipefail
 

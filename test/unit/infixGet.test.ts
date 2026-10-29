@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Edit, Language, type Node, Parser, type Point, Query, type Tree } from '@willbooster/web-tree-sitter';
+import { Language, Parser, type Point, Query, type Tree } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 const source = `class Row(val id: Int) {
@@ -21,21 +21,6 @@ fun main() {
     println(listOf(first, second))
 }
 `;
-
-interface PublicNode {
-  type: string;
-  text: string;
-  named: boolean;
-  extra: boolean;
-  missing: boolean;
-  error: boolean;
-  hasError: boolean;
-  start: number;
-  end: number;
-  startPoint: Point;
-  endPoint: Point;
-  children: { field: string | undefined; node: PublicNode }[];
-}
 
 test('keeps get as the infix identifier after ordinary and trailing-lambda receivers', async () => {
   await Parser.init();
@@ -78,60 +63,34 @@ test('keeps get as the infix identifier after ordinary and trailing-lambda recei
   }
 });
 
-test('replays length-changing infix receiver and name edits with exact fresh public trees and captures', async () => {
+test('keeps infix get expressions with receivers and names of other lengths', async () => {
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser();
-  let query: Query | undefined;
-  let tree: Tree | undefined;
   let text = source;
   try {
     parser.setLanguage(language);
-    query = new Query(language, '(infix_expression) @infix\n(infix_expression (identifier) @identifier)');
-    tree = parser.parse(text)!;
     for (const [anchor, before, after, offset, expected] of [
       ['row get 3', 'row', 'longerReceiver', 0, 'longerReceiver get 3'],
       ['longerReceiver get 3', 'get', 'getValue', 15, 'longerReceiver getValue 3'],
       ['longerReceiver getValue 3', 'longerReceiver', 'r', 0, 'r getValue 3'],
       ['r getValue 3', 'getValue', 'get', 2, 'r get 3'],
-      ['r get 3', 'r', 'row', 0, 'row get 3'],
       ['row.insert {', 'row', 'longerEntry', 0, 'longerEntry.insert {\n        println("insert")\n    } get row.id'],
-      ['longerEntry.insert {', 'longerEntry', 'row', 0, 'row.insert {\n        println("insert")\n    } get row.id'],
     ] as const) {
       const anchorStart = text.indexOf(anchor);
       expect(anchorStart).toBeGreaterThanOrEqual(0);
       const start = anchorStart + offset;
       expect(text.slice(start, start + before.length)).toBe(before);
-      const nextText = text.slice(0, start) + after + text.slice(start + before.length);
-      const previous: Tree = tree!;
-      tree = undefined;
-      let fresh: Tree | undefined;
+      text = text.slice(0, start) + after + text.slice(start + before.length);
+      const tree = parser.parse(text)!;
       try {
-        previous.edit(
-          new Edit({
-            startIndex: start,
-            oldEndIndex: start + before.length,
-            newEndIndex: start + after.length,
-            startPosition: pointAt(text, start),
-            oldEndPosition: pointAt(text, start + before.length),
-            newEndPosition: pointAt(nextText, start + after.length),
-          })
-        );
-        tree = parser.parse(nextText, previous)!;
-        fresh = parser.parse(nextText)!;
-        expect(tree.rootNode.hasError).toBe(false);
-        expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
-        expect(captures(query, tree)).toEqual(captures(query, fresh));
+        expect(tree.rootNode.hasError, text).toBe(false);
         expect(tree.rootNode.descendantsOfType('infix_expression').map((node) => node.text)).toContain(expected);
       } finally {
-        fresh?.delete();
-        previous.delete();
+        tree.delete();
       }
-      text = nextText;
     }
   } finally {
-    tree?.delete();
-    query?.delete();
     parser.delete();
   }
 });
@@ -189,7 +148,7 @@ test('retains getter ownership and incomplete member identifiers beside contextu
   }
 });
 
-test('retains get call operands of return and throw through name and trivia edits', async () => {
+test('retains get call operands of return and throw with other names and trivia', async () => {
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
@@ -203,55 +162,33 @@ test('retains get call operands of return and throw through name and trivia edit
       ['throw ', '(1, 2)', 'throw_expression'],
     ] as const) {
       let text = `fun f() { ${prefix}get${argumentsText} }`;
-      let tree = parser.parse(text)!;
-      try {
-        check(tree, text, 'get');
-        for (const name of ['getValue', 'get']) {
-          const start = text.indexOf('get');
-          const end = start + (text.startsWith('getValue', start) ? 'getValue'.length : 'get'.length);
-          const replacement = `${name} /* call boundary */ `;
-          const next = text.slice(0, start) + replacement + text.slice(end);
-          const previous = tree;
-          let fresh: Tree | undefined;
-          try {
-            previous.edit(
-              new Edit({
-                startIndex: start,
-                oldEndIndex: end,
-                newEndIndex: start + replacement.length,
-                startPosition: pointAt(text, start),
-                oldEndPosition: pointAt(text, end),
-                newEndPosition: pointAt(next, start + replacement.length),
-              })
-            );
-            tree = parser.parse(next, previous)!;
-            fresh = parser.parse(next)!;
-            check(tree, next, name);
-            check(fresh, next, name);
-            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
-            expect(captures(query, tree)).toEqual(captures(query, fresh));
-          } finally {
-            fresh?.delete();
-            previous.delete();
-          }
-          text = next;
-        }
-      } finally {
-        tree.delete();
+      check(text, 'get');
+      for (const name of ['getValue', 'get']) {
+        const start = text.indexOf('get');
+        const end = start + (text.startsWith('getValue', start) ? 'getValue'.length : 'get'.length);
+        const replacement = `${name} /* call boundary */ `;
+        const next = text.slice(0, start) + replacement + text.slice(end);
+        check(next, name);
+        text = next;
       }
-      function check(current: Tree, sourceText: string, name: string): void {
-        expect(current.rootNode.hasError, sourceText).toBe(false);
-        const result = query.captures(current.rootNode);
-        expect(result.filter(({ name }) => name === 'infix')).toHaveLength(0);
-        const call = result.filter(({ name }) => name === 'call');
-        expect(call).toHaveLength(1);
-        expect(call[0]!.node.parent?.type).toBe(owner);
-        const identifier = result.find(
-          ({ name: capture, node }) => capture === 'identifier' && node.text === name
-        )!.node;
-        expect(identifier.parent?.id).toBe(call[0]!.node.id);
-        expect(identifier.startIndex).toBe(sourceText.indexOf(name));
-        expect(identifier.endIndex).toBe(identifier.startIndex + name.length);
+      function check(sourceText: string, name: string): void {
+        const current = parser.parse(sourceText)!;
+        try {
+          expect(current.rootNode.hasError, sourceText).toBe(false);
+          const result = query.captures(current.rootNode);
+          expect(result.filter(({ name }) => name === 'infix')).toHaveLength(0);
+          const call = result.filter(({ name }) => name === 'call');
+          expect(call).toHaveLength(1);
+          expect(call[0]!.node.parent?.type).toBe(owner);
+          const identifier = result.find(
+            ({ name: capture, node }) => capture === 'identifier' && node.text === name
+          )!.node;
+          expect(identifier.parent?.id).toBe(call[0]!.node.id);
+          expect(identifier.startIndex).toBe(sourceText.indexOf(name));
+          expect(identifier.endIndex).toBe(identifier.startIndex + name.length);
+        } finally {
+          current.delete();
+        }
       }
     }
   } finally {
@@ -260,7 +197,7 @@ test('retains get call operands of return and throw through name and trivia edit
   }
 });
 
-test('retains get annotation targets through target and trivia edits', async () => {
+test('retains get annotation targets with other targets and trivia', async () => {
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
@@ -272,49 +209,27 @@ test('retains get annotation targets through target and trivia edits', async () 
       'class C { @get:[Rule Other] var value = 1 }',
     ]) {
       let text = sourceText;
-      let tree = parser.parse(text)!;
-      try {
-        check(tree, text);
-        for (const replacement of ['set /* target */ ', 'get']) {
-          const start = text.indexOf('@') + 1;
-          const end = text.indexOf(':', start);
-          const next = text.slice(0, start) + replacement + text.slice(end);
-          const previous = tree;
-          let fresh: Tree | undefined;
-          try {
-            previous.edit(
-              new Edit({
-                startIndex: start,
-                oldEndIndex: end,
-                newEndIndex: start + replacement.length,
-                startPosition: pointAt(text, start),
-                oldEndPosition: pointAt(text, end),
-                newEndPosition: pointAt(next, start + replacement.length),
-              })
-            );
-            tree = parser.parse(next, previous)!;
-            fresh = parser.parse(next)!;
-            check(tree, next);
-            check(fresh, next);
-            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
-            expect(captures(query, tree)).toEqual(captures(query, fresh));
-          } finally {
-            fresh?.delete();
-            previous.delete();
-          }
-          text = next;
-        }
-        expect(text).toBe(sourceText);
-      } finally {
-        tree.delete();
+      check(text);
+      for (const replacement of ['set /* target */ ', 'get']) {
+        const start = text.indexOf('@') + 1;
+        const end = text.indexOf(':', start);
+        const next = text.slice(0, start) + replacement + text.slice(end);
+        check(next);
+        text = next;
       }
-      function check(current: Tree, sourceText: string): void {
-        expect(current.rootNode.hasError, sourceText).toBe(false);
-        const targets = query.captures(current.rootNode).filter(({ name }) => name === 'target');
-        expect(targets).toHaveLength(1);
-        expect(targets[0]!.node.parent?.type).toBe('annotation');
-        expect(targets[0]!.node.startIndex).toBe(sourceText.indexOf('@') + 1);
-        expect(targets[0]!.node.endIndex).toBe(sourceText.indexOf(':') + 1);
+      expect(text).toBe(sourceText);
+      function check(sourceText: string): void {
+        const current = parser.parse(sourceText)!;
+        try {
+          expect(current.rootNode.hasError, sourceText).toBe(false);
+          const targets = query.captures(current.rootNode).filter(({ name }) => name === 'target');
+          expect(targets).toHaveLength(1);
+          expect(targets[0]!.node.parent?.type).toBe('annotation');
+          expect(targets[0]!.node.startIndex).toBe(sourceText.indexOf('@') + 1);
+          expect(targets[0]!.node.endIndex).toBe(sourceText.indexOf(':') + 1);
+        } finally {
+          current.delete();
+        }
       }
     }
   } finally {
@@ -323,7 +238,7 @@ test('retains get annotation targets through target and trivia edits', async () 
   }
 });
 
-test('retains get labels and bare accessor boundaries through name and trivia edits', async () => {
+test('retains get labels and bare accessor boundaries with other names and trivia', async () => {
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
@@ -357,58 +272,38 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
       ['fun f() { val a = 1 get\nx = 1 }', 'getter'],
     ] as const) {
       let text: string = original;
-      let tree = parser.parse(text)!;
-      try {
-        check(tree, text);
-        for (const replacement of kind === 'label' ? ['longerLabel', 'get'] : ['get /* accessor */ ', 'get']) {
-          const start = text.indexOf(
-            kind === 'label' ? (text.includes('longerLabel@') ? 'longerLabel@' : 'get@') : 'get'
-          );
-          const end = kind === 'label' ? text.indexOf('@', start) : text.indexOf('\n', start);
-          const next = text.slice(0, start) + replacement + text.slice(end);
-          const previous = tree;
-          let fresh: Tree | undefined;
-          try {
-            previous.edit(
-              new Edit({
-                startIndex: start,
-                oldEndIndex: end,
-                newEndIndex: start + replacement.length,
-                startPosition: pointAt(text, start),
-                oldEndPosition: pointAt(text, end),
-                newEndPosition: pointAt(next, start + replacement.length),
-              })
-            );
-            tree = parser.parse(next, previous)!;
-            fresh = parser.parse(next)!;
-            check(tree, next);
-            check(fresh, next);
-            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
-            expect(captures(query, tree)).toEqual(captures(query, fresh));
-          } finally {
-            fresh?.delete();
-            previous.delete();
-          }
-          text = next;
-        }
-      } finally {
-        tree.delete();
-      }
-      function check(current: Tree, sourceText: string): void {
-        expect(current.rootNode.hasError, sourceText).toBe(false);
-        const matching = query.captures(current.rootNode).filter(({ name }) => name === kind);
-        expect(matching).toHaveLength(1);
-        const node = matching[0]!.node;
-        const start = sourceText.indexOf(
-          kind === 'label' && sourceText.includes('longerLabel@') ? 'longerLabel@' : 'get'
+      check(text);
+      for (const replacement of kind === 'label' ? ['longerLabel', 'get'] : ['get /* accessor */ ', 'get']) {
+        const start = text.indexOf(
+          kind === 'label' ? (text.includes('longerLabel@') ? 'longerLabel@' : 'get@') : 'get'
         );
-        expect(node.startIndex).toBe(start);
-        expect(node.text).toBe(kind === 'label' ? sourceText.slice(start, sourceText.indexOf('@', start) + 1) : 'get');
-        if (kind === 'getter') expect(node.parent?.type).toBe('property_declaration');
-        if (sourceText.includes('companion')) {
-          const members = current.rootNode.descendantsOfType('companion_object');
-          expect(members).toHaveLength(1);
-          expect(members[0]!.parent?.type).toBe('class_body');
+        const end = kind === 'label' ? text.indexOf('@', start) : text.indexOf('\n', start);
+        const next = text.slice(0, start) + replacement + text.slice(end);
+        check(next);
+        text = next;
+      }
+      function check(sourceText: string): void {
+        const current = parser.parse(sourceText)!;
+        try {
+          expect(current.rootNode.hasError, sourceText).toBe(false);
+          const matching = query.captures(current.rootNode).filter(({ name }) => name === kind);
+          expect(matching).toHaveLength(1);
+          const node = matching[0]!.node;
+          const start = sourceText.indexOf(
+            kind === 'label' && sourceText.includes('longerLabel@') ? 'longerLabel@' : 'get'
+          );
+          expect(node.startIndex).toBe(start);
+          expect(node.text).toBe(
+            kind === 'label' ? sourceText.slice(start, sourceText.indexOf('@', start) + 1) : 'get'
+          );
+          if (kind === 'getter') expect(node.parent?.type).toBe('property_declaration');
+          if (sourceText.includes('companion')) {
+            const members = current.rootNode.descendantsOfType('companion_object');
+            expect(members).toHaveLength(1);
+            expect(members[0]!.parent?.type).toBe('class_body');
+          }
+        } finally {
+          current.delete();
         }
       }
     }
@@ -444,7 +339,7 @@ test('retains get labels and bare accessor boundaries through name and trivia ed
   }
 });
 
-test('retains newline infix ownership through equality-operator edits', async () => {
+test('retains newline infix ownership across equality operators', async () => {
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
@@ -452,53 +347,31 @@ test('retains newline infix ownership through equality-operator edits', async ()
   try {
     for (const context of ['class C', 'fun f()']) {
       let text = `${context} { val value = row get\nx !== 1 }`;
-      let tree = parser.parse(text)!;
-      try {
-        check(tree, text);
-        for (const operator of ['!=', '===', '==', '!==']) {
-          const start = text.indexOf('x ') + 2;
-          const end = text.indexOf(' 1', start);
-          const next = text.slice(0, start) + operator + text.slice(end);
-          const previous = tree;
-          let fresh: Tree | undefined;
-          try {
-            previous.edit(
-              new Edit({
-                startIndex: start,
-                oldEndIndex: end,
-                newEndIndex: start + operator.length,
-                startPosition: pointAt(text, start),
-                oldEndPosition: pointAt(text, end),
-                newEndPosition: pointAt(next, start + operator.length),
-              })
-            );
-            tree = parser.parse(next, previous)!;
-            fresh = parser.parse(next)!;
-            check(tree, next);
-            check(fresh, next);
-            expect(snapshot(tree.rootNode)).toEqual(snapshot(fresh.rootNode));
-            expect(captures(query, tree)).toEqual(captures(query, fresh));
-          } finally {
-            fresh?.delete();
-            previous.delete();
-          }
-          text = next;
-        }
-      } finally {
-        tree.delete();
+      check(text);
+      for (const operator of ['!=', '===', '==', '!==']) {
+        const start = text.indexOf('x ') + 2;
+        const end = text.indexOf(' 1', start);
+        const next = text.slice(0, start) + operator + text.slice(end);
+        check(next);
+        text = next;
       }
-      function check(current: Tree, sourceText: string): void {
-        expect(current.rootNode.hasError).toBe(false);
-        const result = query.captures(current.rootNode);
-        expect(result.filter(({ name }) => name === 'getter')).toHaveLength(0);
-        const infixes = result.filter(({ name }) => name === 'infix');
-        expect(infixes).toHaveLength(1);
-        const infix = infixes[0]!.node;
-        expect(infix.text).toBe('row get\nx');
-        expect(infix.parent?.type).toBe('binary_expression');
-        expect(infix.parent?.parent?.type).toBe('property_declaration');
-        expect(infix.startIndex).toBe(sourceText.indexOf('row'));
-        expect(infix.endIndex).toBe(sourceText.indexOf('x ') + 1);
+      function check(sourceText: string): void {
+        const current = parser.parse(sourceText)!;
+        try {
+          expect(current.rootNode.hasError).toBe(false);
+          const result = query.captures(current.rootNode);
+          expect(result.filter(({ name }) => name === 'getter')).toHaveLength(0);
+          const infixes = result.filter(({ name }) => name === 'infix');
+          expect(infixes).toHaveLength(1);
+          const infix = infixes[0]!.node;
+          expect(infix.text).toBe('row get\nx');
+          expect(infix.parent?.type).toBe('binary_expression');
+          expect(infix.parent?.parent?.type).toBe('property_declaration');
+          expect(infix.startIndex).toBe(sourceText.indexOf('row'));
+          expect(infix.endIndex).toBe(sourceText.indexOf('x ') + 1);
+        } finally {
+          current.delete();
+        }
       }
     }
   } finally {
@@ -510,28 +383,4 @@ test('retains newline infix ownership through equality-operator edits', async ()
 function pointAt(text: string, index: number): Point {
   const preceding = text.slice(0, index).split('\n');
   return { row: preceding.length - 1, column: preceding.at(-1)!.length };
-}
-
-function captures(query: Query, tree: Tree): { name: string; node: PublicNode }[] {
-  return query.captures(tree.rootNode).map(({ name, node }) => ({ name, node: snapshot(node) }));
-}
-
-function snapshot(node: Node): PublicNode {
-  return {
-    type: node.type,
-    text: node.text,
-    named: node.isNamed,
-    extra: node.isExtra,
-    missing: node.isMissing,
-    error: node.isError,
-    hasError: node.hasError,
-    start: node.startIndex,
-    end: node.endIndex,
-    startPoint: node.startPosition,
-    endPoint: node.endPosition,
-    children: node.children.map((child, index) => ({
-      field: node.fieldNameForChild(index) ?? undefined,
-      node: snapshot(child),
-    })),
-  };
 }

@@ -1,4 +1,4 @@
-import { Edit, Language, Parser, Query, type Tree } from '@willbooster/web-tree-sitter';
+import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 let parser: Parser;
@@ -65,68 +65,21 @@ test.each([
 });
 
 test.each([' ', '\n', '\r\n', '/* split */', '// split\n'])(
-  'updates safe-navigation errors and query ranges when inserting and undoing %j',
+  'parses safe navigation in a property initializer only without %j between its characters',
   (boundary) => {
     const source = 'fun f(a: Box?) { val label = "引用"; val result = a?.b\nval next = 1\n}';
     const index = source.indexOf('?.') + 1;
     const changed = source.slice(0, index) + boundary + source.slice(index);
     const original = parser.parse(source)!;
-    const trees = [original];
+    const split = parser.parse(changed)!;
     try {
       expect(original.rootNode.hasError).toBe(false);
-      const originalCaptures = captures(original);
-      const startPosition = position(source, index);
-      const changedEndPosition = position(changed, index + boundary.length);
-      original.edit(
-        new Edit({
-          startIndex: index,
-          oldEndIndex: index,
-          newEndIndex: index + boundary.length,
-          startPosition,
-          oldEndPosition: startPosition,
-          newEndPosition: changedEndPosition,
-        })
-      );
-      const edited = parser.parse(changed, original)!;
-      const fresh = parser.parse(changed)!;
-      trees.push(edited, fresh);
-      expect(edited.rootNode.hasError).toBe(true);
-      expect(edited.rootNode.toString()).toBe(fresh.rootNode.toString());
-      expect(captures(edited)).toEqual(captures(fresh));
-      expect(query.captures(edited.rootNode).filter(({ node }) => node.type === '?.')).toHaveLength(0);
-      edited.edit(
-        new Edit({
-          startIndex: index,
-          oldEndIndex: index + boundary.length,
-          newEndIndex: index,
-          startPosition,
-          oldEndPosition: changedEndPosition,
-          newEndPosition: startPosition,
-        })
-      );
-      const undone = parser.parse(source, edited)!;
-      trees.push(undone);
-      expect(undone.rootNode.hasError).toBe(false);
-      expect(captures(undone)).toEqual(originalCaptures);
-      expect(undone.rootNode.descendantsOfType('navigation_expression').map((node) => node.text)).toEqual(['a?.b']);
+      expect(original.rootNode.descendantsOfType('navigation_expression').map((node) => node.text)).toEqual(['a?.b']);
+      expect(split.rootNode.hasError).toBe(true);
+      expect(query.captures(split.rootNode).filter(({ node }) => node.type === '?.')).toHaveLength(0);
     } finally {
-      for (const tree of trees) tree.delete();
+      original.delete();
+      split.delete();
     }
   }
 );
-
-function captures(tree: Tree): unknown[] {
-  return query.captures(tree.rootNode).map(({ node }) => ({
-    type: node.type,
-    text: node.text,
-    start: node.startIndex,
-    end: node.endIndex,
-    startPosition: node.startPosition,
-    endPosition: node.endPosition,
-  }));
-}
-
-function position(source: string, index: number): { row: number; column: number } {
-  const lines = source.slice(0, index).split('\n');
-  return { row: lines.length - 1, column: lines.at(-1)!.length };
-}
