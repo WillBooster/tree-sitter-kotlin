@@ -2,7 +2,7 @@
 node = "26.13.0"
 bun = "1.4.4"
 # script/fork-cli builds the CLI with the `wasm` feature when no released binary runs here; wasmtime's build runs cmake.
-cmake = "4.4.4"
+cmake = "4.4.5"
 
 [env]
 # The tree-sitter CLI caches compiled parsers by language name in a directory that every checkout shares, so commands
