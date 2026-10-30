@@ -73,10 +73,9 @@ In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-
 [willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime this package is tested and
 fuzzed with. The parser loads only with this runtime, version 15.0.0 or later in the 15.x series:
 
-```toml
-[dependencies]
-tree-sitter = { package = "willbooster-tree-sitter", version = "15.0.0" }
-tree-sitter-kotlin = { package = "willbooster-tree-sitter-kotlin", version = "9" }
+```sh
+cargo add willbooster-tree-sitter@15.0.0 --rename tree-sitter
+cargo add willbooster-tree-sitter-kotlin --rename tree-sitter-kotlin
 ```
 
 ```rust
