@@ -1,18 +1,14 @@
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Language, type Node, Parser } from '@willbooster/web-tree-sitter';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 let parser: Parser;
-let query: Query;
 
 beforeAll(async () => {
   await Parser.init();
-  const language = await Language.load('tree-sitter-kotlin.wasm');
-  parser = new Parser().setLanguage(language);
-  query = new Query(language, '[(import) (qualified_identifier) (".") (block_comment) (line_comment)] @capture');
+  parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
 });
 
 afterAll(() => {
-  query.delete();
   parser.delete();
 });
 
@@ -38,13 +34,10 @@ test.each([
     expect(tree.rootNode.descendantsOfType('class_declaration').map((node) => node.text)).toEqual(['class After {}']);
     expect(tree.rootNode.descendantsOfType('navigation_expression')).toHaveLength(0);
     expect(tree.rootNode.descendantsOfType('ERROR').map((node) => node.text)).toEqual(['.']);
-    expect(
-      query
-        .captures(tree.rootNode)
-        .filter(({ node }) => node.type.endsWith('_comment'))
-        .map(({ node }) => node.text)
-    ).toEqual(comments);
-    for (const { node } of query.captures(tree.rootNode)) {
+    expect(tree.rootNode.descendantsOfType(['block_comment', 'line_comment']).map((node) => node.text)).toEqual(
+      comments
+    );
+    for (const node of importTokens(tree.rootNode)) {
       expect(source.slice(node.startIndex, node.endIndex)).toBe(node.text);
       if (node.type === '.') expect(node.text).toBe('.');
     }
@@ -145,18 +138,15 @@ test.each([
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError, source).toBe(false);
-    expect(
-      query
-        .captures(tree.rootNode)
-        .filter(({ node }) => node.type.endsWith('_comment'))
-        .map(({ node }) => node.text)
-    ).toEqual(comments);
+    expect(tree.rootNode.descendantsOfType(['block_comment', 'line_comment']).map((node) => node.text)).toEqual(
+      comments
+    );
     const declarations = tree.rootNode.descendantsOfType('import').filter((node) => node.isNamed);
     expect(declarations.map((node) => node.text).join(' ')).toBe(imports.replace('\nimport ', ' import '));
     for (const declaration of declarations) {
       expect(declaration.namedChildren.find((child) => !child.isExtra)?.type).toBe('qualified_identifier');
     }
-    for (const { node } of query.captures(tree.rootNode)) {
+    for (const node of importTokens(tree.rootNode)) {
       expect(source.slice(node.startIndex, node.endIndex)).toBe(node.text);
       if (node.type === '.') {
         expect(node.text).toBe('.');
@@ -192,3 +182,9 @@ test.each(['\n', '\r\n', '\n/* next */ ', '\n// next\n'])(
     }
   }
 );
+
+function importTokens(root: Node): Node[] {
+  return root
+    .descendantsOfType(['import', 'qualified_identifier', '.', 'block_comment', 'line_comment'])
+    .filter((node) => node.type !== 'import' || node.isNamed);
+}

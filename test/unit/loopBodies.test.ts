@@ -1,13 +1,11 @@
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Language, Parser } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 test.each(['\n', '\r\n', '\n/* body */ ', ' /* header */\n', '\n/* first */ /* second */ ', '\n// body\n'])(
   'retains prefix loop bodies across %j',
   async (boundary) => {
     await Parser.init();
-    const language = await Language.load('tree-sitter-kotlin.wasm');
-    const parser = new Parser().setLanguage(language);
-    const query = new Query(language, '[(for_statement body: (_) @body) (while_statement body: (_) @body)]');
+    const parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
     try {
       for (const expression of [
         '-item',
@@ -26,7 +24,9 @@ test.each(['\n', '\r\n', '\n/* body */ ', ' /* header */\n', '\n/* first */ /* s
         try {
           expect(tree.rootNode.hasError, source).toBe(false);
           expect(
-            query.captures(tree.rootNode).map(({ node }) => node.text),
+            tree.rootNode
+              .descendantsOfType(['for_statement', 'while_statement'])
+              .map((node) => node.childForFieldName('body')?.text),
             source
           ).toEqual([expression, expression]);
           expect(
@@ -41,7 +41,6 @@ test.each(['\n', '\r\n', '\n/* body */ ', ' /* header */\n', '\n/* first */ /* s
         }
       }
     } finally {
-      query.delete();
       parser.delete();
     }
   }

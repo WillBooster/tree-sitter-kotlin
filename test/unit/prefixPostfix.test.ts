@@ -1,4 +1,4 @@
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Language, Parser } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 test.each([
@@ -11,9 +11,7 @@ test.each([
   '\r\n/* first */\r\n/* second */',
 ])('separates prefix expressions across %j', async (boundary) => {
   await Parser.init();
-  const language = await Language.load('tree-sitter-kotlin.wasm');
-  const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(unary_expression argument: (_) @argument) @prefix');
+  const parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
   try {
     for (const operator of ['+', '-']) {
       for (const operand of ['value', '1', '1.5', 'call()', 'value.member', '(value)', 'values[0]']) {
@@ -23,12 +21,11 @@ test.each([
           expect(tree.rootNode.hasError, source).toBe(false);
           expect(tree.rootNode.descendantsOfType('binary_expression'), source).toEqual([]);
           expect(
-            query.captures(tree.rootNode).map(({ name, node }) => [name, node.text]),
+            tree.rootNode
+              .descendantsOfType('unary_expression')
+              .map((node) => [node.text, node.childForFieldName('argument')?.text]),
             source
-          ).toEqual([
-            ['prefix', `${operator}${operand}`],
-            ['argument', operand],
-          ]);
+          ).toEqual([[`${operator}${operand}`, operand]]);
           expect(
             tree.rootNode
               .descendantsOfType('block')[0]!
@@ -42,7 +39,6 @@ test.each([
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
@@ -98,9 +94,7 @@ test.each(['+', '-'])('preserves binary %s continuation and prefix increments ac
 
 test('separates a prefix expression from a preceding comment only across a newline', async () => {
   await Parser.init();
-  const language = await Language.load('tree-sitter-kotlin.wasm');
-  const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '[(unary_expression) (binary_expression)] @expression');
+  const parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
   try {
     for (const operator of ['+', '-']) {
       for (const [separator, expected] of [
@@ -112,7 +106,9 @@ test('separates a prefix expression from a preceding comment only across a newli
         try {
           expect(tree.rootNode.hasError, source).toBe(false);
           expect(
-            query.captures(tree.rootNode).map(({ node }) => [node.type, node.text]),
+            tree.rootNode
+              .descendantsOfType(['unary_expression', 'binary_expression'])
+              .map((node) => [node.type, node.text]),
             source
           ).toEqual(expected);
         } finally {
@@ -121,7 +117,6 @@ test('separates a prefix expression from a preceding comment only across a newli
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
@@ -182,27 +177,26 @@ test.each(['\n', '\r\n', '\n/* arrow */ ', '\n/* first */ /* second */ ', '\n/* 
   'keeps lambda and function-type arrows across %j',
   async (boundary) => {
     await Parser.init();
-    const language = await Language.load('tree-sitter-kotlin.wasm');
-    const parser = new Parser().setLanguage(language);
-    const query = new Query(language, '(lambda_literal (lambda_parameters) @parameters) (function_type) @type');
+    const parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
     const functionType = `(Int)${boundary}-> Int`;
     const source = `typealias Transform = ${functionType}\nfun make(): ${functionType} = { value${boundary}-> value }\nfun f() {\nval typed: ${functionType} = { value${boundary}-> value }\nval inferred = { value: Int${boundary}-> value }\nval accepted = "value".takeIf { value${boundary}-> value.isNotEmpty() }\n}\n`;
     const tree = parser.parse(source)!;
     try {
       expect(tree.rootNode.hasError, source).toBe(false);
-      const captures = query.captures(tree.rootNode);
       expect(
-        captures.filter(({ name }) => name === 'type').map(({ node }) => node.text),
+        tree.rootNode.descendantsOfType('function_type').map((node) => node.text),
         source
       ).toEqual([functionType, functionType, functionType]);
       expect(
-        captures.filter(({ name }) => name === 'parameters').map(({ node }) => node.text),
+        tree.rootNode
+          .descendantsOfType('lambda_literal')
+          .flatMap((node) => node.namedChildren.filter((child) => child.type === 'lambda_parameters'))
+          .map((node) => node.text),
         source
       ).toEqual(['value', 'value', 'value: Int', 'value']);
       expect(tree.rootNode.descendantsOfType('unary_expression'), source).toEqual([]);
     } finally {
       tree.delete();
-      query.delete();
       parser.delete();
     }
   }
@@ -213,20 +207,17 @@ test.each([
   ['+value', [['unary_expression', '+value']]],
 ] as const)('distinguishes a lambda arrow from a prefix after a comment newline in %j', async (body, expected) => {
   await Parser.init();
-  const language = await Language.load('tree-sitter-kotlin.wasm');
-  const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '[(lambda_parameters) (unary_expression)] @expression');
+  const parser = new Parser().setLanguage(await Language.load('tree-sitter-kotlin.wasm'));
   const source = `fun f() { val value = 2; val transform: (Int)->Int = { value\n/* gap */ ${body} }\n}`;
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError, source).toBe(false);
     expect(
-      query.captures(tree.rootNode).map(({ node }) => [node.type, node.text]),
+      tree.rootNode.descendantsOfType(['lambda_parameters', 'unary_expression']).map((node) => [node.type, node.text]),
       source
     ).toEqual(expected);
   } finally {
     tree.delete();
-    query.delete();
     parser.delete();
   }
 });
