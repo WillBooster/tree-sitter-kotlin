@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Language, Parser, Query, type Tree } from '@willbooster/web-tree-sitter';
+import { Language, Parser, type Tree } from '@willbooster/web-tree-sitter';
 import { beforeAll, expect, test } from 'vitest';
 
 let language: Language;
@@ -12,7 +12,6 @@ beforeAll(async () => {
 
 test('keeps catch and finally blocks attached across newlines and comments', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(catch_block) @catch (finally_block) @finally');
   const first = 'catch (first: IllegalArgumentException) { println(first) }';
   const second = 'catch (second: RuntimeException) { println(second) }';
   const final = 'finally { println("done") }';
@@ -41,10 +40,12 @@ test('keeps catch and finally blocks attached across newlines and comments', () 
           .filter((type) => type === 'catch_block' || type === 'finally_block')
       ).toEqual(['catch_block', 'catch_block', 'finally_block']);
       expect(
-        query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+        tree.rootNode
+          .descendantsOfType(['catch_block', 'finally_block'])
+          .map((node) => [node.type, node.text, node.startIndex, node.endIndex])
       ).toEqual(
         [first, second, final].map((text, index) => [
-          index === 2 ? 'finally' : 'catch',
+          index === 2 ? 'finally_block' : 'catch_block',
           text,
           source.indexOf(text),
           source.indexOf(text) + text.length,
@@ -53,14 +54,12 @@ test('keeps catch and finally blocks attached across newlines and comments', () 
       expect(tree.rootNode.descendantsOfType('call_expression').at(-1)?.text).toBe('println("after")');
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains standalone finally expressions and keyword-prefixed calls', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(call_expression) @call');
   try {
     for (const calls of [
       ['println(1)', 'finally {}'],
@@ -71,7 +70,7 @@ test('retains standalone finally expressions and keyword-prefixed calls', () => 
       try {
         expect(tree.rootNode.hasError, source).toBe(false);
         expect(
-          query.captures(tree.rootNode).map(({ node }) => node.text),
+          tree.rootNode.descendantsOfType('call_expression').map((node) => node.text),
           source
         ).toEqual(calls);
       } finally {
@@ -79,14 +78,12 @@ test('retains standalone finally expressions and keyword-prefixed calls', () => 
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('keeps non-handler catch and finally expressions after a completed try', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(try_expression) @try (catch_block) @catch (finally_block) @finally');
   const completeTry = 'try {} catch(e: Exception) {}';
   try {
     for (const expression of [
@@ -133,9 +130,13 @@ test('keeps non-handler catch and finally expressions after a completed try', ()
       }
       function check(current: Tree, text: string): void {
         expect(current.rootNode.hasError, text).toBe(false);
-        expect(query.captures(current.rootNode).map(({ name, node }) => [name, node.text])).toEqual([
-          ['try', completeTry],
-          ['catch', 'catch(e: Exception) {}'],
+        expect(
+          current.rootNode
+            .descendantsOfType(['try_expression', 'catch_block', 'finally_block'])
+            .map((node) => [node.type, node.text])
+        ).toEqual([
+          ['try_expression', completeTry],
+          ['catch_block', 'catch(e: Exception) {}'],
         ]);
         expect(
           current.rootNode
@@ -146,14 +147,12 @@ test('keeps non-handler catch and finally expressions after a completed try', ()
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains whole catch-prefixed names in malformed member lists', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(identifier) @identifier');
   try {
     for (const name of ['catcher', 'catch_value', 'catch1']) {
       const source = `class C { val x = println(1)\n${name}() }`;
@@ -170,22 +169,20 @@ test('retains whole catch-prefixed names in malformed member lists', () => {
       function check(current: Tree, text: string): void {
         expect(current.rootNode.hasError).toBe(true);
         expect(
-          query
-            .captures(current.rootNode)
-            .filter(({ node }) => node.text === name)
-            .map(({ node }) => [node.text, node.startIndex, node.endIndex])
+          current.rootNode
+            .descendantsOfType('identifier')
+            .filter((node) => node.text === name)
+            .map((node) => [node.text, node.startIndex, node.endIndex])
         ).toEqual([[name, text.indexOf(name), text.indexOf(name) + name.length]]);
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains catch identifiers while ordinary object arguments are incomplete', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(identifier) @identifier');
   try {
     for (const expression of [
       'catch(object : Any)',
@@ -215,15 +212,14 @@ test('retains catch identifiers while ordinary object arguments are incomplete',
       function check(current: Tree, index: number): void {
         expect(current.rootNode.hasError, expression).toBe(true);
         expect(
-          query
-            .captures(current.rootNode)
-            .filter(({ node }) => node.text === 'catch')
-            .map(({ node }) => [node.startIndex, node.endIndex])
+          current.rootNode
+            .descendantsOfType('identifier')
+            .filter((node) => node.text === 'catch')
+            .map((node) => [node.startIndex, node.endIndex])
         ).toEqual([[index, index + 'catch'.length]]);
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });

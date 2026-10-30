@@ -1097,9 +1097,7 @@ function optionalCommaSep1(rule) {
 }
 
 /**
- * Creates the arguments of a call or an annotation. Whether a call takes a trailing lambda depends on the token after
- * its arguments, which the lookahead of the scanned `)` reaches, so an edit there makes incremental parsing reparse the
- * call instead of reusing a call without the lambda.
+ * Creates the arguments of a call or an annotation, ending them with the scanner's `)` token.
  *
  * @param {GrammarSymbols} $
  * @param {RuleOrLiteral} open

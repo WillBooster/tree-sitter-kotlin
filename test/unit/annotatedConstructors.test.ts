@@ -1,4 +1,4 @@
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Language, type Node, Parser } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 await Parser.init();
@@ -48,7 +48,6 @@ test.each([
   String.raw`@Deprecated("\$name")`,
 ])('keeps %s primary constructors with visibility modifiers attached to their class', (annotation) => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(class_declaration name: (identifier) @class (primary_constructor) @constructor)');
   try {
     for (const modifier of ['public', 'private', 'protected', 'internal']) {
       for (const newline of ['\n', '\r\n', '\n/*c*/\n']) {
@@ -56,14 +55,12 @@ test.each([
         const tree = parser.parse(source)!;
         try {
           expect(tree.rootNode.hasError, source).toBe(false);
-          const captures = query.captures(tree.rootNode);
+          const classes = classesWithPrimaryConstructors(tree.rootNode);
           expect(
-            captures.filter(({ name }) => name === 'class').map(({ node }) => node.text),
+            classes.map(({ name }) => name.text),
             source
           ).toContain('Foo');
-          const constructor = captures.find(
-            ({ name, node }) => name === 'constructor' && node.parent?.childForFieldName('name')?.text === 'Foo'
-          )!.node;
+          const { constructor } = classes.find(({ name }) => name.text === 'Foo')!;
           expect(constructor.text, source).toBe(`${annotation}\n ${modifier} constructor(val x: Int = 1)`);
           expect(constructor.startIndex, source).toBe(source.indexOf(annotation));
           expect(constructor.endIndex, source).toBe(source.indexOf(')\nfun next') + 1);
@@ -73,32 +70,32 @@ test.each([
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains local getter ownership after an unfinished nested comment', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(property_declaration (getter) @getter) @property');
   const source = 'fun f(){ val p=1\n/* unfinished\n/*closed*/ get()=2\n}';
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError).toBe(false);
-    expect(query.captures(tree.rootNode).map(({ name, node }) => [name, node.text])).toEqual([
-      ['property', 'val p=1\n/* unfinished\n/*closed*/ get()=2'],
-      ['getter', 'get()=2'],
-    ]);
+    expect(
+      tree.rootNode
+        .descendantsOfType('property_declaration')
+        .map((node) => [
+          node.text,
+          node.namedChildren.filter((child) => child.type === 'getter').map(({ text }) => text),
+        ])
+    ).toEqual([['val p=1\n/* unfinished\n/*closed*/ get()=2', ['get()=2']]]);
   } finally {
     tree.delete();
-    query.delete();
     parser.delete();
   }
 });
 
 test('does not read constructor modifiers from an annotation argument', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(function_declaration name: (identifier) @name) @function');
   try {
     for (const source of [
       'class Foo\n@A( private public constructor())\nfun next()=2\n',
@@ -108,9 +105,9 @@ test('does not read constructor modifiers from an annotation argument', () => {
       const tree = parser.parse(source)!;
       try {
         expect(tree.rootNode.hasError, source).toBe(false);
-        const captures = query.captures(tree.rootNode);
-        expect(captures.filter(({ name }) => name === 'name').map(({ node }) => node.text)).toEqual(['next']);
-        const declaration = captures.find(({ name }) => name === 'function')!.node;
+        const functions = tree.rootNode.descendantsOfType('function_declaration');
+        expect(functions.map((node) => node.childForFieldName('name')?.text)).toEqual(['next']);
+        const declaration = functions[0]!;
         expect(declaration.text).toBe(source.slice(source.indexOf('@A'), -1));
         expect(declaration.startIndex).toBe(source.indexOf('@A'));
         expect(declaration.endIndex).toBe(source.lastIndexOf('2') + 1);
@@ -119,35 +116,33 @@ test('does not read constructor modifiers from an annotation argument', () => {
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains constructors without modifiers when annotation strings contain constructor words', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(class_declaration name: (identifier) @class (primary_constructor) @constructor)');
   const source = 'class Foo\n@Deprecated("public constructor(")\nconstructor(val x: Int = 1)\nprivate fun f() = 1\n';
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError).toBe(false);
     expect(
-      query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+      classesWithPrimaryConstructors(tree.rootNode).map(({ name, constructor }) => [range(name), range(constructor)])
     ).toEqual([
-      ['class', 'Foo', 6, 9],
-      ['constructor', '@Deprecated("public constructor(")\nconstructor(val x: Int = 1)', 10, 72],
+      [
+        ['Foo', 6, 9],
+        ['@Deprecated("public constructor(")\nconstructor(val x: Int = 1)', 10, 72],
+      ],
     ]);
     expect(tree.rootNode.lastNamedChild?.text).toBe('private fun f() = 1');
   } finally {
     tree.delete();
-    query.delete();
     parser.delete();
   }
 });
 
 test('keeps constructor text inside unfinished literals and comments out of class headers', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(class_declaration name: (identifier) @class (primary_constructor) @constructor)');
   try {
     for (const source of [
       'class Foo\n@Marker/*\n public constructor(val x: Int)\nfun next() = 2\n',
@@ -157,35 +152,36 @@ test('keeps constructor text inside unfinished literals and comments out of clas
       const tree = parser.parse(source)!;
       try {
         expect(tree.rootNode.hasError, source).toBe(true);
-        expect(query.captures(tree.rootNode), source).toEqual([]);
+        expect(classesWithPrimaryConstructors(tree.rootNode), source).toEqual([]);
         expect(tree.rootNode.firstNamedChild?.text, source).toBe('class Foo');
       } finally {
         tree.delete();
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains annotated function ownership after constructor text in a line comment', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(function_declaration name: (identifier) @name) @function');
   const source = 'class Foo\n@Marker// public constructor(val x: Int)\nfun next() = 2\n';
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError).toBe(false);
     expect(tree.rootNode.firstNamedChild?.text).toBe('class Foo');
     expect(
-      query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+      tree.rootNode
+        .descendantsOfType('function_declaration')
+        .map((node) => [range(node), range(node.childForFieldName('name')!)])
     ).toEqual([
-      ['function', source.slice(10, -1), 10, 65],
-      ['name', 'next', 55, 59],
+      [
+        [source.slice(10, -1), 10, 65],
+        ['next', 55, 59],
+      ],
     ]);
   } finally {
     tree.delete();
-    query.delete();
     parser.delete();
   }
 });
@@ -238,32 +234,34 @@ test('retains incomplete annotated constructor recovery nodes and ranges', () =>
 
 test('retains annotated assignments after a local class with conflicting visibility words', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(
-    language,
-    '(assignment left: (annotated_expression) @left right: (number_literal) @right) @assignment'
-  );
   const source = 'fun f(){ class Foo\n@A\n public private constructor() = 1\n}';
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError).toBe(false);
     expect(tree.rootNode.descendantsOfType('primary_constructor')).toEqual([]);
     expect(
-      query.captures(tree.rootNode).map(({ name, node }) => [name, node.text, node.startIndex, node.endIndex])
+      tree.rootNode
+        .descendantsOfType('assignment')
+        .map((node) => [
+          range(node),
+          [node.childForFieldName('left')!.type, ...range(node.childForFieldName('left')!)],
+          [node.childForFieldName('right')!.type, ...range(node.childForFieldName('right')!)],
+        ])
     ).toEqual([
-      ['assignment', '@A\n public private constructor() = 1', 19, 55],
-      ['left', '@A\n public private constructor()', 19, 51],
-      ['right', '1', 54, 55],
+      [
+        ['@A\n public private constructor() = 1', 19, 55],
+        ['annotated_expression', '@A\n public private constructor()', 19, 51],
+        ['number_literal', '1', 54, 55],
+      ],
     ]);
   } finally {
     tree.delete();
-    query.delete();
     parser.delete();
   }
 });
 
 test('retains annotated infix expressions and assignments after a local class', () => {
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(annotated_expression (infix_expression) @infix) @annotated');
   try {
     for (const modifier of ['public', 'private', 'protected', 'internal']) {
       for (const operand of ['x', '1', 'x + 1', 'call()', 'x::class', '`x`::class']) {
@@ -274,7 +272,9 @@ test('retains annotated infix expressions and assignments after a local class', 
           try {
             expect(tree.rootNode.hasError, source).toBe(false);
             expect(tree.rootNode.descendantsOfType('primary_constructor'), source).toEqual([]);
-            const annotated = query.captures(tree.rootNode).find(({ name }) => name === 'annotated')!.node;
+            const annotated = tree.rootNode
+              .descendantsOfType('annotated_expression')
+              .find((node) => node.namedChildren.some((child) => child.type === 'infix_expression'))!;
             expect([annotated.text, annotated.startIndex, annotated.endIndex], source).toEqual([
               expression,
               source.indexOf('@A'),
@@ -287,7 +287,6 @@ test('retains annotated infix expressions and assignments after a local class', 
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
@@ -325,3 +324,14 @@ test('recognizes annotated constructors with empty or typed first parameters', (
     parser.delete();
   }
 });
+
+function classesWithPrimaryConstructors(root: Node): { name: Node; constructor: Node }[] {
+  return root.descendantsOfType('class_declaration').flatMap((classNode) => {
+    const constructor = classNode.namedChildren.find((child) => child.type === 'primary_constructor');
+    return constructor ? [{ name: classNode.childForFieldName('name')!, constructor }] : [];
+  });
+}
+
+function range(node: Node): [string, number, number] {
+  return [node.text, node.startIndex, node.endIndex];
+}

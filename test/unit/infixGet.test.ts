@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Language, Parser, type Point, Query, type Tree } from '@willbooster/web-tree-sitter';
+import { Language, Parser, type Point, type Tree } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 const source = `class Row(val id: Int) {
@@ -26,27 +26,23 @@ test('keeps get as the infix identifier after ordinary and trailing-lambda recei
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser();
-  let query: Query | undefined;
   let tree: Tree | undefined;
   try {
     parser.setLanguage(language);
-    query = new Query(language, '(infix_expression) @infix\n(infix_expression (identifier) @name)');
     tree = parser.parse(source)!;
     expect(tree.rootNode.hasError).toBe(false);
-    const infixes = query.captures(tree.rootNode).filter(({ name }) => name === 'infix');
-    expect(infixes.map(({ node }) => node.text)).toEqual([
+    const infixes = tree.rootNode.descendantsOfType('infix_expression');
+    expect(infixes.map((node) => node.text)).toEqual([
       'row.insert {\n        println("insert")\n    } get row.id',
       'row get 3',
     ]);
-    expect(infixes.map(({ node }) => node.namedChildren.map((child) => child.type))).toEqual([
+    expect(infixes.map((node) => node.namedChildren.map((child) => child.type))).toEqual([
       ['call_expression', 'identifier', 'navigation_expression'],
       ['identifier', 'identifier', 'number_literal'],
     ]);
-    const names = query.captures(tree.rootNode).filter(({ name, node }) => name === 'name' && node.text === 'get');
-    expect(names).toHaveLength(2);
-    for (const [index, { node }] of names.entries()) {
-      const infix = infixes[index]!.node;
-      expect(node.parent?.id).toBe(infix.id);
+    for (const infix of infixes) {
+      const node = infix.namedChildren[1]!;
+      expect(node.text).toBe('get');
       expect(node.startIndex).toBe(source.indexOf(' get ', infix.startIndex) + 1);
       expect(node.endIndex).toBe(node.startIndex + 3);
       expect(node.startPosition).toEqual(pointAt(source, node.startIndex));
@@ -54,11 +50,10 @@ test('keeps get as the infix identifier after ordinary and trailing-lambda recei
       expect(infix.startIndex).toBe(source.indexOf(infix.text));
       expect(infix.endIndex).toBe(infix.startIndex + infix.text.length);
     }
-    expect(infixes[0]!.node.namedChildren[0]!.descendantsOfType('annotated_lambda')).toHaveLength(1);
+    expect(infixes[0]!.namedChildren[0]!.descendantsOfType('annotated_lambda')).toHaveLength(1);
     expect(tree.rootNode.descendantsOfType(['getter', 'setter'])).toHaveLength(0);
   } finally {
     tree?.delete();
-    query?.delete();
     parser.delete();
   }
 });
@@ -99,10 +94,8 @@ test('retains getter ownership and incomplete member identifiers beside contextu
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser();
-  let query: Query | undefined;
   try {
     parser.setLanguage(language);
-    query = new Query(language, '(getter) @getter\n(setter) @setter\n(identifier) @identifier');
     for (const text of [
       'val p=1\n/* unfinished\n/*closed*/ get()=2',
       'fun f(){ val p=1\n/* unfinished\n/*closed*/ get()=2\n}',
@@ -112,15 +105,14 @@ test('retains getter ownership and incomplete member identifiers beside contextu
       const tree = parser.parse(text)!;
       try {
         expect(tree.rootNode.hasError, text).toBe(false);
-        const getters = query.captures(tree.rootNode).filter(({ name }) => name === 'getter');
+        const getters = tree.rootNode.descendantsOfType('getter');
         expect(getters).toHaveLength(1);
-        const getter = getters[0]!.node;
+        const getter = getters[0]!;
         expect(getter.parent?.type).toBe('property_declaration');
         expect(getter.startIndex).toBe(text.indexOf('get('));
         expect(getter.text).toBe(text.includes('parameter comment') ? 'get(/* parameter comment */)=field' : 'get()=2');
         expect(getter.endIndex).toBe(getter.startIndex + getter.text.length);
-        const setters = query.captures(tree.rootNode).filter(({ name }) => name === 'setter');
-        expect(setters.map(({ node }) => node.text)).toEqual(
+        expect(tree.rootNode.descendantsOfType('setter').map((node) => node.text)).toEqual(
           text.includes('set(value)') ? ['set(value){field=value}'] : []
         );
         expect(tree.rootNode.descendantsOfType('infix_expression')).toHaveLength(0);
@@ -132,9 +124,7 @@ test('retains getter ownership and incomplete member identifiers beside contextu
       const tree = parser.parse(text)!;
       try {
         expect(tree.rootNode.hasError, text).toBe(true);
-        expect(
-          query.captures(tree.rootNode).filter(({ name, node }) => name === 'identifier' && node.text === 'get')
-        ).toHaveLength(1);
+        expect(tree.rootNode.descendantsOfType('identifier').filter((node) => node.text === 'get')).toHaveLength(1);
         expect(tree.rootNode.descendantsOfType('property_declaration').map((node) => node.text)).toContain(
           'val p: Int'
         );
@@ -143,7 +133,6 @@ test('retains getter ownership and incomplete member identifiers beside contextu
       }
     }
   } finally {
-    query?.delete();
     parser.delete();
   }
 });
@@ -152,7 +141,6 @@ test('retains get call operands of return and throw with other names and trivia'
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(call_expression) @call (infix_expression) @infix (identifier) @identifier');
   try {
     for (const [prefix, argumentsText, owner] of [
       ['return ', '(1)', 'return_expression'],
@@ -175,15 +163,12 @@ test('retains get call operands of return and throw with other names and trivia'
         const current = parser.parse(sourceText)!;
         try {
           expect(current.rootNode.hasError, sourceText).toBe(false);
-          const result = query.captures(current.rootNode);
-          expect(result.filter(({ name }) => name === 'infix')).toHaveLength(0);
-          const call = result.filter(({ name }) => name === 'call');
-          expect(call).toHaveLength(1);
-          expect(call[0]!.node.parent?.type).toBe(owner);
-          const identifier = result.find(
-            ({ name: capture, node }) => capture === 'identifier' && node.text === name
-          )!.node;
-          expect(identifier.parent?.id).toBe(call[0]!.node.id);
+          expect(current.rootNode.descendantsOfType('infix_expression')).toHaveLength(0);
+          const calls = current.rootNode.descendantsOfType('call_expression');
+          expect(calls).toHaveLength(1);
+          expect(calls[0]!.parent?.type).toBe(owner);
+          const identifier = current.rootNode.descendantsOfType('identifier').find((node) => node.text === name)!;
+          expect(identifier.parent?.id).toBe(calls[0]!.id);
           expect(identifier.startIndex).toBe(sourceText.indexOf(name));
           expect(identifier.endIndex).toBe(identifier.startIndex + name.length);
         } finally {
@@ -192,7 +177,6 @@ test('retains get call operands of return and throw with other names and trivia'
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
@@ -201,7 +185,6 @@ test('retains get annotation targets with other targets and trivia', async () =>
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(use_site_target) @target (annotation) @annotation');
   try {
     for (const sourceText of [
       'class C { @get:Rule var value = 1 }',
@@ -222,18 +205,17 @@ test('retains get annotation targets with other targets and trivia', async () =>
         const current = parser.parse(sourceText)!;
         try {
           expect(current.rootNode.hasError, sourceText).toBe(false);
-          const targets = query.captures(current.rootNode).filter(({ name }) => name === 'target');
+          const targets = current.rootNode.descendantsOfType('use_site_target');
           expect(targets).toHaveLength(1);
-          expect(targets[0]!.node.parent?.type).toBe('annotation');
-          expect(targets[0]!.node.startIndex).toBe(sourceText.indexOf('@') + 1);
-          expect(targets[0]!.node.endIndex).toBe(sourceText.indexOf(':') + 1);
+          expect(targets[0]!.parent?.type).toBe('annotation');
+          expect(targets[0]!.startIndex).toBe(sourceText.indexOf('@') + 1);
+          expect(targets[0]!.endIndex).toBe(sourceText.indexOf(':') + 1);
         } finally {
           current.delete();
         }
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
@@ -242,7 +224,6 @@ test('retains get labels and bare accessor boundaries with other names and trivi
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(label) @label (getter) @getter');
   try {
     for (const [original, kind] of [
       ['fun f() { get@ for (i in 1..3) { println(i) } }', 'label'],
@@ -286,9 +267,9 @@ test('retains get labels and bare accessor boundaries with other names and trivi
         const current = parser.parse(sourceText)!;
         try {
           expect(current.rootNode.hasError, sourceText).toBe(false);
-          const matching = query.captures(current.rootNode).filter(({ name }) => name === kind);
+          const matching = current.rootNode.descendantsOfType(kind);
           expect(matching).toHaveLength(1);
-          const node = matching[0]!.node;
+          const node = matching[0]!;
           const start = sourceText.indexOf(
             kind === 'label' && sourceText.includes('longerLabel@') ? 'longerLabel@' : 'get'
           );
@@ -334,7 +315,6 @@ test('retains get labels and bare accessor boundaries with other names and trivi
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });
@@ -343,7 +323,6 @@ test('retains newline infix ownership across equality operators', async () => {
   await Parser.init();
   const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   const parser = new Parser().setLanguage(language);
-  const query = new Query(language, '(infix_expression) @infix (getter) @getter');
   try {
     for (const context of ['class C', 'fun f()']) {
       let text = `${context} { val value = row get\nx !== 1 }`;
@@ -359,11 +338,10 @@ test('retains newline infix ownership across equality operators', async () => {
         const current = parser.parse(sourceText)!;
         try {
           expect(current.rootNode.hasError).toBe(false);
-          const result = query.captures(current.rootNode);
-          expect(result.filter(({ name }) => name === 'getter')).toHaveLength(0);
-          const infixes = result.filter(({ name }) => name === 'infix');
+          expect(current.rootNode.descendantsOfType('getter')).toHaveLength(0);
+          const infixes = current.rootNode.descendantsOfType('infix_expression');
           expect(infixes).toHaveLength(1);
-          const infix = infixes[0]!.node;
+          const infix = infixes[0]!;
           expect(infix.text).toBe('row get\nx');
           expect(infix.parent?.type).toBe('binary_expression');
           expect(infix.parent?.parent?.type).toBe('property_declaration');
@@ -375,7 +353,6 @@ test('retains newline infix ownership across equality operators', async () => {
       }
     }
   } finally {
-    query.delete();
     parser.delete();
   }
 });

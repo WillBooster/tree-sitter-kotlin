@@ -1,32 +1,28 @@
 import path from 'node:path';
 
-import { Language, Parser, Query } from '@willbooster/web-tree-sitter';
+import { Language, type Node, Parser } from '@willbooster/web-tree-sitter';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 let parser: Parser;
-let query: Query;
 
 beforeAll(async () => {
   await Parser.init();
-  const language = await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm'));
   parser = new Parser();
-  parser.setLanguage(language);
-  query = new Query(language, '(class_member_declaration) @member');
+  parser.setLanguage(await Language.load(path.join(import.meta.dirname, '../../tree-sitter-kotlin.wasm')));
 });
 
 afterAll(() => {
-  query.delete();
   parser.delete();
 });
 
-test('matches same-line class members through their supertype, including nested members', () => {
+test('separates same-line class members, including nested members', () => {
   const members = ['fun first() {}', 'class Nested { fun inner() {} fun last() {} }', 'fun final() {}'];
   const expected = [members[0], members[1], 'fun inner() {}', 'fun last() {}', members[2]];
   for (const separator of [' ', '; ', '\n']) {
     const tree = parser.parse(`class C { ${members.join(separator)} }`)!;
     try {
       expect(tree.rootNode.hasError).toBe(false);
-      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual(expected);
+      expect(classMembers(tree.rootNode).map((node) => node.text)).toEqual(expected);
     } finally {
       tree.delete();
     }
@@ -47,7 +43,7 @@ test('requires a separator after properties even when nested bodies contain adja
   }
 });
 
-test('preserves adjacent contextual members and their query captures', () => {
+test('preserves adjacent contextual members', () => {
   for (const members of [
     ['init {}', 'init {}', 'fun f() {}'],
     ['constructor() {}', 'constructor(x: Int) {}', 'fun f() {}'],
@@ -61,7 +57,7 @@ test('preserves adjacent contextual members and their query captures', () => {
       try {
         expect(tree.rootNode.hasError, source).toBe(false);
         expect(
-          query.captures(tree.rootNode).map(({ node }) => node.text),
+          classMembers(tree.rootNode).map((node) => node.text),
           source
         ).toEqual(members);
       } finally {
@@ -77,7 +73,7 @@ test('keeps contextual infix calls inside member expressions', () => {
     const tree = parser.parse(source)!;
     try {
       expect(tree.rootNode.hasError, source).toBe(false);
-      expect(query.captures(tree.rootNode).map(({ node }) => node.type)).toEqual([
+      expect(classMembers(tree.rootNode).map((node) => node.type)).toEqual([
         'property_declaration',
         'function_declaration',
       ]);
@@ -97,7 +93,7 @@ test('keeps nested primary constructors attached to their class header', () => {
     const tree = parser.parse(`class Outer { ${member} }`)!;
     try {
       expect(tree.rootNode.hasError, member).toBe(false);
-      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([member, 'companion object {}']);
+      expect(classMembers(tree.rootNode).map((node) => node.text)).toEqual([member, 'companion object {}']);
       expect(tree.rootNode.descendantsOfType('primary_constructor')).toHaveLength(1);
       expect(tree.rootNode.descendantsOfType('secondary_constructor')).toHaveLength(0);
     } finally {
@@ -113,7 +109,7 @@ test('retains contextual companion object names and bodies', () => {
       const tree = parser.parse(`class C { fun f() {} ${member} }`)!;
       try {
         expect(tree.rootNode.hasError, member).toBe(false);
-        expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual(['fun f() {}', member]);
+        expect(classMembers(tree.rootNode).map((node) => node.text)).toEqual(['fun f() {}', member]);
         expect(tree.rootNode.descendantsOfType('companion_object')[0]?.childForFieldName('name')?.text).toBe(name);
       } finally {
         tree.delete();
@@ -151,13 +147,11 @@ test('keeps annotated same-line members separate', () => {
     try {
       expect(tree.rootNode.hasError, source).toBe(false);
       expect(
-        query.captures(tree.rootNode).map(({ node }) => node.text),
+        classMembers(tree.rootNode).map((node) => node.text),
         source
       ).toEqual([first, second]);
       expect(changedTree.rootNode.hasError, changed).toBe(false);
-      expect(
-        query.captures(changedTree.rootNode).map(({ node }) => [node.text, node.startIndex, node.endIndex])
-      ).toEqual([
+      expect(classMembers(changedTree.rootNode).map((node) => [node.text, node.startIndex, node.endIndex])).toEqual([
         [first, source.indexOf(first), source.indexOf(first) + first.length],
         [insertion + second, start, start + insertion.length + second.length],
       ]);
@@ -185,7 +179,7 @@ test('keeps annotated function and object literals inside member expressions', (
     const tree = parser.parse(`class C { ${member} }`)!;
     try {
       expect(tree.rootNode.hasError, member).toBe(false);
-      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([member]);
+      expect(classMembers(tree.rootNode).map((node) => node.text)).toEqual([member]);
       expect(
         tree.rootNode.descendantsOfType(['annotated_lambda', 'annotated_expression']).map((node) => node.text)
       ).toEqual([expression.slice(expression.indexOf('@'))]);
@@ -202,7 +196,7 @@ test('retains immediate super labels before same-line members', () => {
     const tree = parser.parse(`class C : A { ${first} ${second} }`)!;
     try {
       expect(tree.rootNode.hasError, first).toBe(false);
-      expect(query.captures(tree.rootNode).map(({ node }) => node.text)).toEqual([first, second]);
+      expect(classMembers(tree.rootNode).map((node) => node.text)).toEqual([first, second]);
       expect(tree.rootNode.descendantsOfType('super_expression').map((node) => node.text)).toEqual([target]);
     } finally {
       tree.delete();
@@ -233,9 +227,8 @@ test('keeps functional interfaces separate without scanning their member bodies'
     try {
       expect(tree.rootNode.hasError).toBe(false);
       expect(
-        query
-          .captures(tree.rootNode)
-          .map(({ node }) => node.text)
+        classMembers(tree.rootNode)
+          .map((node) => node.text)
           .filter((text) => [first, member, last].includes(text))
       ).toEqual([first, member, last]);
     } finally {
@@ -243,3 +236,10 @@ test('keeps functional interfaces separate without scanning their member bodies'
     }
   }
 });
+
+function classMembers(root: Node): Node[] {
+  return root
+    .descendantsOfType(['class_body', 'enum_class_body'])
+    .flatMap((body) => body.namedChildren.filter((node) => !node.isExtra && node.type !== 'enum_entry'))
+    .toSorted((left, right) => left.startIndex - right.startIndex);
+}

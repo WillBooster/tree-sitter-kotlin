@@ -1221,9 +1221,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         return has_destructuring_parameter_arrow(lexer);
     }
 
-    // The `)` that ends a call's arguments, whose lookahead reaches the next token: whether the call takes a trailing
-    // lambda depends on that token, so an edit up to it must reparse the call instead of reusing it. Ending the
-    // arguments with one token also lets error recovery insert it as missing when the `)` is absent.
+    // The `)` that ends a call's arguments, whose lookahead reaches the next token, on which whether the call takes a
+    // trailing lambda depends. Ending the arguments with one token lets error recovery insert it as missing when the
+    // `)` is absent.
     if (valid_symbols[ARGUMENTS_END] && !error_recovery && lexer->lookahead == ')') {
         advance(lexer);
         lexer->mark_end(lexer);
