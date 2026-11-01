@@ -114,3 +114,55 @@ test.each(['(val first, val second)', '[val first, var second]'])(
     }
   }
 );
+
+test.each(['\n', '\r\n', '\n/* boundary */ ', ' // boundary\n'])(
+  'separates consecutive bracket destructuring declarations across %j',
+  (boundary) => {
+    for (const trivia of ['', ' /* entries */ ', '\n', ' // entries\n']) {
+      const first = `[${trivia}val first, val second] = pair`;
+      const second = `[${trivia}var left, val right] = pair`;
+      const statements = ['consume(pair)', first, second, 'consume(first, second, left, right)'];
+      const source = `fun f() { ${statements.slice(0, 3).join(boundary)}\n${statements[3]}\n}`;
+      const tree = parser.parse(source)!;
+      try {
+        expect(tree.rootNode.hasError, source).toBe(false);
+        expect(tree.rootNode.descendantsOfType('destructuring_declaration').map((node) => node.text)).toEqual([
+          first,
+          second,
+        ]);
+        expect(
+          tree.rootNode
+            .descendantsOfType(['block_comment', 'line_comment'])
+            .map((node) => [node.text, node.startIndex, node.endIndex])
+        ).toEqual(
+          [...source.matchAll(/\/\* (?:boundary|entries) \*\/|\/\/ (?:boundary|entries)/g)].map((match) => [
+            match[0],
+            match.index,
+            match.index + match[0].length,
+          ])
+        );
+        expect(
+          tree.rootNode
+            .descendantsOfType('block')[0]!
+            .namedChildren.filter((node) => !node.isExtra)
+            .map((node) => node.text)
+        ).toEqual(statements);
+      } finally {
+        tree.delete();
+      }
+    }
+  }
+);
+
+test('keeps multiline indexing inside a call argument', () => {
+  const index = 'values\n[index]';
+  const source = `fun f(values: IntArray, index: Int) { consume(${index}) }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(tree.rootNode.descendantsOfType('index_expression').map((node) => node.text)).toEqual([index]);
+    expect(tree.rootNode.descendantsOfType('destructuring_declaration')).toEqual([]);
+  } finally {
+    tree.delete();
+  }
+});
