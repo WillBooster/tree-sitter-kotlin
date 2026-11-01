@@ -30,6 +30,10 @@
         "named": true
       },
       {
+        "type": "destructuring_declaration",
+        "named": true
+      },
+      {
         "type": "function_declaration",
         "named": true
       },
@@ -950,6 +954,25 @@
       "types": [
         {
           "type": "delegation_specifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "destructuring_declaration",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        },
+        {
+          "type": "multi_variable_declaration",
           "named": true
         }
       ]
