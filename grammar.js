@@ -239,14 +239,7 @@ module.exports = grammar({
       ),
 
     declaration: ($) =>
-      choice(
-        $.class_declaration,
-        $.object_declaration,
-        $.function_declaration,
-        $.property_declaration,
-        $.destructuring_declaration,
-        $.type_alias
-      ),
+      choice($.class_declaration, $.object_declaration, $.function_declaration, $.property_declaration, $.type_alias),
 
     class_declaration: ($) =>
       prec.right(
@@ -542,7 +535,15 @@ module.exports = grammar({
     _statements: ($) => seq($.statement, repeat(seq(sym('_semi'), $.statement)), optional(sym('_semi'))),
 
     statement: ($) =>
-      choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
+      choice(
+        $.declaration,
+        $.destructuring_declaration,
+        $.assignment,
+        $.for_statement,
+        $.while_statement,
+        $.do_while_statement,
+        $.expression
+      ),
 
     // Modifiers before a declaration may also read as an annotated expression statement (`@A (b)`) or, for modifier
     // keywords that `_reserved_identifier` accepts, as names, and both readings parse, so the one in which they modify

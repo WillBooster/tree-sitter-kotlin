@@ -30,10 +30,6 @@
         "named": true
       },
       {
-        "type": "destructuring_declaration",
-        "named": true
-      },
-      {
         "type": "function_declaration",
         "named": true
       },
@@ -213,6 +209,10 @@
       },
       {
         "type": "declaration",
+        "named": true
+      },
+      {
+        "type": "destructuring_declaration",
         "named": true
       },
       {

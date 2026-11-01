@@ -91,16 +91,26 @@ test.each([
   '(val @Ann first, val second) = pair',
   '[val first, second] = pair',
 ])('reports invalid destructuring in %s', (statement) => {
-  const source = `fun f() { ${statement}\n}\nfun after() {}`;
+  const source = `fun f() { ${statement}\n}`;
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError, source).toBe(true);
-    expect(
-      tree.rootNode
-        .descendantsOfType('function_declaration')
-        .some((node) => node.childForFieldName('name')?.text === 'after')
-    ).toBe(true);
+    expect(tree.rootNode.endIndex).toBe(source.length);
   } finally {
     tree.delete();
   }
 });
+
+test.each(['(val first, val second)', '[val first, var second]'])(
+  'reports a full destructuring declaration in a class body: %s',
+  (binding) => {
+    const source = `class C { ${binding} = pair }`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(true);
+      expect(tree.rootNode.endIndex).toBe(source.length);
+    } finally {
+      tree.delete();
+    }
+  }
+);

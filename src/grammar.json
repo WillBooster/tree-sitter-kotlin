@@ -235,10 +235,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "destructuring_declaration"
-        },
-        {
-          "type": "SYMBOL",
           "name": "type_alias"
         }
       ]
@@ -3297,6 +3293,10 @@
         {
           "type": "SYMBOL",
           "name": "declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "destructuring_declaration"
         },
         {
           "type": "SYMBOL",
