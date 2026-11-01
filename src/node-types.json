@@ -972,6 +972,10 @@
           "named": true
         },
         {
+          "type": "modifiers",
+          "named": true
+        },
+        {
           "type": "multi_variable_declaration",
           "named": true
         }

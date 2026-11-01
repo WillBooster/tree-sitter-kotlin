@@ -30,6 +30,8 @@ module.exports = grammar({
   name: 'kotlin',
 
   conflicts: ($) => [
+    [$._positional_destructuring_entry, $.type_modifiers, $.annotated_expression],
+    [$._positional_destructuring_entry, $.primary_expression],
     [$._mutable_positional_entry, $._immutable_positional_entry],
     [$._mutable_named_entry, $._immutable_named_entry],
     [$._named_destructuring_entry, $.type_modifiers, $.annotated_expression],
@@ -384,14 +386,20 @@ module.exports = grammar({
     _multi_variable_declaration: ($) =>
       choice(
         seq('(', optionalCommaSep1(alias($._named_destructuring_entry, $.variable_declaration)), ')'),
-        seq('[', commaSep1($.variable_declaration), optional(','), ']')
+        seq('[', commaSep1(alias($._positional_destructuring_entry, $.variable_declaration)), optional(','), ']')
       ),
+
+    _positional_destructuring_entry: ($) => seq(repeat($.annotation), $._identifier, optional(seq(':', $.type))),
 
     _named_destructuring_entry: ($) =>
       prec(1, seq(repeat($.annotation), $._identifier, optional(seq(':', $.type)), optional(seq('=', $._identifier)))),
 
     destructuring_declaration: ($) =>
-      seq(alias($._mutable_destructuring, $.multi_variable_declaration), optional(seq('=', $.expression))),
+      seq(
+        optional($.modifiers),
+        alias($._mutable_destructuring, $.multi_variable_declaration),
+        optional(seq('=', $.expression))
+      ),
 
     _mutable_destructuring: ($) =>
       choice(

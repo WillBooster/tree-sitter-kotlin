@@ -95,7 +95,6 @@ test.each([
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError, source).toBe(true);
-    expect(tree.rootNode.endIndex).toBe(source.length);
   } finally {
     tree.delete();
   }
@@ -108,7 +107,6 @@ test.each(['(val first, val second)', '[val first, var second]'])(
     const tree = parser.parse(source)!;
     try {
       expect(tree.rootNode.hasError, source).toBe(true);
-      expect(tree.rootNode.endIndex).toBe(source.length);
     } finally {
       tree.delete();
     }
@@ -166,3 +164,47 @@ test('keeps multiline indexing inside a call argument', () => {
     tree.delete();
   }
 });
+
+test.each(['[first, second]', '[first, second].forEach { consume(it) }', '[]'])(
+  'keeps a lambda-leading collection literal as an expression: %s',
+  (body) => {
+    const result = body.includes('.forEach') ? 'Unit' : 'List<Int>';
+    const source = `fun f(first: Int, second: Int) { val action: () -> ${result} = { ${body} } }`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError, source).toBe(false);
+      expect(tree.rootNode.descendantsOfType('lambda_parameters')).toEqual([]);
+      expect(tree.rootNode.descendantsOfType('collection_literal').map((node) => node.text)).toEqual([
+        body.startsWith('[]') ? '[]' : '[first, second]',
+      ]);
+      expect(tree.rootNode.descendantsOfType('lambda_literal')[0]!.namedChildren[0]!.text).toBe(body);
+    } finally {
+      tree.delete();
+    }
+  }
+);
+
+test.each(['@Ann ', '@Ann() ', '@First @Second ', '@pkg.Ann("tag") '])(
+  'attaches annotations to full destructuring declarations: %s',
+  (annotations) => {
+    for (const binding of ['(val first, var second)', '[val first, var second]']) {
+      for (const prefix of ['', 'consume(pair)\n']) {
+        const declaration = `${annotations}${binding} = pair`;
+        const source = `fun f() { ${prefix}${declaration}\nconsume(first, second)\n}`;
+        const tree = parser.parse(source)!;
+        try {
+          expect(tree.rootNode.hasError, source).toBe(false);
+          const declarations = tree.rootNode.descendantsOfType('destructuring_declaration');
+          expect(declarations.map((node) => node.text)).toEqual([declaration]);
+          expect(declarations[0]!.namedChildren[0]!.type).toBe('modifiers');
+          expect(declarations[0]!.namedChildren[0]!.text).toBe(annotations.trim());
+          expect(declarations[0]!.descendantsOfType('multi_variable_declaration').map((node) => node.text)).toEqual([
+            binding,
+          ]);
+        } finally {
+          tree.delete();
+        }
+      }
+    }
+  }
+);

@@ -1796,8 +1796,13 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "SYMBOL",
-                  "name": "variable_declaration"
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_positional_destructuring_entry"
+                  },
+                  "named": true,
+                  "value": "variable_declaration"
                 },
                 {
                   "type": "REPEAT",
@@ -1809,8 +1814,13 @@
                         "value": ","
                       },
                       {
-                        "type": "SYMBOL",
-                        "name": "variable_declaration"
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "_positional_destructuring_entry"
+                        },
+                        "named": true,
+                        "value": "variable_declaration"
                       }
                     ]
                   }
@@ -1832,6 +1842,43 @@
             {
               "type": "STRING",
               "value": "]"
+            }
+          ]
+        }
+      ]
+    },
+    "_positional_destructuring_entry": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "annotation"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_identifier"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "type"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
             }
           ]
         }
@@ -1902,6 +1949,18 @@
     "destructuring_declaration": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "modifiers"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
         {
           "type": "ALIAS",
           "content": {
@@ -7994,6 +8053,15 @@
     }
   ],
   "conflicts": [
+    [
+      "_positional_destructuring_entry",
+      "type_modifiers",
+      "annotated_expression"
+    ],
+    [
+      "_positional_destructuring_entry",
+      "primary_expression"
+    ],
     [
       "_mutable_positional_entry",
       "_immutable_positional_entry"
