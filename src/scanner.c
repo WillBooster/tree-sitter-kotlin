@@ -742,9 +742,11 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor);
 
 static bool scan_constructor_parameter_start(TSLexer *lexer);
 
-static bool comment_or_prefix_follows(TSLexer *lexer);
+static bool needs_preceding_newline(TSLexer *lexer);
 
 static bool scan_prefix_sign(TSLexer *lexer);
+
+static bool scan_full_destructuring_start(TSLexer *lexer);
 
 static bool scan_import_end(TSLexer *lexer);
 
@@ -943,6 +945,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 
         if (!saw_newline) {
             switch (lexer->lookahead) {
+                case '[':
+                    return newline_before_comment && scan_full_destructuring_start(lexer);
                 case '+':
                 case '-':
                     return newline_before_comment && scan_prefix_sign(lexer);
@@ -1016,11 +1020,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             case '<':
             case '=':
             case '{':
-            case '[':
             case '|':
             case '&':
             case '/':
                 return false;
+            case '[':
+                return scan_full_destructuring_start(lexer);
             case '+':
             case '-':
                 return scan_prefix_sign(lexer);
@@ -1299,7 +1304,7 @@ comment:
             }
             lexer->mark_end(lexer);
             lexer->result_symbol = LINE_COMMENT;
-            scanner->newline_before_comment = scanner->newline_before_comment && comment_or_prefix_follows(lexer);
+            scanner->newline_before_comment = scanner->newline_before_comment && needs_preceding_newline(lexer);
             return true;
         }
         if (lexer->lookahead != '*') {
@@ -1323,7 +1328,7 @@ comment:
                         if (nesting_depth == 0) {
                             lexer->result_symbol = BLOCK_COMMENT;
                             lexer->mark_end(lexer);
-                            scanner->newline_before_comment = scanner->newline_before_comment && comment_or_prefix_follows(lexer);
+                            scanner->newline_before_comment = scanner->newline_before_comment && needs_preceding_newline(lexer);
                             return true;
                         }
                     } else {
@@ -1346,13 +1351,13 @@ comment:
     return false;
 }
 
-static bool comment_or_prefix_follows(TSLexer *lexer) {
+static bool needs_preceding_newline(TSLexer *lexer) {
     while (iswspace(lexer->lookahead)) advance(lexer);
     if (lexer->lookahead == '/') {
         advance(lexer);
         return lexer->lookahead == '/' || lexer->lookahead == '*';
     }
-    return scan_prefix_sign(lexer);
+    return lexer->lookahead == '[' ? scan_full_destructuring_start(lexer) : scan_prefix_sign(lexer);
 }
 
 static bool scan_prefix_sign(TSLexer *lexer) {
@@ -1360,6 +1365,17 @@ static bool scan_prefix_sign(TSLexer *lexer) {
     if (sign != '+' && sign != '-') return false;
     advance(lexer);
     return lexer->lookahead != '=' && (sign != '-' || lexer->lookahead != '>');
+}
+
+static bool scan_full_destructuring_start(TSLexer *lexer) {
+    advance(lexer);
+    if (!scan_whitespace_and_comments(lexer, true, false) || lexer->lookahead != 'v') return false;
+    advance(lexer);
+    if (lexer->lookahead != 'a') return false;
+    advance(lexer);
+    if (lexer->lookahead != 'l' && lexer->lookahead != 'r') return false;
+    advance(lexer);
+    return !is_identifier_part(lexer->lookahead);
 }
 
 static bool scan_constructor_parameter_start(TSLexer *lexer) {

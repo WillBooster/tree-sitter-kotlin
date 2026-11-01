@@ -30,6 +30,11 @@ module.exports = grammar({
   name: 'kotlin',
 
   conflicts: ($) => [
+    [$._positional_destructuring_entry, $.type_modifiers, $.annotated_expression],
+    [$._positional_destructuring_entry, $.primary_expression],
+    [$._mutable_positional_entry, $._immutable_positional_entry],
+    [$._mutable_named_entry, $._immutable_named_entry],
+    [$._named_destructuring_entry, $.type_modifiers, $.annotated_expression],
     [$.if_expression, $.parenthesized_expression],
     [$.class_body, $.enum_class_body],
 
@@ -378,7 +383,45 @@ module.exports = grammar({
 
     multi_variable_declaration: ($) => $._multi_variable_declaration,
 
-    _multi_variable_declaration: ($) => seq('(', optionalCommaSep1($.variable_declaration), ')'),
+    _multi_variable_declaration: ($) =>
+      choice(
+        seq('(', optionalCommaSep1(alias($._named_destructuring_entry, $.variable_declaration)), ')'),
+        seq('[', commaSep1(alias($._positional_destructuring_entry, $.variable_declaration)), optional(','), ']')
+      ),
+
+    _positional_destructuring_entry: ($) => seq(repeat($.annotation), $._identifier, optional(seq(':', $.type))),
+
+    _named_destructuring_entry: ($) =>
+      prec(1, seq(repeat($.annotation), $._identifier, optional(seq(':', $.type)), optional(seq('=', $._identifier)))),
+
+    destructuring_declaration: ($) =>
+      seq(
+        optional($.modifiers),
+        alias($._mutable_destructuring, $.multi_variable_declaration),
+        optional(seq('=', $.expression))
+      ),
+
+    _mutable_destructuring: ($) =>
+      choice(
+        seq('(', commaSep1(alias($._mutable_named_entry, $.variable_declaration)), optional(','), ')'),
+        seq('[', commaSep1(alias($._mutable_positional_entry, $.variable_declaration)), optional(','), ']')
+      ),
+
+    _mutable_named_entry: ($) =>
+      seq(choice('val', 'var'), $._identifier, optional(seq(':', $.type)), optional(seq('=', $._identifier))),
+
+    _mutable_positional_entry: ($) => seq(choice('val', 'var'), $._identifier, optional(seq(':', $.type))),
+
+    _immutable_destructuring: ($) =>
+      choice(
+        seq('(', commaSep1(alias($._immutable_named_entry, $.variable_declaration)), optional(','), ')'),
+        seq('[', commaSep1(alias($._immutable_positional_entry, $.variable_declaration)), optional(','), ']')
+      ),
+
+    _immutable_named_entry: ($) =>
+      seq('val', $._identifier, optional(seq(':', $.type)), optional(seq('=', $._identifier))),
+
+    _immutable_positional_entry: ($) => seq('val', $._identifier, optional(seq(':', $.type))),
 
     property_delegate: ($) => seq('by', $.expression),
 
@@ -423,7 +466,11 @@ module.exports = grammar({
           'for',
           '(',
           repeat($.annotation),
-          choice($.variable_declaration, $.multi_variable_declaration),
+          choice(
+            $.variable_declaration,
+            $.multi_variable_declaration,
+            alias($._immutable_destructuring, $.multi_variable_declaration)
+          ),
           'in',
           $.expression,
           ')',
@@ -496,7 +543,15 @@ module.exports = grammar({
     _statements: ($) => seq($.statement, repeat(seq(sym('_semi'), $.statement)), optional(sym('_semi'))),
 
     statement: ($) =>
-      choice($.declaration, $.assignment, $.for_statement, $.while_statement, $.do_while_statement, $.expression),
+      choice(
+        $.declaration,
+        $.destructuring_declaration,
+        $.assignment,
+        $.for_statement,
+        $.while_statement,
+        $.do_while_statement,
+        $.expression
+      ),
 
     // Modifiers before a declaration may also read as an annotated expression statement (`@A (b)`) or, for modifier
     // keywords that `_reserved_identifier` accepts, as names, and both readings parse, so the one in which they modify
@@ -775,7 +830,7 @@ module.exports = grammar({
 
     _destructuring_lambda_parameter: ($) =>
       seq(
-        $._multi_variable_declaration,
+        choice($._multi_variable_declaration, $._immutable_destructuring),
         optional(seq(alias(sym('_destructuring_type_start'), ':'), field('type', $.type)))
       ),
 
