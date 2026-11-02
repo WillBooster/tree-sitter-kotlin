@@ -788,6 +788,8 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer);
 
 static bool scan_is_or_in_rest(TSLexer *lexer);
 
+static bool scan_bang_continuation(TSLexer *lexer);
+
 
 
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
@@ -1719,25 +1721,10 @@ static bool scan_else_entry_rest(TSLexer *lexer) {
 
 // Scans the start of `->`, of a binary operator, or of a postfix `!!` or index, with which no `if` body starts. A sign
 // may start either, so it is taken as an `if` body's, as Kotlin takes an `else` after an `if`.
-// code-gauge-allow functionNcss 37 -- one case per operator start; splitting the switch would only scatter it
+// code-gauge-allow functionNcss 33 -- one case per operator start; splitting the switch would only scatter it
 static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
-    // A postfix `!!` continues the operand, unlike a prefix `!!b` starting a body.
-    while (lexer->lookahead == '!') {
-        skip(lexer);
-        if (lexer->lookahead == '=') {
-            return true;
-        }
-        if (lexer->lookahead == 'i') {
-            skip(lexer);
-            return scan_is_or_in_rest(lexer);
-        }
-        if (lexer->lookahead != '!') {
-            return false;
-        }
-        skip(lexer);
-        if (!skip_whitespace_and_comments(lexer, true)) {
-            return true;
-        }
+    if (lexer->lookahead == '!') {
+        return scan_bang_continuation(lexer);
     }
     int32_t c = lexer->lookahead;
     skip(lexer);
@@ -1773,6 +1760,29 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
         default:
             return false;
     }
+}
+
+// Scans `!=`, `!is`, or `!in`, or else postfix `!!`s followed by `->` or an operator, which continue a guard's operand,
+// unlike a prefix `!!b` starting an `if` body.
+static bool scan_bang_continuation(TSLexer *lexer) {
+    while (lexer->lookahead == '!') {
+        skip(lexer);
+        if (lexer->lookahead == '=') {
+            return true;
+        }
+        if (lexer->lookahead == 'i') {
+            skip(lexer);
+            return scan_is_or_in_rest(lexer);
+        }
+        if (lexer->lookahead != '!') {
+            return false;
+        }
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) {
+            return true;
+        }
+    }
+    return scan_binary_operator_or_arrow(lexer);
 }
 
 // Scans the rest of the whole word `is` or `in` after its `i`.
