@@ -8484,10 +8484,6 @@
       "name": "_keyword_reference_end"
     },
     {
-      "type": "STRING",
-      "value": "where"
-    },
-    {
       "type": "SYMBOL",
       "name": "_separated_member_start"
     },

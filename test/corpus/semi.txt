@@ -1401,3 +1401,33 @@ class Box<T>(val value: T)
             (type_projection
               (user_type
                 (identifier)))))))))
+
+================================================================================
+A where identifier before a callable reference on the next line
+================================================================================
+
+fun f(a: Int) {
+    val where = 1
+    where
+    a::class
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (identifier)
+        (navigation_expression
+          (identifier))))))
