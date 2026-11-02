@@ -513,10 +513,11 @@ static void push_frame(Scanner *scanner, bool statements, bool entries) {
 
 static bool in_members(const Scanner *scanner) { return scanner->depth > 0 && !in_statements(scanner); }
 
-// Past `MAX_FRAMES`, where the frames' kinds are lost, a frame is taken as a `when`'s entries, which accept more input.
+// Past `MAX_FRAMES`, where the frames' kinds are lost, a frame is taken as plain statements, as `in_statements` does.
 static bool in_entries(const Scanner *scanner) {
     uint32_t i = scanner->depth - 1;
-    return scanner->depth > 0 && (i >= MAX_FRAMES || (in_statements(scanner) && (scanner->separated_members[i / 8] >> (i % 8)) & 1));
+    return scanner->depth > 0 && i < MAX_FRAMES && (scanner->frames[i / 8] >> (i % 8)) & 1 &&
+           (scanner->separated_members[i / 8] >> (i % 8)) & 1;
 }
 
 // Clears the popped frame's bit, since tree-sitter compares serialized states byte by byte: the bits above the depth
