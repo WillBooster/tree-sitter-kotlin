@@ -188,9 +188,9 @@ checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "willbooster-tree-sitter"
-version = "15.5.4"
+version = "16.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "159311035d088247bc1cf2f6f17f58d34fe14bf2c83a91320f44b1e70e488bd9"
+checksum = "5f1d22ec6917f8f340d3ac64e38dba2f7dea9bb37ea77be32bff671b0fd5fd2f"
 dependencies = [
  "cc",
  "regex",
