@@ -779,19 +779,11 @@ static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 
-static bool scan_else_entry_rest(TSLexer *lexer);
-
 static bool scan_else_arrow(TSLexer *lexer);
 
 static bool scan_annotated_condition_start(TSLexer *lexer);
 
 static bool scan_bounded_annotated_condition_start(TSLexer *lexer);
-
-static bool scan_binary_operator_or_arrow(TSLexer *lexer);
-
-static bool scan_is_or_in_rest(TSLexer *lexer);
-
-static bool scan_bang_continuation(TSLexer *lexer);
 
 static bool scan_type_constraint_start(TSLexer *lexer);
 
@@ -1035,7 +1027,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 // A `when` entry may start on the line where the previous one ends (`1 -> a 2 -> b`, `1 -> a else -> b`).
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
-                           scan_else_entry_rest(lexer);
+                           scan_else_arrow(lexer);
                 // A number such as `.5`, unlike a member access
                 case '.':
                     skip(lexer);
@@ -1229,9 +1221,11 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                         return true;
                     }
                 }
-                // An `else` on the next line continues an `if`, unless it starts a `when` entry.
+                // An `else` on the next line continues an `if` where one can take it, and otherwise starts a `when`
+                // entry, which the grammar then accepts without a separator; only `else ->`, which no `if` takes, needs
+                // one.
                 else if (index == 0) {
-                    return in_entries(scanner) ? scan_else_entry_rest(lexer) : scan_else_arrow(lexer);
+                    return scan_else_arrow(lexer);
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {
@@ -1709,112 +1703,6 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
     return previous != '.';
 }
 
-// Scans the rest of a `when` entry's `else` (`else ->`, or the guard of `else if x ->`), which the `else` of an `if`
-// (`else if (x) y`) is not: a parenthesized `if` condition is followed by a body, whereas a guard's parenthesized
-// operand is followed by `->` or a binary operator. The scan of that operand is bounded, so that error recovery, which
-// may rescan it at every position, stays linear in the input length; whitespace and comments are not.
-static bool scan_else_entry_rest(TSLexer *lexer) {
-    if (!skip_whitespace_and_comments(lexer, true)) {
-        return false;
-    }
-    if (lexer->lookahead == '-') {
-        skip(lexer);
-        return lexer->lookahead == '>';
-    }
-    if (!scan_word(lexer, "if") || is_identifier_part(lexer->lookahead) || !skip_whitespace_and_comments(lexer, true)) {
-        return false;
-    }
-    if (lexer->lookahead != '(') {
-        return true;
-    }
-    skip(lexer);
-    TypeLookahead operand = {
-        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
-        .source = lexer,
-        .remaining = 1024,
-    };
-    if (!skip_to_closing_bracket(&operand.lexer, '(', ')', 0)) {
-        return false;
-    }
-    // A `/` that starts no comment is a division.
-    return !skip_whitespace_and_comments(lexer, true) || scan_binary_operator_or_arrow(lexer);
-}
-
-// Scans the start of `->`, of a binary operator, or of a postfix `!!` or index, with which no `if` body starts. A sign
-// may start either, so it is taken as an `if` body's, as Kotlin takes an `else` after an `if`.
-// code-gauge-allow functionNcss 33 -- one case per operator start; splitting the switch would only scatter it
-static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
-    if (lexer->lookahead == '!') {
-        return scan_bang_continuation(lexer);
-    }
-    int32_t c = lexer->lookahead;
-    skip(lexer);
-    switch (c) {
-        case '-':
-            return lexer->lookahead == '>';
-        case '[':
-            return true;
-        case '&':
-        case '|':
-            return lexer->lookahead == c;
-        case '=':
-            return lexer->lookahead == '=';
-        case '?':
-            return lexer->lookahead == ':' || lexer->lookahead == '.';
-        // Unlike `.5`, a member access
-        case '.':
-            return !iswdigit(lexer->lookahead);
-        case '<':
-        case '>':
-        case '*':
-        case '%':
-            return true;
-        // `as` and `as?`
-        case 'a':
-            if (lexer->lookahead != 's') {
-                return false;
-            }
-            skip(lexer);
-            return !is_identifier_part(lexer->lookahead);
-        case 'i':
-            return scan_is_or_in_rest(lexer);
-        default:
-            return false;
-    }
-}
-
-// Scans `!=`, `!is`, or `!in`, or else postfix `!!`s followed by `->` or an operator, which continue a guard's operand,
-// unlike a prefix `!!b` starting an `if` body.
-static bool scan_bang_continuation(TSLexer *lexer) {
-    while (lexer->lookahead == '!') {
-        skip(lexer);
-        if (lexer->lookahead == '=') {
-            return true;
-        }
-        if (lexer->lookahead == 'i') {
-            skip(lexer);
-            return scan_is_or_in_rest(lexer);
-        }
-        if (lexer->lookahead != '!') {
-            return false;
-        }
-        skip(lexer);
-        if (!skip_whitespace_and_comments(lexer, true)) {
-            return true;
-        }
-    }
-    return scan_binary_operator_or_arrow(lexer);
-}
-
-// Scans the rest of the whole word `is` or `in` after its `i`.
-static bool scan_is_or_in_rest(TSLexer *lexer) {
-    if (lexer->lookahead != 's' && lexer->lookahead != 'n') {
-        return false;
-    }
-    skip(lexer);
-    return !is_identifier_part(lexer->lookahead);
-}
-
 // Scans `->` after whitespace and comments, as after the `else` of a `when` entry.
 static bool scan_else_arrow(TSLexer *lexer) {
     if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '-') {
@@ -1825,7 +1713,8 @@ static bool scan_else_arrow(TSLexer *lexer) {
 }
 
 // Tells whether the annotations ahead precede something other than a lambda, which would be a trailing lambda of the
-// call before them. The scan is bounded like `scan_else_entry_rest`; at the bound, they are taken as a lambda's.
+// call before them. The scan is bounded, so that error recovery, which may rescan the annotations at every position,
+// stays linear in the input length; at the bound, they are taken as a lambda's.
 static bool scan_annotated_condition_start(TSLexer *lexer) {
     TypeLookahead lookahead = {
         .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
