@@ -1775,7 +1775,7 @@ static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
             skip(lexer);
         }
         if (lexer->lookahead != '@') {
-            return true;
+            return !lexer->eof(lexer);
         }
         skip(lexer);
         if (!skip_whitespace_and_comments(lexer, true)) {
