@@ -985,10 +985,20 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
-                case 't':
+                // A hard keyword that starts an expression, which no complete expression continues with.
+                case 'b':
+                case 'c':
                 case 'f':
                 case 'n':
-                    if (!scan_words(lexer, (const char[16][16]){"this", "true", "false", "null"}, (char[16]){0}, NULL)) {
+                case 'o':
+                case 'r':
+                case 's':
+                case 't':
+                case 'w':
+                    if (!scan_words(lexer,
+                                    (const char[16][16]){"break", "continue", "false", "fun", "null", "object",
+                                                         "return", "super", "this", "throw", "true", "try", "when"},
+                                    (char[16]){0}, NULL)) {
                         return false;
                     }
                     // fall through
