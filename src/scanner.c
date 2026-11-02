@@ -947,11 +947,13 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     }
     bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
     bool saw_newline = false;
+    bool saw_space = false;
     if (valid_symbols[SEMI] || can_end_delegation) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (iswspace(lexer->lookahead)) {
             saw_newline = saw_newline || lexer->lookahead == '\n' || lexer->lookahead == '\r';
+            saw_space = true;
             skip(lexer);
         }
         // As in Kotlin, a `{` right after a delegation expression in a class header starts the class body, never a
@@ -1029,10 +1031,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
-                // Annotations, which continue a call only as those of a trailing lambda
+                // Annotations, which continue a call only as those of a trailing lambda; an immediate `@` is a label's
+                // (`super<T>@Outer`).
                 case '@':
-                    return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION] &&
-                           scan_annotated_condition_start(lexer);
+                    return saw_space && !error_recovery && in_entries(scanner) &&
+                           !valid_symbols[RETURN_VALUE_POSITION] && scan_annotated_condition_start(lexer);
                 // `import`, or else a hard keyword that starts an expression, which no complete expression continues
                 // with; a name may continue it as an infix function.
                 default: {
