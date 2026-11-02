@@ -30,6 +30,7 @@ enum TokenType {
     DELEGATION_END,
     ARGUMENTS_END,
     OPEN_STATEMENTS,
+    OPEN_ENTRIES,
     OPEN_MEMBERS,
     CLOSE_BRACES,
     TOP_LEVEL_STATEMENT_END,
@@ -482,6 +483,8 @@ typedef struct {
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
     uint8_t frames[MAX_FRAMES / 8];
+    // For a frame of members, bit i tells whether its current member is separated (see `_separated_member_start`); for
+    // a frame of statements, whether they are the entries of a `when`.
     uint8_t separated_members[MAX_FRAMES / 8];
     // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
     // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
@@ -497,10 +500,11 @@ static bool in_statements(const Scanner *scanner) {
     return scanner->depth > 0 && (i >= MAX_FRAMES || (scanner->frames[i / 8] >> (i % 8)) & 1);
 }
 
-static void push_frame(Scanner *scanner, bool statements) {
+static void push_frame(Scanner *scanner, bool statements, bool entries) {
     uint32_t i = scanner->depth;
     if (i < MAX_FRAMES) {
         scanner->frames[i / 8] |= (uint8_t)((unsigned)statements << (i % 8));
+        scanner->separated_members[i / 8] |= (uint8_t)((unsigned)entries << (i % 8));
     }
     if (scanner->depth < UINT32_MAX) {
         scanner->depth++;
@@ -508,6 +512,12 @@ static void push_frame(Scanner *scanner, bool statements) {
 }
 
 static bool in_members(const Scanner *scanner) { return scanner->depth > 0 && !in_statements(scanner); }
+
+// Past `MAX_FRAMES`, where the frames' kinds are lost, a frame is taken as a `when`'s entries, which accept more input.
+static bool in_entries(const Scanner *scanner) {
+    uint32_t i = scanner->depth - 1;
+    return scanner->depth > 0 && (i >= MAX_FRAMES || (in_statements(scanner) && (scanner->separated_members[i / 8] >> (i % 8)) & 1));
+}
 
 // Clears the popped frame's bit, since tree-sitter compares serialized states byte by byte: the bits above the depth
 // must be zero for equal states to serialize equally.
@@ -751,7 +761,7 @@ static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 
 static bool scan_else_entry_rest(TSLexer *lexer);
 
-static bool scan_same_line_entry_arrow(TSLexer *lexer);
+static bool scan_else_arrow(TSLexer *lexer);
 
 static bool scan_binary_operator_or_arrow(TSLexer *lexer);
 
@@ -759,7 +769,6 @@ static bool scan_is_or_in_rest(TSLexer *lexer);
 
 static bool scan_bounded_else_entry_rest(TSLexer *lexer);
 
-static bool scan_line_arrow(TSLexer *lexer);
 
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 
@@ -810,11 +819,14 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->result_symbol = CONTEXT_END;
         return true;
     }
-    if (!error_recovery && (valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_MEMBERS] || valid_symbols[CLOSE_BRACES])) {
+    bool can_open = valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_ENTRIES] || valid_symbols[OPEN_MEMBERS];
+    if (!error_recovery && (can_open || valid_symbols[CLOSE_BRACES])) {
         lexer->mark_end(lexer);
-        if (valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_MEMBERS]) {
-            lexer->result_symbol = valid_symbols[OPEN_STATEMENTS] ? OPEN_STATEMENTS : OPEN_MEMBERS;
-            push_frame(scanner, valid_symbols[OPEN_STATEMENTS]);
+        if (can_open) {
+            lexer->result_symbol = valid_symbols[OPEN_STATEMENTS] ? OPEN_STATEMENTS
+                                   : valid_symbols[OPEN_ENTRIES]  ? OPEN_ENTRIES
+                                                                  : OPEN_MEMBERS;
+            push_frame(scanner, !valid_symbols[OPEN_MEMBERS], valid_symbols[OPEN_ENTRIES]);
         } else {
             lexer->result_symbol = CLOSE_BRACES;
             pop_frame(scanner);
@@ -970,7 +982,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return scan_word(lexer, "import");
                 // A `when` entry may start on the line where the previous one ends (`1 -> a 2 -> b`, `1 -> a else -> b`).
                 case 'e':
-                    return scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) && scan_else_entry_rest(lexer);
+                    return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
+                           scan_else_entry_rest(lexer);
                 case 't':
                 case 'f':
                 case 'n':
@@ -990,14 +1003,16 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '9':
                 case '"':
                 case '\'':
-                    // As in Kotlin, a literal after `return` is its value.
-                    return !error_recovery && !valid_symbols[RETURN_VALUE_POSITION] && scan_same_line_entry_arrow(lexer);
-                // A string after `return` (`return $$"…"`), or else the condition of the next `when` entry.
+                    // As in Kotlin, a literal never continues a complete expression, but a literal after `return` is its
+                    // value.
+                    return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
+                // A string after an expression that may end here, e.g. `return $$"…"`, or else the condition of the next
+                // `when` entry.
                 case '$':
-                    if (valid_symbols[RETURN_VALUE_POSITION]) {
-                        return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
+                    if (!error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION]) {
+                        return true;
                     }
-                    return !error_recovery && scan_same_line_entry_arrow(lexer);
+                    return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
                 // A class member may end on the line that closes its body (`class A { val x = 1 }`). A statement list
                 // also accepts this separator before its `}`, so only the depth is consulted: the frames' kinds are lost
                 // past `MAX_FRAMES`, and at the top level no `}` closes anything.
@@ -1119,7 +1134,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
                 // An `else` on the next line continues an `if`, unless it starts a `when` entry.
                 else if (index == 0) {
-                    return scan_else_entry_rest(lexer);
+                    return in_entries(scanner) ? scan_else_entry_rest(lexer) : scan_else_arrow(lexer);
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {
@@ -1672,54 +1687,13 @@ static bool scan_is_or_in_rest(TSLexer *lexer) {
     return !is_identifier_part(lexer->lookahead);
 }
 
-// Tells whether a `->` follows on the same line outside brackets, literals, and comments, as after the condition of a
-// `when` entry that starts on the line where the previous entry ends. The scan is bounded like `scan_else_entry_rest`;
-// at the bound, a separator is assumed, since a literal never continues a complete expression in valid Kotlin and the
-// scan only keeps it from separating invalid code such as `f() 1` in a block.
-static bool scan_same_line_entry_arrow(TSLexer *lexer) {
-    TypeLookahead lookahead = {
-        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
-        .source = lexer,
-        .remaining = 256,
-    };
-    return scan_line_arrow(&lookahead.lexer) || lookahead.remaining == 0;
-}
-
-static bool scan_line_arrow(TSLexer *lexer) {
-    unsigned depth = 0;
-    for (;;) {
-        // A `/` that starts no comment is a division, which a condition may contain.
-        skip_whitespace_and_comments(lexer, false);
-        int32_t c = lexer->lookahead;
-        if (lexer->eof(lexer) || c == '\n' || c == '\r' || c == ';') {
-            return false;
-        }
-        skip(lexer);
-        if (c == '(' || c == '[' || c == '{') {
-            depth++;
-        } else if (c == ')' || c == ']' || c == '}') {
-            if (depth == 0) {
-                return false;
-            }
-            depth--;
-        } else if (c == '"' && lexer->lookahead == '"') {
-            // An empty string or a raw string, which may span lines.
-            if (!skip_literal_rest(lexer, '"', 0)) {
-                return false;
-            }
-        } else if (c == '"' || c == '\'' || c == '`') {
-            // A literal's content ends at its quote or, as far as this line is concerned, at the line's end.
-            while (!lexer->eof(lexer) && lexer->lookahead != c && lexer->lookahead != '\n') {
-                if (lexer->lookahead == '\\') {
-                    skip(lexer);
-                }
-                skip(lexer);
-            }
-            skip(lexer);
-        } else if (c == '-' && lexer->lookahead == '>' && depth == 0) {
-            return true;
-        }
+// Scans `->` after whitespace and comments, as after the `else` of a `when` entry.
+static bool scan_else_arrow(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '-') {
+        return false;
     }
+    skip(lexer);
+    return lexer->lookahead == '>';
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {

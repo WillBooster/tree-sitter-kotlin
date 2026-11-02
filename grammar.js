@@ -132,9 +132,10 @@ module.exports = grammar({
     sym('_delegation_end'),
     // the `)` that ends a call's arguments (see `value_arguments`)
     sym('_arguments_end'),
-    // empty: they tell the scanner when a statement list or the member list of a class body opens in braces, and when
-    // either closes (see `frames` in the scanner)
+    // empty: they tell the scanner when a statement list, the entries of a `when`, or the member list of a class body
+    // opens in braces, and when any closes (see `frames` in the scanner)
     sym('_open_statements'),
+    sym('_open_entries'),
     sym('_open_members'),
     sym('_close_braces'),
     sym('_top_level_statement_end'),
@@ -889,15 +890,7 @@ module.exports = grammar({
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) =>
-      seq(
-        'when',
-        optional($.when_subject),
-        '{',
-        sym('_open_statements'),
-        repeat($.when_entry),
-        '}',
-        sym('_close_braces')
-      ),
+      seq('when', optional($.when_subject), '{', sym('_open_entries'), repeat($.when_entry), '}', sym('_close_braces')),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),

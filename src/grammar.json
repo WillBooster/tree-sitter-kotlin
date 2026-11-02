@@ -6342,7 +6342,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_open_statements"
+          "name": "_open_entries"
         },
         {
           "type": "REPEAT",
@@ -8454,6 +8454,10 @@
     {
       "type": "SYMBOL",
       "name": "_open_statements"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_open_entries"
     },
     {
       "type": "SYMBOL",
