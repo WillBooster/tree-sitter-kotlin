@@ -788,7 +788,6 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer);
 
 static bool scan_is_or_in_rest(TSLexer *lexer);
 
-static bool scan_bounded_else_entry_rest(TSLexer *lexer);
 
 
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
@@ -1657,21 +1656,12 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
 
 // Scans the rest of a `when` entry's `else` (`else ->`, or the guard of `else if x ->`), which the `else` of an `if`
 // (`else if (x) y`) is not: a parenthesized `if` condition is followed by a body, whereas a guard's parenthesized
-// operand is followed by `->` or a binary operator. The scan past `if` is bounded, so that error recovery, which may
-// rescan it at every position, stays linear in the input length; the comments before `if` or `->` are not.
+// operand is followed by `->` or a binary operator. The scan of that operand is bounded, so that error recovery, which
+// may rescan it at every position, stays linear in the input length; whitespace and comments are not.
 static bool scan_else_entry_rest(TSLexer *lexer) {
     if (!skip_whitespace_and_comments(lexer, true)) {
         return false;
     }
-    TypeLookahead lookahead = {
-        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
-        .source = lexer,
-        .remaining = 1024,
-    };
-    return scan_bounded_else_entry_rest(&lookahead.lexer);
-}
-
-static bool scan_bounded_else_entry_rest(TSLexer *lexer) {
     if (lexer->lookahead == '-') {
         skip(lexer);
         return lexer->lookahead == '>';
@@ -1683,7 +1673,12 @@ static bool scan_bounded_else_entry_rest(TSLexer *lexer) {
         return true;
     }
     skip(lexer);
-    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) {
+    TypeLookahead operand = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
+        .source = lexer,
+        .remaining = 1024,
+    };
+    if (!skip_to_closing_bracket(&operand.lexer, '(', ')', 0)) {
         return false;
     }
     // A `/` that starts no comment is a division.
