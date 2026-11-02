@@ -780,6 +780,10 @@ static bool scan_else_entry_rest(TSLexer *lexer);
 
 static bool scan_else_arrow(TSLexer *lexer);
 
+static bool scan_annotated_condition_start(TSLexer *lexer);
+
+static bool scan_bounded_annotated_condition_start(TSLexer *lexer);
+
 static bool scan_binary_operator_or_arrow(TSLexer *lexer);
 
 static bool scan_is_or_in_rest(TSLexer *lexer);
@@ -1026,8 +1030,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
-                // `import`, or else a hard keyword that starts an expression or a label (`l@`), which no complete
-                // expression continues with; a name may continue it as an infix function.
+                // `import`, or else a hard keyword that starts an expression, which no complete expression continues
+                // with; a name may continue it as an infix function.
                 default: {
                     if (!iswalpha(lexer->lookahead)) {
                         return false;
@@ -1041,16 +1045,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     if (listed && keyword == 0) {
                         return true;
                     }
-                    while (is_identifier_part(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    if (!listed && lexer->lookahead != '@') {
+                    if (!listed) {
                         return false;
                     }
                 }
                     // fall through
-                // An annotation, which never continues a complete expression either
+                // Annotations, which continue a call only as those of a trailing lambda
                 case '@':
+                    return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION] &&
+                           scan_annotated_condition_start(lexer);
                 case '0':
                 case '1':
                 case '2':
@@ -1752,6 +1755,26 @@ static bool scan_else_arrow(TSLexer *lexer) {
     }
     skip(lexer);
     return lexer->lookahead == '>';
+}
+
+// Tells whether the annotations ahead precede something other than a lambda, which would be a trailing lambda of the
+// call before them. The scan is bounded like `scan_else_entry_rest`; at the bound, they are taken as a lambda's.
+static bool scan_annotated_condition_start(TSLexer *lexer) {
+    TypeLookahead lookahead = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
+        .source = lexer,
+        .remaining = 1024,
+    };
+    return scan_bounded_annotated_condition_start(&lookahead.lexer);
+}
+
+static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
+    while (lexer->lookahead == '@') {
+        if (!scan_member_annotation(lexer, true) || !skip_whitespace_and_comments(lexer, true)) {
+            return false;
+        }
+    }
+    return !lexer->eof(lexer) && lexer->lookahead != '{';
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
