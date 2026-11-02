@@ -1299,34 +1299,60 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                         skip(lexer);
                         if (interpolation && (lexer->lookahead == '{' || is_identifier_start(lexer->lookahead))) ambiguous = true;
                     }
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
+                    // Past a prefix that ends inside a literal, a comment, or parentheses, a `/*` may lie inside a
+                    // string, and skipping it as a comment could read to the end of the input at every annotation.
+                    bool settled = !(parentheses || comments || quote || ambiguous || line_comment);
+                    if (!settled) {
+                        while (iswspace(lexer->lookahead)) skip(lexer);
+                    } else if (!skip_whitespace_and_comments(lexer, true)) {
+                        return true;
                     }
                     char scanned_word[MAX_WORD_SIZE] = {0};
                     bool visibility = scan_words(lexer, (const char[16][16]){"public", "private", "protected", "internal"}, scanned_word, NULL);
                     if (!visibility) return strncmp(scanned_word, "constructor", 11) != 0;
-                    if (parentheses || comments || quote || ambiguous || line_comment) return true;
+                    if (!settled) return true;
                     memset(scanned_word, 0, MAX_WORD_SIZE);
-                    while (iswspace(lexer->lookahead)) skip(lexer);
+                    if (!skip_whitespace_and_comments(lexer, true)) return true;
                     if (!scan_words(lexer, (const char[16][16]){"constructor"}, scanned_word, NULL)) return true;
                     while (iswspace(lexer->lookahead)) skip(lexer);
                     return !scan_constructor_parameter_start(lexer);
                 }
                 if (valid_symbols[GET] || valid_symbols[SET]) {
-                    bool saw_paren = false;
+                    bool saw_paren = false, escaped = false, settled = true;
+                    int32_t quote = 0;
                     while (!lexer->eof(lexer) && (saw_paren ? lexer->lookahead != '\n' : !iswspace(lexer->lookahead))) {
+                        int32_t c = lexer->lookahead;
                         skip(lexer);
-                        if (lexer->lookahead == '(') {
+                        if (quote) {
+                            if (escaped) escaped = false;
+                            else if (c == '\\' && quote != '`') escaped = true;
+                            else if (c == quote) quote = 0;
+                            // A template expression, whose strings this does not follow
+                            else if (c == '$' && quote == '"' && lexer->lookahead == '{') settled = false;
+                        } else if (c == '"' || c == '\'' || c == '`') {
+                            quote = c;
+                            // A raw string (`"""`), whose escapes and quotes this does not follow
+                            settled = settled && !(c == '"' && lexer->lookahead == '"');
+                        } else if (c == '/') {
+                            settled = false;
+                        }
+                        if (!quote && lexer->lookahead == '(') {
                             saw_paren = true;
                         }
-                        if (lexer->lookahead == ')') {
+                        if (!quote && lexer->lookahead == ')') {
                             saw_paren = false;
                         }
                     }
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    if (lexer->lookahead == '/') {
+                    // As above, comments are skipped only after an annotation that ends outside literals, comments,
+                    // and parentheses.
+                    if (!settled || quote || saw_paren) {
+                        while (iswspace(lexer->lookahead)) {
+                            skip(lexer);
+                        }
+                        if (lexer->lookahead == '/') {
+                            return true;
+                        }
+                    } else if (!skip_whitespace_and_comments(lexer, true)) {
                         return true;
                     }
                     goto _switch;
