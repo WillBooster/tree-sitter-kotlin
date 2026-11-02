@@ -106,9 +106,6 @@ module.exports = grammar({
   externals: () => [
     sym('_destructuring_type_start'),
     sym('_semi'),
-    sym('_class_member_semi'),
-    // Unlike properties, these declarations can end before another member on the same line.
-    sym('_same_line_member_end'),
     sym('block_comment'),
     // also lexed by the scanner, since the generated lexer stops at a NUL character
     sym('line_comment'),
@@ -508,8 +505,7 @@ module.exports = grammar({
     class_body: ($) =>
       seq('{', sym('_open_members'), repeat($._class_member_with_separator), '}', sym('_close_braces')),
 
-    _class_member_with_separator: ($) =>
-      seq($.class_member_declaration, optional(sym('_same_line_member_end')), sym('_class_member_semi')),
+    _class_member_with_separator: ($) => seq($.class_member_declaration, sym('_semi')),
 
     class_member_declaration: ($) =>
       choice($.declaration, $.companion_object, $.anonymous_initializer, $.secondary_constructor),

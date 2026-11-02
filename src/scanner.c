@@ -10,8 +10,6 @@
 enum TokenType {
     DESTRUCTURING_TYPE_START,
     SEMI,
-    CLASS_MEMBER_SEMI,
-    SAME_LINE_MEMBER_END,
     BLOCK_COMMENT,
     LINE_COMMENT,
     NOT_IS,
@@ -479,7 +477,6 @@ typedef struct {
     // Whether the last token this scanner returned is the start of an interpolation of a name in a multi-dollar string
     // (`$$name`), or a keyword reference right after one.
     uint8_t after_short_template;
-    uint8_t same_line_member_end;
     uint8_t newline_before_comment;
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
@@ -508,6 +505,8 @@ static void push_frame(Scanner *scanner, bool statements) {
         scanner->depth++;
     }
 }
+
+static bool in_members(const Scanner *scanner) { return scanner->depth > 0 && !in_statements(scanner); }
 
 // Clears the popped frame's bit, since tree-sitter compares serialized states byte by byte: the bits above the depth
 // must be zero for equal states to serialize equally.
@@ -538,7 +537,7 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
     size += sizeof(uint32_t);
     buffer[size++] = (char)scanner->after_short_template;
-    buffer[size++] = (char)(scanner->same_line_member_end | (scanner->newline_before_comment << 1));
+    buffer[size++] = (char)scanner->newline_before_comment;
     memcpy(buffer + size, scanner->frames, frame_bytes(scanner->depth));
     size += frame_bytes(scanner->depth);
     memcpy(buffer + size, scanner->separated_members, frame_bytes(scanner->depth));
@@ -552,7 +551,6 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
     scanner->depth = 0;
     scanner->surplus_dollars = 0;
     scanner->after_short_template = 0;
-    scanner->same_line_member_end = 0;
     scanner->newline_before_comment = 0;
     memset(scanner->frames, 0, sizeof(scanner->frames));
     memset(scanner->separated_members, 0, sizeof(scanner->separated_members));
@@ -564,9 +562,7 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
         memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
         size += sizeof(uint32_t);
         scanner->after_short_template = (uint8_t)buffer[size++];
-        uint8_t flags = (uint8_t)buffer[size++];
-        scanner->same_line_member_end = flags & 1;
-        scanner->newline_before_comment = (flags >> 1) & 1;
+        scanner->newline_before_comment = (uint8_t)buffer[size++];
         memcpy(scanner->frames, buffer + size, frame_bytes(scanner->depth));
         size += frame_bytes(scanner->depth);
         memcpy(scanner->separated_members, buffer + size, frame_bytes(scanner->depth));
@@ -772,13 +768,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->result_symbol = ends ? IMPORT_END : IMPORT_CONTINUE;
         return valid_symbols[lexer->result_symbol];
     }
-    if (!error_recovery && scanner->same_line_member_end && valid_symbols[CLASS_MEMBER_SEMI]) {
-        scanner->same_line_member_end = 0;
-        lexer->mark_end(lexer);
-        lexer->result_symbol = CLASS_MEMBER_SEMI;
-        return true;
-    }
-    scanner->same_line_member_end = 0;
     bool after_short_template = scanner->after_short_template;
     scanner->after_short_template = 0;
     if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
@@ -873,7 +862,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     }
 
-    if (!error_recovery && valid_symbols[SAME_LINE_MEMBER_END] && scanner->depth > 0 && !in_statements(scanner) &&
+    // Unlike properties, other members can end before another member on the same line.
+    if (!error_recovery && valid_symbols[SEMI] && in_members(scanner) &&
         !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
         lexer->mark_end(lexer);
         bool has_horizontal_space = false;
@@ -904,8 +894,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                  (strcmp(scanned_word, "init") == 0 ||
                   (strcmp(scanned_word, "constructor") == 0 && !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) ||
                   strcmp(scanned_word, "companion") == 0))) {
-                scanner->same_line_member_end = 1;
-                lexer->result_symbol = SAME_LINE_MEMBER_END;
+                lexer->result_symbol = SEMI;
                 return true;
             }
             return false;
@@ -913,7 +902,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     }
     bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
     bool saw_newline = false;
-    if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI] || can_end_delegation) {
+    if (valid_symbols[SEMI] || can_end_delegation) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (iswspace(lexer->lookahead)) {
@@ -928,8 +917,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     }
 
-    if (valid_symbols[SEMI] || valid_symbols[CLASS_MEMBER_SEMI]) {
-        lexer->result_symbol = valid_symbols[SEMI] ? SEMI : CLASS_MEMBER_SEMI;
+    if (valid_symbols[SEMI]) {
+        lexer->result_symbol = SEMI;
         if (lexer->eof(lexer)) {
             return true;
         }
@@ -969,9 +958,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 // A string after an expression that may end here, e.g. `return $$"…"`.
                 case '$':
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
-                // A class member may end on the line that closes its body (`class A { val x = 1 }`).
+                // A class member may end on the line that closes its body (`class A { val x = 1 }`). A statement list
+                // also accepts this separator before its `}`, so only the depth is consulted: the frames' kinds are lost
+                // past `MAX_FRAMES`, and at the top level no `}` closes anything.
                 case '}':
-                    return valid_symbols[CLASS_MEMBER_SEMI] && !valid_symbols[SEMI];
+                    return !error_recovery && scanner->depth > 0;
                 default:
                     return false;
             }
@@ -1074,13 +1065,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return true;
                 }
 
-                // If `CLASS_MEMBER_SEMI` is valid, we found a secondary constructor and so we want to insert a semi, OR
-                // we found a variable named constructor whose field is being accessed
+                // In a class body, `constructor` starts a secondary constructor; elsewhere, a statement only where a variable
+                // named `constructor` is accessed or assigned. Past `MAX_FRAMES`, where the frames are lost, it is taken
+                // as a member.
                 if (index == 5) {
                     while (iswspace(lexer->lookahead)) {
                         skip(lexer);
                     }
-                    if (valid_symbols[CLASS_MEMBER_SEMI] || lexer->lookahead == '.' || lexer->lookahead == '=') {
+                    if (error_recovery || in_members(scanner) || scanner->depth > MAX_FRAMES || lexer->lookahead == '.' ||
+                        lexer->lookahead == '=') {
                         return true;
                     }
                 }
