@@ -905,8 +905,7 @@ module.exports = grammar({
         choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else'),
         optional(seq('if', field('guard', $.expression))),
         '->',
-        field('body', choice($.block, $.statement)),
-        optional(sym('_semi'))
+        choice(seq(field('body', $.block), optional(sym('_semi'))), seq(field('body', $.statement), sym('_semi')))
       ),
 
     _when_condition: ($) => choice($.expression, $.range_test, $.type_test),

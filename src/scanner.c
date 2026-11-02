@@ -748,6 +748,14 @@ static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 
+static bool scan_else_entry_rest(TSLexer *lexer);
+
+static bool scan_same_line_entry_arrow(TSLexer *lexer);
+
+static bool scan_binary_operator_or_arrow(TSLexer *lexer);
+
+static bool skip_nested(TSLexer *lexer, int32_t c);
+
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 
 static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
@@ -955,6 +963,22 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return false;
                 case 'i':
                     return scan_word(lexer, "import");
+                // A `when` entry may start on the line where the previous one ends (`1 -> a 2 -> b`, `1 -> a else -> b`).
+                case 'e':
+                    return scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) && scan_else_entry_rest(lexer);
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                case '"':
+                case '\'':
+                    return scan_same_line_entry_arrow(lexer);
                 // A string after an expression that may end here, e.g. `return $$"…"`.
                 case '$':
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
@@ -1077,18 +1101,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         return true;
                     }
                 }
-                // Ordinarily, we should not insert a semicolon if there is an `else` on the next line,
-                // except for when it's a 'when entry', which has a `->` after the `else`.
+                // An `else` on the next line continues an `if`, unless it starts a `when` entry.
                 else if (index == 0) {
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    if (lexer->lookahead == '-') {
-                        skip(lexer);
-                        if (lexer->lookahead == '>') {
-                            return true;
-                        }
-                    }
+                    return scan_else_entry_rest(lexer);
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {
@@ -1100,9 +1115,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     // quadratic in the input length.
                     return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer, index == 4));
                 }
-                // If `in` was found and this specific external keyword is valid,
-                // return a semi since it's being used in a range test
-                else if (index == 1 && valid_symbols[IN]) {
+                // As in Kotlin, a line break ends an expression before `in`, which may start a range test of a `when` entry.
+                else if (index == 1) {
                     return true;
                 }
                 else if (index == 8) {
@@ -1547,6 +1561,103 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
         }
     }
     return previous != '.';
+}
+
+// Scans the rest of a `when` entry's `else` (`else ->`, or the guard of `else if x ->`), which the `else` of an `if`
+// (`else if (x) y`) is not: a parenthesized `if` condition is followed by a body, whereas a guard's parenthesized
+// operand is followed by `->` or a binary operator.
+static bool scan_else_entry_rest(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true)) {
+        return false;
+    }
+    if (lexer->lookahead == '-') {
+        skip(lexer);
+        return lexer->lookahead == '>';
+    }
+    if (!scan_word(lexer, "if") || is_identifier_part(lexer->lookahead) || !skip_whitespace_and_comments(lexer, true)) {
+        return false;
+    }
+    if (lexer->lookahead != '(') {
+        return true;
+    }
+    skip(lexer);
+    return skip_to_closing_bracket(lexer, '(', ')', 0) && skip_whitespace_and_comments(lexer, false) &&
+           scan_binary_operator_or_arrow(lexer);
+}
+
+// Scans the start of `->` or of a binary operator, which no expression starts with.
+static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
+    int32_t c = lexer->lookahead;
+    skip(lexer);
+    switch (c) {
+        case '-':
+            return lexer->lookahead == '>';
+        case '&':
+        case '|':
+            return lexer->lookahead == c;
+        case '=':
+            return lexer->lookahead == '=';
+        case '!':
+            return lexer->lookahead == '=' || lexer->lookahead == 'i';
+        case '?':
+            return lexer->lookahead == ':' || lexer->lookahead == '.';
+        case '<':
+        case '>':
+        case '.':
+        case '*':
+        case '/':
+        case '%':
+            return true;
+        // `as`, `as?`, `is`, and `in`
+        case 'a':
+        case 'i':
+            if (lexer->lookahead != 's' && (c == 'a' || lexer->lookahead != 'n')) {
+                return false;
+            }
+            skip(lexer);
+            return !is_identifier_part(lexer->lookahead);
+        default:
+            return false;
+    }
+}
+
+// Tells whether a `->` follows on the same line outside brackets, literals, and comments, as after the condition of a
+// `when` entry that starts on the line where the previous entry ends.
+static bool scan_same_line_entry_arrow(TSLexer *lexer) {
+    for (;;) {
+        if (!skip_whitespace_and_comments(lexer, false)) {
+            return false;
+        }
+        int32_t c = lexer->lookahead;
+        if (lexer->eof(lexer) || c == '\n' || c == '\r' || c == ';' || c == '}' || c == ')' || c == ']') {
+            return false;
+        }
+        skip(lexer);
+        if (c == '-' && lexer->lookahead == '>') {
+            return true;
+        }
+        if (!skip_nested(lexer, c)) {
+            return false;
+        }
+    }
+}
+
+// Skips the rest of a bracketed part or a literal after its opening character `c`; any other character needs nothing.
+static bool skip_nested(TSLexer *lexer, int32_t c) {
+    switch (c) {
+        case '(':
+            return skip_to_closing_bracket(lexer, '(', ')', 0);
+        case '[':
+            return skip_to_closing_bracket(lexer, '[', ']', 0);
+        case '{':
+            return skip_to_closing_bracket(lexer, '{', '}', 0);
+        case '"':
+        case '\'':
+        case '`':
+            return skip_literal_rest(lexer, c, 0);
+        default:
+            return true;
+    }
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
