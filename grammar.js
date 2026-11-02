@@ -132,9 +132,10 @@ module.exports = grammar({
     sym('_delegation_end'),
     // the `)` that ends a call's arguments (see `value_arguments`)
     sym('_arguments_end'),
-    // empty: they tell the scanner when a statement list or the member list of a class body opens in braces, and when
-    // either closes (see `frames` in the scanner)
+    // empty: they tell the scanner when a statement list, the entries of a `when`, or the member list of a class body
+    // opens in braces, and when any closes (see `frames` in the scanner)
     sym('_open_statements'),
+    sym('_open_entries'),
     sym('_open_members'),
     sym('_close_braces'),
     sym('_top_level_statement_end'),
@@ -153,6 +154,8 @@ module.exports = grammar({
     sym('_infix_get_identifier'),
     sym('_import_end'),
     sym('_import_continue'),
+    // never scanned: it tells the scanner that a value may follow `return` (see `return_expression`)
+    sym('_return_value_position'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -887,15 +890,7 @@ module.exports = grammar({
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) =>
-      seq(
-        'when',
-        optional($.when_subject),
-        '{',
-        sym('_open_statements'),
-        repeat($.when_entry),
-        '}',
-        sym('_close_braces')
-      ),
+      seq('when', optional($.when_subject), '{', sym('_open_entries'), repeat($.when_entry), '}', sym('_close_braces')),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),
@@ -905,8 +900,7 @@ module.exports = grammar({
         choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else'),
         optional(seq('if', field('guard', $.expression))),
         '->',
-        field('body', choice($.block, $.statement)),
-        optional(sym('_semi'))
+        choice(seq(field('body', $.block), optional(sym('_semi'))), seq(field('body', $.statement), sym('_semi')))
       ),
 
     _when_condition: ($) => choice($.expression, $.range_test, $.type_test),
@@ -931,7 +925,13 @@ module.exports = grammar({
       choice(prec(1, seq(sym('_try_continuation_position'), 'finally', $.block)), seq('finally', $.block)),
 
     return_expression: ($) =>
-      prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
+      prec.right(
+        seq(
+          choice('return', seq('return@', field('label', $.identifier))),
+          optional(sym('_return_value_position')),
+          optional($.expression)
+        )
+      ),
 
     throw_expression: ($) => seq('throw', $.expression),
 

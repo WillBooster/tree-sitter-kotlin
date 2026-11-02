@@ -30,6 +30,7 @@ enum TokenType {
     DELEGATION_END,
     ARGUMENTS_END,
     OPEN_STATEMENTS,
+    OPEN_ENTRIES,
     OPEN_MEMBERS,
     CLOSE_BRACES,
     TOP_LEVEL_STATEMENT_END,
@@ -45,6 +46,7 @@ enum TokenType {
     INFIX_GET_IDENTIFIER,
     IMPORT_END,
     IMPORT_CONTINUE,
+    RETURN_VALUE_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -205,10 +207,15 @@ static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
 
 static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, bool skip_chars);
 
+static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting, bool skip_chars);
+
 // Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
 // Returns false at the end of the input or when templates nest too deeply.
+// code-gauge-allow functionCognitiveComplexity 16 -- one loop over the bracket, comment, and literal cases it skips
 static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting, bool skip_chars) {
     unsigned depth = 1;
+    // The dollars right before a string's quote: two or more prefix a multi-dollar string.
+    unsigned dollars = 0;
     while (depth > 0) {
         int32_t c = lexer->lookahead;
         if (lexer->eof(lexer)) {
@@ -216,6 +223,7 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
         }
         if (c == '/') {
             scan_whitespace_and_comments(lexer, true, skip_chars);
+            dollars = 0;
             continue;
         }
         lexer->advance(lexer, skip_chars);
@@ -223,9 +231,11 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
             depth++;
         } else if (c == close) {
             depth--;
-        } else if ((c == '"' || c == '\'' || c == '`') && !scan_literal_rest(lexer, c, nesting, skip_chars)) {
+        } else if ((c == '"' || c == '\'' || c == '`') &&
+                   !scan_string_rest(lexer, c, dollars > 1 ? dollars : 1, nesting, skip_chars)) {
             return false;
         }
+        dollars = c == '$' ? dollars + 1 : 0;
     }
     return true;
 }
@@ -233,6 +243,12 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
 // Skips the rest of a string or character literal or a backticked name after its opening quote, including the
 // expressions of string templates. Returns false where `skip_to_closing_bracket` does.
 static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, bool skip_chars) {
+    return scan_string_rest(lexer, quote, 1, nesting, skip_chars);
+}
+
+// Like `scan_literal_rest`, for a string whose interpolations start with `dollars` dollars.
+// code-gauge-allow functionCognitiveComplexity 23 -- one loop over a literal's quotes, escapes, and interpolations
+static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting, bool skip_chars) {
     bool raw = false;
     if (quote == '"' && lexer->lookahead == '"') {
         lexer->advance(lexer, skip_chars);
@@ -244,14 +260,16 @@ static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, b
     }
     // A raw string ends at the last of three or more quotes.
     unsigned quotes = 0;
+    unsigned run = 0;
     while (!lexer->eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
         int32_t c = lexer->lookahead;
         quotes = c == '"' ? quotes + 1 : 0;
+        run = c == '$' ? run + 1 : 0;
         lexer->advance(lexer, skip_chars);
         // Only single-line strings and character literals have escapes.
         if (c == '\\' && !raw && quote != '`') {
             lexer->advance(lexer, skip_chars);
-        } else if (c == '$' && quote == '"' && lexer->lookahead == '{') {
+        } else if (run >= dollars && quote == '"' && lexer->lookahead == '{') {
             lexer->advance(lexer, skip_chars);
             if (nesting == MAX_TEMPLATE_NESTING || !scan_to_closing_bracket(lexer, '{', '}', nesting + 1, skip_chars)) {
                 return false;
@@ -481,6 +499,8 @@ typedef struct {
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
     uint8_t frames[MAX_FRAMES / 8];
+    // For a frame of members, bit i tells whether its current member is separated (see `_separated_member_start`); for
+    // a frame of statements, whether they are the entries of a `when`.
     uint8_t separated_members[MAX_FRAMES / 8];
     // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
     // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
@@ -496,10 +516,11 @@ static bool in_statements(const Scanner *scanner) {
     return scanner->depth > 0 && (i >= MAX_FRAMES || (scanner->frames[i / 8] >> (i % 8)) & 1);
 }
 
-static void push_frame(Scanner *scanner, bool statements) {
+static void push_frame(Scanner *scanner, bool statements, bool entries) {
     uint32_t i = scanner->depth;
     if (i < MAX_FRAMES) {
         scanner->frames[i / 8] |= (uint8_t)((unsigned)statements << (i % 8));
+        scanner->separated_members[i / 8] |= (uint8_t)((unsigned)entries << (i % 8));
     }
     if (scanner->depth < UINT32_MAX) {
         scanner->depth++;
@@ -507,6 +528,13 @@ static void push_frame(Scanner *scanner, bool statements) {
 }
 
 static bool in_members(const Scanner *scanner) { return scanner->depth > 0 && !in_statements(scanner); }
+
+// Past `MAX_FRAMES`, where the frames' kinds are lost, a frame is taken as plain statements, as `in_statements` does.
+static bool in_entries(const Scanner *scanner) {
+    uint32_t i = scanner->depth - 1;
+    return scanner->depth > 0 && i < MAX_FRAMES && (scanner->frames[i / 8] >> (i % 8)) & 1 &&
+           (scanner->separated_members[i / 8] >> (i % 8)) & 1;
+}
 
 // Clears the popped frame's bit, since tree-sitter compares serialized states byte by byte: the bits above the depth
 // must be zero for equal states to serialize equally.
@@ -748,6 +776,22 @@ static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 
+static bool scan_else_entry_rest(TSLexer *lexer);
+
+static bool scan_else_arrow(TSLexer *lexer);
+
+static bool scan_annotated_condition_start(TSLexer *lexer);
+
+static bool scan_bounded_annotated_condition_start(TSLexer *lexer);
+
+static bool scan_binary_operator_or_arrow(TSLexer *lexer);
+
+static bool scan_is_or_in_rest(TSLexer *lexer);
+
+static bool scan_bang_continuation(TSLexer *lexer);
+
+
+
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 
 static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
@@ -797,11 +841,14 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->result_symbol = CONTEXT_END;
         return true;
     }
-    if (!error_recovery && (valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_MEMBERS] || valid_symbols[CLOSE_BRACES])) {
+    bool can_open = valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_ENTRIES] || valid_symbols[OPEN_MEMBERS];
+    if (!error_recovery && (can_open || valid_symbols[CLOSE_BRACES])) {
         lexer->mark_end(lexer);
-        if (valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_MEMBERS]) {
-            lexer->result_symbol = valid_symbols[OPEN_STATEMENTS] ? OPEN_STATEMENTS : OPEN_MEMBERS;
-            push_frame(scanner, valid_symbols[OPEN_STATEMENTS]);
+        if (can_open) {
+            lexer->result_symbol = valid_symbols[OPEN_STATEMENTS] ? OPEN_STATEMENTS
+                                   : valid_symbols[OPEN_ENTRIES]  ? OPEN_ENTRIES
+                                                                  : OPEN_MEMBERS;
+            push_frame(scanner, !valid_symbols[OPEN_MEMBERS], valid_symbols[OPEN_ENTRIES]);
         } else {
             lexer->result_symbol = CLOSE_BRACES;
             pop_frame(scanner);
@@ -902,11 +949,13 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     }
     bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
     bool saw_newline = false;
+    bool saw_space = false;
     if (valid_symbols[SEMI] || can_end_delegation) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (iswspace(lexer->lookahead)) {
             saw_newline = saw_newline || lexer->lookahead == '\n' || lexer->lookahead == '\r';
+            saw_space = true;
             skip(lexer);
         }
         // As in Kotlin, a `{` right after a delegation expression in a class header starts the class body, never a
@@ -939,9 +988,36 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '+':
                 case '-':
                     return newline_before_comment && scan_prefix_sign(lexer);
-                case '!':
+                case '!': {
                     skip(lexer);
-                    goto continue_not_is_from_semi;
+                    if (lexer->lookahead == '=' || lexer->lookahead == '!') {
+                        return false;
+                    }
+                    // Inside a `when`'s braces, a prefix `!` starts the next entry's condition (`… !flag -> …`), unlike
+                    // `!is` and `!in`.
+                    bool starts_entry = !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
+                    if (lexer->lookahead != 'i') {
+                        return starts_entry;
+                    }
+                    if (!starts_entry) {
+                        goto continue_not_is_from_semi;
+                    }
+                    advance(lexer);
+                    int32_t operator_end = lexer->lookahead;
+                    if (operator_end != 's' && operator_end != 'n') {
+                        return true;
+                    }
+                    advance(lexer);
+                    if (is_identifier_part(lexer->lookahead)) {
+                        return true;
+                    }
+                    if (operator_end == 'n') {
+                        return false;
+                    }
+                    lexer->result_symbol = NOT_IS;
+                    lexer->mark_end(lexer);
+                    return true;
+                }
                 case '?':
                     if (valid_symbols[Q_DOT]) {
                         goto q_dot_from_semi;
@@ -953,18 +1029,88 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         return true;
                     }
                     return false;
-                case 'i':
-                    return scan_word(lexer, "import");
-                // A string after an expression that may end here, e.g. `return $$"…"`.
+                // A `when` entry may start on the line where the previous one ends (`1 -> a 2 -> b`, `1 -> a else -> b`).
+                case 'e':
+                    return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
+                           scan_else_entry_rest(lexer);
+                // A number such as `.5`, unlike a member access
+                case '.':
+                    skip(lexer);
+                    if (!iswdigit(lexer->lookahead)) {
+                        return false;
+                    }
+                    goto entry_start;
+                // Annotations, which continue a call only as those of a trailing lambda; an immediate `@` is a label's
+                // (`super<T>@Outer`).
+                case '@':
+                    return saw_space && !error_recovery && in_entries(scanner) &&
+                           !valid_symbols[RETURN_VALUE_POSITION] && scan_annotated_condition_start(lexer);
+                // `import`, or else a hard keyword that starts an expression, which no complete expression continues
+                // with; a name may continue it as an infix function.
+                default: {
+                    if (!iswalpha(lexer->lookahead)) {
+                        return false;
+                    }
+                    // After a block body, which needs no separator, `in` may start a range test entry.
+                    if (lexer->lookahead == 'i' && valid_symbols[IN] && !error_recovery) {
+                        advance(lexer);
+                        int32_t c = lexer->lookahead;
+                        if (c != 'n' && c != 'f') {
+                            return c == 'm' && scan_word(lexer, "mport") && !is_identifier_part(lexer->lookahead);
+                        }
+                        advance(lexer);
+                        if (is_identifier_part(lexer->lookahead)) {
+                            return false;
+                        }
+                        if (c == 'f') {
+                            goto entry_start;
+                        }
+                        lexer->result_symbol = IN;
+                        lexer->mark_end(lexer);
+                        return true;
+                    }
+                    uint8_t keyword = 0;
+                    bool listed = scan_words(lexer,
+                                             (const char[16][16]){"import", "break", "continue", "false", "fun", "if",
+                                                                  "null", "object", "return", "super", "this", "throw",
+                                                                  "true", "try", "when"},
+                                             (char[16]){0}, &keyword);
+                    if (listed && keyword == 0) {
+                        return true;
+                    }
+                    if (!listed) {
+                        return false;
+                    }
+                }
+                    // fall through
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                case '"':
+                case '\'':
+                // As in Kotlin, a literal never continues a complete expression, but a literal after `return` is its
+                // value.
+                entry_start:
+                    return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
+                // A string after an expression that may end here, e.g. `return $$"…"`, or else the condition of the next
+                // `when` entry.
                 case '$':
+                    if (!error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION]) {
+                        return true;
+                    }
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
                 // A class member may end on the line that closes its body (`class A { val x = 1 }`). A statement list
                 // also accepts this separator before its `}`, so only the depth is consulted: the frames' kinds are lost
                 // past `MAX_FRAMES`, and at the top level no `}` closes anything.
                 case '}':
                     return !error_recovery && scanner->depth > 0;
-                default:
-                    return false;
             }
         }
 
@@ -1002,8 +1148,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     _switch:
         switch (lexer->lookahead) {
-            case ',':
+            // A `.` continues an expression, unless it starts a number such as `.5`.
             case '.':
+                skip(lexer);
+                return iswdigit(lexer->lookahead);
+            case ',':
             case ':':
             case '*':
             case '%':
@@ -1065,30 +1214,21 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return true;
                 }
 
-                // In a class body, `constructor` starts a secondary constructor; elsewhere, a statement only where a variable
-                // named `constructor` is accessed or assigned. Past `MAX_FRAMES`, where the frames are lost, it is taken
-                // as a member.
+                // In a class body, `constructor` starts a secondary constructor, and in a `when`'s braces an entry;
+                // elsewhere, a statement only where a variable named `constructor` is accessed or assigned. Past
+                // `MAX_FRAMES`, where the frames are lost, it is taken as a member.
                 if (index == 5) {
                     while (iswspace(lexer->lookahead)) {
                         skip(lexer);
                     }
-                    if (error_recovery || in_members(scanner) || scanner->depth > MAX_FRAMES || lexer->lookahead == '.' ||
-                        lexer->lookahead == '=') {
+                    if (error_recovery || in_members(scanner) || in_entries(scanner) || scanner->depth > MAX_FRAMES ||
+                        lexer->lookahead == '.' || lexer->lookahead == '=') {
                         return true;
                     }
                 }
-                // Ordinarily, we should not insert a semicolon if there is an `else` on the next line,
-                // except for when it's a 'when entry', which has a `->` after the `else`.
+                // An `else` on the next line continues an `if`, unless it starts a `when` entry.
                 else if (index == 0) {
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    if (lexer->lookahead == '-') {
-                        skip(lexer);
-                        if (lexer->lookahead == '>') {
-                            return true;
-                        }
-                    }
+                    return in_entries(scanner) ? scan_else_entry_rest(lexer) : scan_else_arrow(lexer);
                 }
                 // A `get` or `set` that does not start an accessor starts a statement, e.g. a call.
                 else if (index == 3 || index == 4) {
@@ -1100,9 +1240,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     // quadratic in the input length.
                     return !(valid_symbols[index == 3 ? GET : SET] && !error_recovery && scan_accessor_rest(lexer, index == 4));
                 }
-                // If `in` was found and this specific external keyword is valid,
-                // return a semi since it's being used in a range test
-                else if (index == 1 && valid_symbols[IN]) {
+                // As in Kotlin, a line break ends an expression before `in`, which may start a range test of a `when` entry.
+                else if (index == 1) {
                     return true;
                 }
                 else if (index == 8) {
@@ -1547,6 +1686,154 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars) {
         }
     }
     return previous != '.';
+}
+
+// Scans the rest of a `when` entry's `else` (`else ->`, or the guard of `else if x ->`), which the `else` of an `if`
+// (`else if (x) y`) is not: a parenthesized `if` condition is followed by a body, whereas a guard's parenthesized
+// operand is followed by `->` or a binary operator. The scan of that operand is bounded, so that error recovery, which
+// may rescan it at every position, stays linear in the input length; whitespace and comments are not.
+static bool scan_else_entry_rest(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true)) {
+        return false;
+    }
+    if (lexer->lookahead == '-') {
+        skip(lexer);
+        return lexer->lookahead == '>';
+    }
+    if (!scan_word(lexer, "if") || is_identifier_part(lexer->lookahead) || !skip_whitespace_and_comments(lexer, true)) {
+        return false;
+    }
+    if (lexer->lookahead != '(') {
+        return true;
+    }
+    skip(lexer);
+    TypeLookahead operand = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
+        .source = lexer,
+        .remaining = 1024,
+    };
+    if (!skip_to_closing_bracket(&operand.lexer, '(', ')', 0)) {
+        return false;
+    }
+    // A `/` that starts no comment is a division.
+    return !skip_whitespace_and_comments(lexer, true) || scan_binary_operator_or_arrow(lexer);
+}
+
+// Scans the start of `->`, of a binary operator, or of a postfix `!!` or index, with which no `if` body starts. A sign
+// may start either, so it is taken as an `if` body's, as Kotlin takes an `else` after an `if`.
+// code-gauge-allow functionNcss 33 -- one case per operator start; splitting the switch would only scatter it
+static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
+    if (lexer->lookahead == '!') {
+        return scan_bang_continuation(lexer);
+    }
+    int32_t c = lexer->lookahead;
+    skip(lexer);
+    switch (c) {
+        case '-':
+            return lexer->lookahead == '>';
+        case '[':
+            return true;
+        case '&':
+        case '|':
+            return lexer->lookahead == c;
+        case '=':
+            return lexer->lookahead == '=';
+        case '?':
+            return lexer->lookahead == ':' || lexer->lookahead == '.';
+        // Unlike `.5`, a member access
+        case '.':
+            return !iswdigit(lexer->lookahead);
+        case '<':
+        case '>':
+        case '*':
+        case '%':
+            return true;
+        // `as` and `as?`
+        case 'a':
+            if (lexer->lookahead != 's') {
+                return false;
+            }
+            skip(lexer);
+            return !is_identifier_part(lexer->lookahead);
+        case 'i':
+            return scan_is_or_in_rest(lexer);
+        default:
+            return false;
+    }
+}
+
+// Scans `!=`, `!is`, or `!in`, or else postfix `!!`s followed by `->` or an operator, which continue a guard's operand,
+// unlike a prefix `!!b` starting an `if` body.
+static bool scan_bang_continuation(TSLexer *lexer) {
+    while (lexer->lookahead == '!') {
+        skip(lexer);
+        if (lexer->lookahead == '=') {
+            return true;
+        }
+        if (lexer->lookahead == 'i') {
+            skip(lexer);
+            return scan_is_or_in_rest(lexer);
+        }
+        if (lexer->lookahead != '!') {
+            return false;
+        }
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) {
+            return true;
+        }
+    }
+    return scan_binary_operator_or_arrow(lexer);
+}
+
+// Scans the rest of the whole word `is` or `in` after its `i`.
+static bool scan_is_or_in_rest(TSLexer *lexer) {
+    if (lexer->lookahead != 's' && lexer->lookahead != 'n') {
+        return false;
+    }
+    skip(lexer);
+    return !is_identifier_part(lexer->lookahead);
+}
+
+// Scans `->` after whitespace and comments, as after the `else` of a `when` entry.
+static bool scan_else_arrow(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '-') {
+        return false;
+    }
+    skip(lexer);
+    return lexer->lookahead == '>';
+}
+
+// Tells whether the annotations ahead precede something other than a lambda, which would be a trailing lambda of the
+// call before them. The scan is bounded like `scan_else_entry_rest`; at the bound, they are taken as a lambda's.
+static bool scan_annotated_condition_start(TSLexer *lexer) {
+    TypeLookahead lookahead = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
+        .source = lexer,
+        .remaining = 1024,
+    };
+    return scan_bounded_annotated_condition_start(&lookahead.lexer);
+}
+
+static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
+    while (lexer->lookahead == '@') {
+        if (!scan_member_annotation(lexer, true) || !skip_whitespace_and_comments(lexer, true)) {
+            return false;
+        }
+    }
+    // A lambda may have a label after its annotations; any other name starts a condition.
+    if (is_identifier_start(lexer->lookahead)) {
+        while (is_identifier_part(lexer->lookahead)) {
+            skip(lexer);
+        }
+        if (lexer->lookahead != '@') {
+            return !lexer->eof(lexer);
+        }
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) {
+            return false;
+        }
+    }
+    return !lexer->eof(lexer) && lexer->lookahead != '{';
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
