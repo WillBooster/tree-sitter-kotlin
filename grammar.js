@@ -145,7 +145,6 @@ module.exports = grammar({
     sym('_keyword_reference'),
     // never scanned: see `_template_name`
     sym('_keyword_reference_end'),
-    'where',
     sym('_separated_member_start'),
     sym('_unseparated_member_start'),
     sym('_infix_position'),

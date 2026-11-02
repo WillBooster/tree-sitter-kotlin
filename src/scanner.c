@@ -37,7 +37,6 @@ enum TokenType {
     CONTEXT_END,
     KEYWORD_REFERENCE,
     KEYWORD_REFERENCE_END,
-    WHERE,
     SEPARATED_MEMBER_START,
     UNSEPARATED_MEMBER_START,
     INFIX_POSITION,
@@ -790,7 +789,7 @@ static bool scan_is_or_in_rest(TSLexer *lexer);
 
 static bool scan_bang_continuation(TSLexer *lexer);
 
-
+static bool scan_type_constraint_start(TSLexer *lexer);
 
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 
@@ -1245,7 +1244,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return true;
                 }
                 else if (index == 8) {
-                    return !valid_symbols[WHERE];
+                    return !scan_type_constraint_start(lexer);
                 }
                 else if (index == 9 || index == 10) {
                     if (error_recovery || !valid_symbols[TRY_CONTINUATION_POSITION]) return true;
@@ -1834,6 +1833,26 @@ static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
         }
     }
     return !lexer->eof(lexer) && lexer->lookahead != '{';
+}
+
+// Scans the rest of `where T :` after `where`, which starts the type constraints of a declaration, never a statement.
+static bool scan_type_constraint_start(TSLexer *lexer) {
+    if (!skip_whitespace_and_comments(lexer, true)) {
+        return false;
+    }
+    if (lexer->lookahead == '`') {
+        skip(lexer);
+        if (!skip_literal_rest(lexer, '`', 0)) {
+            return false;
+        }
+    } else if (is_identifier_start(lexer->lookahead)) {
+        while (is_template_name_part(lexer->lookahead)) {
+            skip(lexer);
+        }
+    } else {
+        return false;
+    }
+    return skip_whitespace_and_comments(lexer, true) && lexer->lookahead == ':';
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
