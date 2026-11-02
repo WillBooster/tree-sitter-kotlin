@@ -1003,31 +1003,31 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
-                // `import`, or else a hard keyword that starts an expression, which no complete expression continues
-                // with.
-                case 'b':
-                case 'c':
-                case 'f':
-                case 'i':
-                case 'n':
-                case 'o':
-                case 'r':
-                case 's':
-                case 't':
-                case 'w': {
-                    uint8_t keyword = 0;
-                    if (!scan_words(lexer,
-                                    (const char[16][16]){"import", "break", "continue", "false", "fun", "if", "null",
-                                                         "object", "return", "super", "this", "throw", "true", "try",
-                                                         "when"},
-                                    (char[16]){0}, &keyword)) {
+                // `import`, or else a hard keyword that starts an expression or a label (`l@`), which no complete
+                // expression continues with; a name may continue it as an infix function.
+                default: {
+                    if (!iswalpha(lexer->lookahead)) {
                         return false;
                     }
-                    if (keyword == 0) {
+                    uint8_t keyword = 0;
+                    bool listed = scan_words(lexer,
+                                             (const char[16][16]){"import", "break", "continue", "false", "fun", "if",
+                                                                  "null", "object", "return", "super", "this", "throw",
+                                                                  "true", "try", "when"},
+                                             (char[16]){0}, &keyword);
+                    if (listed && keyword == 0) {
                         return true;
+                    }
+                    while (is_identifier_part(lexer->lookahead)) {
+                        skip(lexer);
+                    }
+                    if (!listed && lexer->lookahead != '@') {
+                        return false;
                     }
                 }
                     // fall through
+                // An annotation, which never continues a complete expression either
+                case '@':
                 case '0':
                 case '1':
                 case '2':
@@ -1055,8 +1055,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 // past `MAX_FRAMES`, and at the top level no `}` closes anything.
                 case '}':
                     return !error_recovery && scanner->depth > 0;
-                default:
-                    return false;
             }
         }
 
