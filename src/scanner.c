@@ -1614,24 +1614,24 @@ static bool scan_bounded_else_entry_rest(TSLexer *lexer) {
     return !skip_whitespace_and_comments(lexer, true) || scan_binary_operator_or_arrow(lexer);
 }
 
-// Scans the start of `->` or of a binary operator, which no expression starts with.
+// Scans the start of `->`, of a binary operator, or of a postfix `!!` or index, with which no `if` body starts. A sign
+// may start either, so it is taken as an `if` body's, as Kotlin takes an `else` after an `if`.
 // code-gauge-allow functionNcss 37 -- one case per operator start; splitting the switch would only scatter it
 static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
     int32_t c = lexer->lookahead;
     skip(lexer);
     switch (c) {
-        // `->`, or else an arithmetic operator or a sign starting an `if` body: as the guard's, only before `->`
         case '-':
-            return lexer->lookahead == '>' || scan_line_arrow(lexer);
-        case '+':
-            return scan_line_arrow(lexer);
+            return lexer->lookahead == '>';
+        case '[':
+            return true;
         case '&':
         case '|':
             return lexer->lookahead == c;
         case '=':
             return lexer->lookahead == '=';
         case '!':
-            if (lexer->lookahead == '=') {
+            if (lexer->lookahead == '=' || lexer->lookahead == '!') {
                 return true;
             }
             if (lexer->lookahead != 'i') {
@@ -1702,6 +1702,11 @@ static bool scan_line_arrow(TSLexer *lexer) {
                 return false;
             }
             depth--;
+        } else if (c == '"' && lexer->lookahead == '"') {
+            // An empty string or a raw string, which may span lines.
+            if (!skip_literal_rest(lexer, '"', 0)) {
+                return false;
+            }
         } else if (c == '"' || c == '\'' || c == '`') {
             // A literal's content ends at its quote or, as far as this line is concerned, at the line's end.
             while (!lexer->eof(lexer) && lexer->lookahead != c && lexer->lookahead != '\n') {
