@@ -1734,8 +1734,13 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
         case '=':
             return lexer->lookahead == '=';
         case '!':
-            if (lexer->lookahead == '=' || lexer->lookahead == '!') {
+            if (lexer->lookahead == '=') {
                 return true;
+            }
+            // A postfix `!!` continues the operand, unlike a prefix `!!b` starting a body.
+            if (lexer->lookahead == '!') {
+                skip(lexer);
+                return !skip_whitespace_and_comments(lexer, true) || scan_binary_operator_or_arrow(lexer);
             }
             if (lexer->lookahead != 'i') {
                 return false;
