@@ -1031,6 +1031,13 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
+                // A number such as `.5`, unlike a member access
+                case '.':
+                    skip(lexer);
+                    if (!iswdigit(lexer->lookahead)) {
+                        return false;
+                    }
+                    goto entry_start;
                 // Annotations, which continue a call only as those of a trailing lambda; an immediate `@` is a label's
                 // (`super<T>@Outer`).
                 case '@':
