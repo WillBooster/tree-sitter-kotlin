@@ -6812,6 +6812,18 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_return_value_position"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
                 "name": "expression"
               },
               {
@@ -8502,6 +8514,10 @@
     {
       "type": "SYMBOL",
       "name": "_import_continue"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_return_value_position"
     }
   ],
   "inline": [

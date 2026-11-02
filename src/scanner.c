@@ -45,6 +45,7 @@ enum TokenType {
     INFIX_GET_IDENTIFIER,
     IMPORT_END,
     IMPORT_CONTINUE,
+    RETURN_VALUE_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -756,6 +757,8 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer);
 
 static bool skip_nested(TSLexer *lexer, int32_t c);
 
+static bool scan_is_or_in_rest(TSLexer *lexer);
+
 static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 
 static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
@@ -978,7 +981,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '9':
                 case '"':
                 case '\'':
-                    return scan_same_line_entry_arrow(lexer);
+                    // As in Kotlin, a literal after `return` is its value.
+                    return !valid_symbols[RETURN_VALUE_POSITION] && scan_same_line_entry_arrow(lexer);
                 // A string after an expression that may end here, e.g. `return $$"…"`.
                 case '$':
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
@@ -1586,6 +1590,7 @@ static bool scan_else_entry_rest(TSLexer *lexer) {
 }
 
 // Scans the start of `->` or of a binary operator, which no expression starts with.
+// code-gauge-allow functionNcss 37 -- one case per operator start; splitting the switch would only scatter it
 static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
     int32_t c = lexer->lookahead;
     skip(lexer);
@@ -1598,27 +1603,46 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
         case '=':
             return lexer->lookahead == '=';
         case '!':
-            return lexer->lookahead == '=' || lexer->lookahead == 'i';
+            if (lexer->lookahead == '=') {
+                return true;
+            }
+            if (lexer->lookahead != 'i') {
+                return false;
+            }
+            skip(lexer);
+            return scan_is_or_in_rest(lexer);
         case '?':
             return lexer->lookahead == ':' || lexer->lookahead == '.';
+        // Unlike `.5`, a member access
+        case '.':
+            return !iswdigit(lexer->lookahead);
         case '<':
         case '>':
-        case '.':
         case '*':
         case '/':
         case '%':
             return true;
-        // `as`, `as?`, `is`, and `in`
+        // `as` and `as?`
         case 'a':
-        case 'i':
-            if (lexer->lookahead != 's' && (c == 'a' || lexer->lookahead != 'n')) {
+            if (lexer->lookahead != 's') {
                 return false;
             }
             skip(lexer);
             return !is_identifier_part(lexer->lookahead);
+        case 'i':
+            return scan_is_or_in_rest(lexer);
         default:
             return false;
     }
+}
+
+// Scans the rest of the whole word `is` or `in` after its `i`.
+static bool scan_is_or_in_rest(TSLexer *lexer) {
+    if (lexer->lookahead != 's' && lexer->lookahead != 'n') {
+        return false;
+    }
+    skip(lexer);
+    return !is_identifier_part(lexer->lookahead);
 }
 
 // Tells whether a `->` follows on the same line outside brackets, literals, and comments, as after the condition of a

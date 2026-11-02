@@ -153,6 +153,8 @@ module.exports = grammar({
     sym('_infix_get_identifier'),
     sym('_import_end'),
     sym('_import_continue'),
+    // never scanned: it tells the scanner that a value may follow `return` (see `return_expression`)
+    sym('_return_value_position'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -930,7 +932,13 @@ module.exports = grammar({
       choice(prec(1, seq(sym('_try_continuation_position'), 'finally', $.block)), seq('finally', $.block)),
 
     return_expression: ($) =>
-      prec.right(seq(choice('return', seq('return@', field('label', $.identifier))), optional($.expression))),
+      prec.right(
+        seq(
+          choice('return', seq('return@', field('label', $.identifier))),
+          optional(sym('_return_value_position')),
+          optional($.expression)
+        )
+      ),
 
     throw_expression: ($) => seq('throw', $.expression),
 
