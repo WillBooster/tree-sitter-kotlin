@@ -959,10 +959,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '$':
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
                 // A class member may end on the line that closes its body (`class A { val x = 1 }`). A statement list
-                // also accepts this separator before its `}`, so the frames, which are lost past `MAX_FRAMES`, are not
-                // consulted.
+                // also accepts this separator before its `}`, so only the depth is consulted: the frames' kinds are lost
+                // past `MAX_FRAMES`, and at the top level no `}` closes anything.
                 case '}':
-                    return !error_recovery;
+                    return !error_recovery && scanner->depth > 0;
                 default:
                     return false;
             }
