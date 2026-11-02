@@ -3245,12 +3245,7 @@
           ]
         },
         {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_arguments_end"
-          },
-          "named": false,
+          "type": "STRING",
           "value": ")"
         }
       ]
@@ -3828,12 +3823,7 @@
           ]
         },
         {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_arguments_end"
-          },
-          "named": false,
+          "type": "STRING",
           "value": ")"
         }
       ]
@@ -8446,10 +8436,6 @@
     {
       "type": "SYMBOL",
       "name": "_delegation_end"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_arguments_end"
     },
     {
       "type": "SYMBOL",
