@@ -1721,6 +1721,24 @@ static bool scan_else_entry_rest(TSLexer *lexer) {
 // may start either, so it is taken as an `if` body's, as Kotlin takes an `else` after an `if`.
 // code-gauge-allow functionNcss 37 -- one case per operator start; splitting the switch would only scatter it
 static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
+    // A postfix `!!` continues the operand, unlike a prefix `!!b` starting a body.
+    while (lexer->lookahead == '!') {
+        skip(lexer);
+        if (lexer->lookahead == '=') {
+            return true;
+        }
+        if (lexer->lookahead == 'i') {
+            skip(lexer);
+            return scan_is_or_in_rest(lexer);
+        }
+        if (lexer->lookahead != '!') {
+            return false;
+        }
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) {
+            return true;
+        }
+    }
     int32_t c = lexer->lookahead;
     skip(lexer);
     switch (c) {
@@ -1733,20 +1751,6 @@ static bool scan_binary_operator_or_arrow(TSLexer *lexer) {
             return lexer->lookahead == c;
         case '=':
             return lexer->lookahead == '=';
-        case '!':
-            if (lexer->lookahead == '=') {
-                return true;
-            }
-            // A postfix `!!` continues the operand, unlike a prefix `!!b` starting a body.
-            if (lexer->lookahead == '!') {
-                skip(lexer);
-                return !skip_whitespace_and_comments(lexer, true) || scan_binary_operator_or_arrow(lexer);
-            }
-            if (lexer->lookahead != 'i') {
-                return false;
-            }
-            skip(lexer);
-            return scan_is_or_in_rest(lexer);
         case '?':
             return lexer->lookahead == ':' || lexer->lookahead == '.';
         // Unlike `.5`, a member access
