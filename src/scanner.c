@@ -1422,6 +1422,9 @@ comment:
 
     if (lexer->lookahead == '/') {
         advance(lexer);
+        if (predicting) {
+            return lexer->lookahead == '/' || lexer->lookahead == '*';
+        }
         if (lexer->lookahead == '/') {
             while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
                 advance(lexer);
@@ -1434,9 +1437,6 @@ comment:
         }
         if (lexer->lookahead != '*') {
             return false;
-        }
-        if (predicting) {
-            return true;
         }
         advance(lexer);
         // As in Kotlin, an unterminated comment runs to the end of the input. Failing there instead would let each `/*`
