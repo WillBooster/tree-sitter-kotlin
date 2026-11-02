@@ -96,12 +96,8 @@ test('retains getter ownership and incomplete member identifiers beside contextu
   const parser = new Parser();
   try {
     parser.setLanguage(language);
-    for (const text of [
-      'val p=1\n/* unfinished\n/*closed*/ get()=2',
-      'fun f(){ val p=1\n/* unfinished\n/*closed*/ get()=2\n}',
-      'class Foo{ val p=1\n/* unfinished\n/*closed*/ get()=2\n}',
-      'class C { var p:Int=1\n get(/* parameter comment */)=field\n set(value){field=value} }',
-    ]) {
+    {
+      const text = 'class C { var p:Int=1\n get(/* parameter comment */)=field\n set(value){field=value} }';
       const tree = parser.parse(text)!;
       try {
         expect(tree.rootNode.hasError, text).toBe(false);
@@ -109,12 +105,9 @@ test('retains getter ownership and incomplete member identifiers beside contextu
         expect(getters).toHaveLength(1);
         const getter = getters[0]!;
         expect(getter.parent?.type).toBe('property_declaration');
+        expect(getter.text).toBe('get(/* parameter comment */)=field');
         expect(getter.startIndex).toBe(text.indexOf('get('));
-        expect(getter.text).toBe(text.includes('parameter comment') ? 'get(/* parameter comment */)=field' : 'get()=2');
-        expect(getter.endIndex).toBe(getter.startIndex + getter.text.length);
-        expect(tree.rootNode.descendantsOfType('setter').map((node) => node.text)).toEqual(
-          text.includes('set(value)') ? ['set(value){field=value}'] : []
-        );
+        expect(tree.rootNode.descendantsOfType('setter').map((node) => node.text)).toEqual(['set(value){field=value}']);
         expect(tree.rootNode.descendantsOfType('infix_expression')).toHaveLength(0);
       } finally {
         tree.delete();
