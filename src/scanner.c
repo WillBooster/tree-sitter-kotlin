@@ -979,28 +979,34 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                         return true;
                     }
                     return false;
-                case 'i':
-                    return scan_word(lexer, "import");
                 // A `when` entry may start on the line where the previous one ends (`1 -> a 2 -> b`, `1 -> a else -> b`).
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
-                // A hard keyword that starts an expression, which no complete expression continues with.
+                // `import`, or else a hard keyword that starts an expression, which no complete expression continues
+                // with.
                 case 'b':
                 case 'c':
                 case 'f':
+                case 'i':
                 case 'n':
                 case 'o':
                 case 'r':
                 case 's':
                 case 't':
-                case 'w':
+                case 'w': {
+                    uint8_t keyword = 0;
                     if (!scan_words(lexer,
-                                    (const char[16][16]){"break", "continue", "false", "fun", "null", "object",
-                                                         "return", "super", "this", "throw", "true", "try", "when"},
-                                    (char[16]){0}, NULL)) {
+                                    (const char[16][16]){"import", "break", "continue", "false", "fun", "if", "null",
+                                                         "object", "return", "super", "this", "throw", "true", "try",
+                                                         "when"},
+                                    (char[16]){0}, &keyword)) {
                         return false;
                     }
+                    if (keyword == 0) {
+                        return true;
+                    }
+                }
                     // fall through
                 case '0':
                 case '1':
