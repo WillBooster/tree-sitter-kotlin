@@ -1305,15 +1305,13 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                         skip(lexer);
                         if (interpolation && (lexer->lookahead == '{' || is_identifier_start(lexer->lookahead))) ambiguous = true;
                     }
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
+                    if (!skip_whitespace_and_comments(lexer, true)) return true;
                     char scanned_word[MAX_WORD_SIZE] = {0};
                     bool visibility = scan_words(lexer, (const char[16][16]){"public", "private", "protected", "internal"}, scanned_word, NULL);
                     if (!visibility) return strncmp(scanned_word, "constructor", 11) != 0;
                     if (parentheses || comments || quote || ambiguous || line_comment) return true;
                     memset(scanned_word, 0, MAX_WORD_SIZE);
-                    while (iswspace(lexer->lookahead)) skip(lexer);
+                    if (!skip_whitespace_and_comments(lexer, true)) return true;
                     if (!scan_words(lexer, (const char[16][16]){"constructor"}, scanned_word, NULL)) return true;
                     while (iswspace(lexer->lookahead)) skip(lexer);
                     return !scan_constructor_parameter_start(lexer);
@@ -1329,10 +1327,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                             saw_paren = false;
                         }
                     }
-                    while (iswspace(lexer->lookahead)) {
-                        skip(lexer);
-                    }
-                    if (lexer->lookahead == '/') {
+                    if (!skip_whitespace_and_comments(lexer, true)) {
                         return true;
                     }
                     goto _switch;

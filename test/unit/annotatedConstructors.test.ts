@@ -74,6 +74,28 @@ test.each([
   }
 });
 
+test.each(['/* c */ ', '// c\n'])(
+  'reads a constructor or accessor after %j on the line after its annotation',
+  (comment) => {
+    const parser = new Parser().setLanguage(language);
+    const source = `class X\n@JvmOverloads\n${comment}constructor(val a: Int)\nobject O {\n    val x: Int\n        @Suppress("a")\n        ${comment}get() = 1\n    var y: Int = 0\n        @Suppress("b")\n        ${comment}set(value) {}\n}\n`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      expect(classesWithPrimaryConstructors(tree.rootNode).map(({ constructor }) => constructor.text)).toEqual([
+        `@JvmOverloads\n${comment}constructor(val a: Int)`,
+      ]);
+      expect(tree.rootNode.descendantsOfType(['getter', 'setter']).map((node) => node.text)).toEqual([
+        `@Suppress("a")\n        ${comment}get() = 1`,
+        `@Suppress("b")\n        ${comment}set(value) {}`,
+      ]);
+    } finally {
+      tree.delete();
+      parser.delete();
+    }
+  }
+);
+
 test('ends the input in an unfinished nested comment before a getter', () => {
   const parser = new Parser().setLanguage(language);
   const source = 'fun f(){ val p=1\n/* unfinished\n/*closed*/ get()=2\n}';
