@@ -5,7 +5,7 @@ const { grammar, alias, choice, field, optional, prec, repeat, repeat1, seq, sym
   /** @type {typeof globalThis & import('@willbooster/web-tree-sitter/dsl').DSL} */ (globalThis);
 
 /** @typedef {import('@willbooster/web-tree-sitter/dsl').RuleOrLiteral} RuleOrLiteral */
-/** @typedef {import('@willbooster/web-tree-sitter/dsl').GrammarSymbols<'value_argument'>} GrammarSymbols */
+/** @typedef {import('@willbooster/web-tree-sitter/dsl').GrammarSymbols<'value_argument' | 'expression' | '_when_condition' | 'block' | 'statement'>} GrammarSymbols */
 
 const PREC = {
   SPREAD: 1,
@@ -889,18 +889,37 @@ module.exports = grammar({
     collection_literal: ($) => seq('[', optionalCommaSep1($.expression), ']'),
 
     when_expression: ($) =>
-      seq('when', optional($.when_subject), '{', sym('_open_entries'), repeat($.when_entry), '}', sym('_close_braces')),
+      seq(
+        'when',
+        optional($.when_subject),
+        '{',
+        sym('_open_entries'),
+        repeat(choice($.when_entry, seq(alias($._unseparated_when_entry, $.when_entry), $._else_when_entries))),
+        '}',
+        sym('_close_braces')
+      ),
+
+    // The scanner puts no separator before an `else` other than `else ->`, since it cannot tell whether an `if` at the
+    // end of a statement body takes it. As in Kotlin, such an `if` takes it, `if_expression` being right-associative, and
+    // otherwise the `else` starts the next entry, so a statement body needs no separator before an entry that starts so.
+    _unseparated_when_entry: ($) => whenEntry($, whenEntryHead($), field('body', $.statement)),
+
+    // Unlike `repeat`, this right recursion lets a separator follow every statement body that `else` may follow, so the
+    // parse states of those bodies merge with those of other statements instead of duplicating every expression state.
+    _else_when_entries: ($) =>
+      choice(
+        alias($._else_when_entry, $.when_entry),
+        seq(alias($._unseparated_else_when_entry, $.when_entry), $._else_when_entries)
+      ),
+
+    _unseparated_else_when_entry: ($) => whenEntry($, 'else', field('body', $.statement)),
+
+    _else_when_entry: ($) => whenEntry($, 'else', whenEntryBody($)),
 
     when_subject: ($) =>
       seq('(', optional(seq(repeat($.annotation), 'val', $.variable_declaration, '=')), $.expression, ')'),
 
-    when_entry: ($) =>
-      seq(
-        choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else'),
-        optional(seq('if', field('guard', $.expression))),
-        '->',
-        choice(seq(field('body', $.block), optional(sym('_semi'))), seq(field('body', $.statement), sym('_semi')))
-      ),
+    when_entry: ($) => whenEntry($, whenEntryHead($), whenEntryBody($)),
 
     _when_condition: ($) => choice($.expression, $.range_test, $.type_test),
 
@@ -1155,4 +1174,27 @@ function optionalCommaSep1(rule) {
  */
 function valueArguments($, open) {
   return seq(open, optionalCommaSep1($.value_argument), ')');
+}
+
+/**
+ * @param {GrammarSymbols} $
+ * @param {RuleOrLiteral} head
+ * @param {RuleOrLiteral} body
+ */
+function whenEntry($, head, body) {
+  return seq(head, optional(seq('if', field('guard', $.expression))), '->', body);
+}
+
+/**
+ * @param {GrammarSymbols} $
+ */
+function whenEntryHead($) {
+  return choice(seq(commaSep1(field('condition', $._when_condition)), optional(',')), 'else');
+}
+
+/**
+ * @param {GrammarSymbols} $
+ */
+function whenEntryBody($) {
+  return choice(seq(field('body', $.block), optional(sym('_semi'))), seq(field('body', $.statement), sym('_semi')));
 }

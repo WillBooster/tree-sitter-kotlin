@@ -1629,6 +1629,102 @@ fun describe(x: Int) {
                     (string_content)))))))))))
 
 ================================================================================
+Guarded else entries after statement bodies
+================================================================================
+
+fun describe(x: Int, a: Boolean, b: Boolean, p: (Int) -> Boolean) {
+    when (x) {
+        0 -> println(x)
+        else if (a) andAlso b -> println(a)
+        else if (x) + 1 > 0 -> println(b)
+        else if (p)(x) -> println(p)
+        else -> if (a) println(x)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (function_type
+          (function_type_parameters
+            (user_type
+              (identifier)))
+          (user_type
+            (identifier)))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier)))))
+          (when_entry
+            (infix_expression
+              (parenthesized_expression
+                (identifier))
+              (identifier)
+              (identifier))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier)))))
+          (when_entry
+            (binary_expression
+              (binary_expression
+                (parenthesized_expression
+                  (identifier))
+                (number_literal))
+              (number_literal))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier)))))
+          (when_entry
+            (call_expression
+              (parenthesized_expression
+                (identifier))
+              (value_arguments
+                (value_argument
+                  (identifier))))
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier)))))
+          (when_entry
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (identifier)))))))))))
+
+================================================================================
 Typed destructuring lambda parameters
 ================================================================================
 
