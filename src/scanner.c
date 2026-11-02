@@ -207,10 +207,15 @@ static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
 
 static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, bool skip_chars);
 
+static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting, bool skip_chars);
+
 // Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
 // Returns false at the end of the input or when templates nest too deeply.
+// code-gauge-allow functionCognitiveComplexity 16 -- one loop over the bracket, comment, and literal cases it skips
 static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting, bool skip_chars) {
     unsigned depth = 1;
+    // The dollars right before a string's quote: two or more prefix a multi-dollar string.
+    unsigned dollars = 0;
     while (depth > 0) {
         int32_t c = lexer->lookahead;
         if (lexer->eof(lexer)) {
@@ -218,6 +223,7 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
         }
         if (c == '/') {
             scan_whitespace_and_comments(lexer, true, skip_chars);
+            dollars = 0;
             continue;
         }
         lexer->advance(lexer, skip_chars);
@@ -225,9 +231,11 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
             depth++;
         } else if (c == close) {
             depth--;
-        } else if ((c == '"' || c == '\'' || c == '`') && !scan_literal_rest(lexer, c, nesting, skip_chars)) {
+        } else if ((c == '"' || c == '\'' || c == '`') &&
+                   !scan_string_rest(lexer, c, dollars > 1 ? dollars : 1, nesting, skip_chars)) {
             return false;
         }
+        dollars = c == '$' ? dollars + 1 : 0;
     }
     return true;
 }
@@ -235,6 +243,12 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
 // Skips the rest of a string or character literal or a backticked name after its opening quote, including the
 // expressions of string templates. Returns false where `skip_to_closing_bracket` does.
 static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, bool skip_chars) {
+    return scan_string_rest(lexer, quote, 1, nesting, skip_chars);
+}
+
+// Like `scan_literal_rest`, for a string whose interpolations start with `dollars` dollars.
+// code-gauge-allow functionCognitiveComplexity 23 -- one loop over a literal's quotes, escapes, and interpolations
+static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting, bool skip_chars) {
     bool raw = false;
     if (quote == '"' && lexer->lookahead == '"') {
         lexer->advance(lexer, skip_chars);
@@ -246,14 +260,16 @@ static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, b
     }
     // A raw string ends at the last of three or more quotes.
     unsigned quotes = 0;
+    unsigned run = 0;
     while (!lexer->eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
         int32_t c = lexer->lookahead;
         quotes = c == '"' ? quotes + 1 : 0;
+        run = c == '$' ? run + 1 : 0;
         lexer->advance(lexer, skip_chars);
         // Only single-line strings and character literals have escapes.
         if (c == '\\' && !raw && quote != '`') {
             lexer->advance(lexer, skip_chars);
-        } else if (c == '$' && quote == '"' && lexer->lookahead == '{') {
+        } else if (run >= dollars && quote == '"' && lexer->lookahead == '{') {
             lexer->advance(lexer, skip_chars);
             if (nesting == MAX_TEMPLATE_NESTING || !scan_to_closing_bracket(lexer, '{', '}', nesting + 1, skip_chars)) {
                 return false;
