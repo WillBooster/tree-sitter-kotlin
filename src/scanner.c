@@ -983,6 +983,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return newline_before_comment && scan_prefix_sign(lexer);
                 case '!':
                     skip(lexer);
+                    // Inside a `when`'s braces, a prefix `!` starts the next entry's condition (`… !flag -> …`).
+                    if (lexer->lookahead != 'i' && lexer->lookahead != '=' && lexer->lookahead != '!') {
+                        return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
+                    }
                     goto continue_not_is_from_semi;
                 case '?':
                     if (valid_symbols[Q_DOT]) {
