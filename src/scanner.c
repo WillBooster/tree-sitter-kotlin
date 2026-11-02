@@ -28,7 +28,6 @@ enum TokenType {
     VAL,
     PRIMARY_CONSTRUCTOR_POSITION,
     DELEGATION_END,
-    ARGUMENTS_END,
     OPEN_STATEMENTS,
     OPEN_ENTRIES,
     OPEN_MEMBERS,
@@ -1355,17 +1354,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         lexer->mark_end(lexer);
         lexer->result_symbol = DESTRUCTURING_TYPE_START;
         return has_destructuring_parameter_arrow(lexer);
-    }
-
-    // The `)` that ends a call's arguments, whose lookahead reaches the next token, on which whether the call takes a
-    // trailing lambda depends. Ending the arguments with one token lets error recovery insert it as missing when the
-    // `)` is absent.
-    if (valid_symbols[ARGUMENTS_END] && !error_recovery && lexer->lookahead == ')') {
-        advance(lexer);
-        lexer->mark_end(lexer);
-        lexer->result_symbol = ARGUMENTS_END;
-        skip_whitespace_and_comments(lexer, true);
-        return true;
     }
 
     if (lexer->lookahead == '$' && can_start_multi_dollar_string) {

@@ -130,8 +130,6 @@ module.exports = grammar({
     sym('_primary_constructor_position'),
     // empty: it ends a delegation expression in a class header before `{` (see `explicit_delegation`)
     sym('_delegation_end'),
-    // the `)` that ends a call's arguments (see `value_arguments`)
-    sym('_arguments_end'),
     // empty: they tell the scanner when a statement list, the entries of a `when`, or the member list of a class body
     // opens in braces, and when any closes (see `frames` in the scanner)
     sym('_open_statements'),
@@ -1147,12 +1145,12 @@ function optionalCommaSep1(rule) {
 }
 
 /**
- * Creates the arguments of a call or an annotation, ending them with the scanner's `)` token.
+ * Creates the arguments of a call or an annotation.
  *
  * @param {GrammarSymbols} $
  * @param {RuleOrLiteral} open
  *
  */
 function valueArguments($, open) {
-  return seq(open, optionalCommaSep1($.value_argument), alias(sym('_arguments_end'), ')'));
+  return seq(open, optionalCommaSep1($.value_argument), ')');
 }
