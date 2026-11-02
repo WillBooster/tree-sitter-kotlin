@@ -981,13 +981,36 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '+':
                 case '-':
                     return newline_before_comment && scan_prefix_sign(lexer);
-                case '!':
+                case '!': {
                     skip(lexer);
-                    // Inside a `when`'s braces, a prefix `!` starts the next entry's condition (`… !flag -> …`).
-                    if (lexer->lookahead != 'i' && lexer->lookahead != '=' && lexer->lookahead != '!') {
-                        return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
+                    if (lexer->lookahead == '=' || lexer->lookahead == '!') {
+                        return false;
                     }
-                    goto continue_not_is_from_semi;
+                    // Inside a `when`'s braces, a prefix `!` starts the next entry's condition (`… !flag -> …`), unlike
+                    // `!is` and `!in`.
+                    bool starts_entry = !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
+                    if (lexer->lookahead != 'i') {
+                        return starts_entry;
+                    }
+                    if (!starts_entry) {
+                        goto continue_not_is_from_semi;
+                    }
+                    advance(lexer);
+                    int32_t operator_end = lexer->lookahead;
+                    if (operator_end != 's' && operator_end != 'n') {
+                        return true;
+                    }
+                    advance(lexer);
+                    if (is_identifier_part(lexer->lookahead)) {
+                        return true;
+                    }
+                    if (operator_end == 'n') {
+                        return false;
+                    }
+                    lexer->result_symbol = NOT_IS;
+                    lexer->mark_end(lexer);
+                    return true;
+                }
                 case '?':
                     if (valid_symbols[Q_DOT]) {
                         goto q_dot_from_semi;
