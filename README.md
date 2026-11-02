@@ -25,7 +25,7 @@ the trees that error recovery produces may change; such changes are released as 
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers. The parser loads only with this runtime, version 15.0.0 or later in the 15.x or 16.x series: the upstream
+browsers, and Cloudflare Workers. The parser loads only with this runtime, version 17.0.1 or later in the 17.x series: the upstream
 Tree-sitter runtime rejects it.
 
 In Node.js and Bun:
@@ -71,10 +71,10 @@ The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin) and on
 [willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime this package is tested and
-fuzzed with. The parser loads only with this runtime, version 15.0.0 or later in the 15.x or 16.x series:
+fuzzed with. The parser loads only with this runtime, version 17.0.1 or later in the 17.x series:
 
 ```sh
-cargo add willbooster-tree-sitter@16.0.0 --rename tree-sitter
+cargo add willbooster-tree-sitter@17.0.1 --rename tree-sitter
 cargo add willbooster-tree-sitter-kotlin --rename tree-sitter-kotlin
 ```
 
