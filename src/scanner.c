@@ -1030,6 +1030,10 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case 'e':
                     return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_entry_rest(lexer);
+                // Annotations, which continue a call only as those of a trailing lambda
+                case '@':
+                    return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION] &&
+                           scan_annotated_condition_start(lexer);
                 // `import`, or else a hard keyword that starts an expression, which no complete expression continues
                 // with; a name may continue it as an infix function.
                 default: {
@@ -1050,10 +1054,6 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     }
                 }
                     // fall through
-                // Annotations, which continue a call only as those of a trailing lambda
-                case '@':
-                    return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION] &&
-                           scan_annotated_condition_start(lexer);
                 case '0':
                 case '1':
                 case '2':
@@ -1772,6 +1772,18 @@ static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
     while (lexer->lookahead == '@') {
         if (!scan_member_annotation(lexer, true) || !skip_whitespace_and_comments(lexer, true)) {
             return false;
+        }
+    }
+    // A lambda may have a label after its annotations.
+    if (is_identifier_start(lexer->lookahead)) {
+        while (is_identifier_part(lexer->lookahead)) {
+            skip(lexer);
+        }
+        if (lexer->lookahead == '@') {
+            skip(lexer);
+            if (!skip_whitespace_and_comments(lexer, true)) {
+                return false;
+            }
         }
     }
     return !lexer->eof(lexer) && lexer->lookahead != '{';
