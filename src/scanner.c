@@ -1852,7 +1852,12 @@ static bool scan_type_constraint_start(TSLexer *lexer) {
     } else {
         return false;
     }
-    return skip_whitespace_and_comments(lexer, true) && lexer->lookahead == ':';
+    if (!skip_whitespace_and_comments(lexer, true) || lexer->lookahead != ':') {
+        return false;
+    }
+    // Unlike the `::` of a callable reference (`where\na::class`)
+    skip(lexer);
+    return lexer->lookahead != ':';
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
