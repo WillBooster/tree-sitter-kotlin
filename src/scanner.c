@@ -1774,16 +1774,17 @@ static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
             return false;
         }
     }
-    // A lambda may have a label after its annotations.
+    // A lambda may have a label after its annotations; any other name starts a condition.
     if (is_identifier_start(lexer->lookahead)) {
         while (is_identifier_part(lexer->lookahead)) {
             skip(lexer);
         }
-        if (lexer->lookahead == '@') {
-            skip(lexer);
-            if (!skip_whitespace_and_comments(lexer, true)) {
-                return false;
-            }
+        if (lexer->lookahead != '@') {
+            return true;
+        }
+        skip(lexer);
+        if (!skip_whitespace_and_comments(lexer, true)) {
+            return false;
         }
     }
     return !lexer->eof(lexer) && lexer->lookahead != '{';
