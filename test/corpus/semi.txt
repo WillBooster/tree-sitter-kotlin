@@ -1159,6 +1159,60 @@ fun f() {
             (line_comment)
             (number_literal)))))))
 
+==================================
+A line break before a comment that shares the next statement's line
+==================================
+
+fun f(x: Int) {
+  a()
+  /* c */ y
+  when (x) {
+    0 -> while (c) {}
+    /* c */ z -> b
+  }
+  a
+  /* c */ .b(1 * 2)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (call_expression
+          (identifier)
+          (value_arguments))
+        (block_comment)
+        (identifier)
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (while_statement
+              (identifier)
+              (block))
+            (block_comment))
+          (when_entry
+            (identifier)
+            (identifier)))
+        (call_expression
+          (navigation_expression
+            (identifier)
+            (block_comment)
+            (identifier))
+          (value_arguments
+            (value_argument
+              (binary_expression
+                (number_literal)
+                (number_literal)))))))))
 
 ================================================================================
 Where identifiers and multiline type constraints

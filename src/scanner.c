@@ -767,7 +767,9 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor);
 
 static bool scan_constructor_parameter_start(TSLexer *lexer);
 
-static bool needs_preceding_newline(TSLexer *lexer);
+static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bool predicting);
+
+static bool scans_token_after_line_break(const Scanner *scanner, TSLexer *lexer, const bool *valid_symbols);
 
 static bool scan_prefix_sign(TSLexer *lexer);
 
@@ -800,7 +802,11 @@ static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
 static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars);
 
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
-    Scanner *scanner = (Scanner *)payload;
+    return scan((Scanner *)payload, lexer, valid_symbols, false);
+}
+
+// With `predicting`, only tells whether a token would be scanned, without scanning a comment's rest.
+static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bool predicting) {
     bool newline_before_comment = scanner->newline_before_comment;
     scanner->newline_before_comment = 0;
     // During error recovery every token is valid, including string content and a semicolon, which never are
@@ -911,7 +917,7 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
     }
 
     // Unlike properties, other members can end before another member on the same line.
-    if (!error_recovery && valid_symbols[SEMI] && in_members(scanner) &&
+    if (!error_recovery && !newline_before_comment && valid_symbols[SEMI] && in_members(scanner) &&
         !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
         lexer->mark_end(lexer);
         bool has_horizontal_space = false;
@@ -949,7 +955,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     }
     bool can_end_delegation = valid_symbols[DELEGATION_END] && !error_recovery;
-    bool saw_newline = false;
+    // A line break before a comment that the next token shares a line with separates as if right before the token.
+    bool saw_newline = newline_before_comment;
     bool saw_space = false;
     if (valid_symbols[SEMI] || can_end_delegation) {
         // Both tokens are empty and end where the previous token does.
@@ -978,17 +985,12 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
             return true;
         }
         if (lexer->lookahead == '/') {
-            scanner->newline_before_comment = saw_newline || newline_before_comment;
+            scanner->newline_before_comment = saw_newline;
             goto comment;
         }
 
         if (!saw_newline) {
             switch (lexer->lookahead) {
-                case '[':
-                    return newline_before_comment && scan_full_destructuring_start(lexer);
-                case '+':
-                case '-':
-                    return newline_before_comment && scan_prefix_sign(lexer);
                 case '!': {
                     skip(lexer);
                     if (lexer->lookahead == '=' || lexer->lookahead == '!') {
@@ -1426,31 +1428,63 @@ comment:
             }
             lexer->mark_end(lexer);
             lexer->result_symbol = LINE_COMMENT;
-            scanner->newline_before_comment = scanner->newline_before_comment && needs_preceding_newline(lexer);
+            // The line break that ends the comment separates by itself.
+            scanner->newline_before_comment = 0;
             return true;
         }
         if (lexer->lookahead != '*') {
             return false;
+        }
+        if (predicting) {
+            return true;
         }
         advance(lexer);
         // As in Kotlin, an unterminated comment runs to the end of the input. Failing there instead would let each `/*`
         // in it start another scan to the end, making the parse quadratic in the input length.
         lexer->result_symbol = scan_block_comment_rest(lexer, false) ? BLOCK_COMMENT : UNTERMINATED_BLOCK_COMMENT;
         lexer->mark_end(lexer);
-        scanner->newline_before_comment = scanner->newline_before_comment && needs_preceding_newline(lexer);
+        scanner->newline_before_comment =
+            scanner->newline_before_comment && scans_token_after_line_break(scanner, lexer, valid_symbols);
         return true;
     }
 
     return false;
 }
 
-static bool needs_preceding_newline(TSLexer *lexer) {
-    while (iswspace(lexer->lookahead)) advance(lexer);
-    if (lexer->lookahead == '/') {
-        advance(lexer);
-        return lexer->lookahead == '/' || lexer->lookahead == '*';
-    }
-    return lexer->lookahead == '[' ? scan_full_destructuring_start(lexer) : scan_prefix_sign(lexer);
+typedef struct {
+    TSLexer lexer;
+    TSLexer *source;
+} Prediction;
+
+static void advance_prediction(TSLexer *lexer, bool skip) {
+    (void)skip;
+    Prediction *prediction = (Prediction *)lexer;
+    // Skipping past the end of the token being scanned would move its start there.
+    prediction->source->advance(prediction->source, false);
+    lexer->lookahead = prediction->source->lookahead;
+}
+
+static void mark_prediction_end(TSLexer *lexer) { (void)lexer; }
+
+static bool prediction_eof(const TSLexer *lexer) {
+    const Prediction *prediction = (const Prediction *)lexer;
+    return prediction->source->eof(prediction->source);
+}
+
+// Tells whether the next scan, with the same valid symbols since a comment is an extra, scans a token when it takes a
+// line break before the comment just scanned as right before that token. The remembered line break stays in the scanner
+// state until the next external token, so it must be forgotten unless that next scan returns one: otherwise it would
+// apply to later tokens on the line, as in `a\n/* c */ .b(1 * 2)`.
+static bool scans_token_after_line_break(const Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
+    Scanner next = *scanner;
+    Prediction prediction = {
+        .lexer = {.lookahead = lexer->lookahead,
+                  .advance = advance_prediction,
+                  .mark_end = mark_prediction_end,
+                  .eof = prediction_eof},
+        .source = lexer,
+    };
+    return scan(&next, &prediction.lexer, valid_symbols, true);
 }
 
 static bool scan_prefix_sign(TSLexer *lexer) {
