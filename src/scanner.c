@@ -958,9 +958,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 // A string after an expression that may end here, e.g. `return $$"…"`.
                 case '$':
                     return can_start_multi_dollar_string && scan_multi_dollar_string_start(scanner, lexer, valid_symbols);
-                // A class member may end on the line that closes its body (`class A { val x = 1 }`).
+                // A class member may end on the line that closes its body (`class A { val x = 1 }`). A statement list
+                // also accepts this separator before its `}`, so the frames, which are lost past `MAX_FRAMES`, are not
+                // consulted.
                 case '}':
-                    return !error_recovery && in_members(scanner);
+                    return !error_recovery;
                 default:
                     return false;
             }
@@ -1064,12 +1066,14 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 }
 
                 // In a class body, `constructor` starts a secondary constructor; elsewhere, a statement only where a variable
-                // named `constructor` is accessed or assigned.
+                // named `constructor` is accessed or assigned. Past `MAX_FRAMES`, where the frames are lost, it is taken
+                // as a member.
                 if (index == 5) {
                     while (iswspace(lexer->lookahead)) {
                         skip(lexer);
                     }
-                    if (error_recovery || in_members(scanner) || lexer->lookahead == '.' || lexer->lookahead == '=') {
+                    if (error_recovery || in_members(scanner) || scanner->depth > MAX_FRAMES || lexer->lookahead == '.' ||
+                        lexer->lookahead == '=') {
                         return true;
                     }
                 }
