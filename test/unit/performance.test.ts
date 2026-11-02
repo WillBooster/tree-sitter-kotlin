@@ -92,6 +92,23 @@ test('parses repeated unterminated block comments in linear time', { timeout: 60
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
+// A `/*` in an annotation's string is no comment, so the lookahead for a constructor or an accessor after the
+// annotation must not scan it to the end of the input at every such annotation.
+test('parses comment openers in annotation strings in linear time', { timeout: 60_000 }, () => {
+  const unit = 'class X\n@A("a /* b")\nfun f() {}\nobject O {\n  val x: Int\n    @A("a) /* b")\n    get() = 1\n}\n$\n';
+  const small = unit.repeat(1000);
+  const large = unit.repeat(10_000);
+  parseCpuTime(large);
+  let smallFastest = Infinity;
+  let largeFastest = Infinity;
+  for (let run = 0; run < 3; run++) {
+    smallFastest = Math.min(smallFastest, parseCpuTime(small));
+    largeFastest = Math.min(largeFastest, parseCpuTime(large));
+  }
+  expect(largeFastest / smallFastest).toBeLessThan(18);
+  expect(largeFastest).toBeLessThan(5_000_000);
+});
+
 function parseCpuTime(source: string): number {
   const start = process.threadCpuUsage();
   const tree = parser.parse(source);
