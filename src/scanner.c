@@ -1042,6 +1042,24 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     if (!iswalpha(lexer->lookahead)) {
                         return false;
                     }
+                    // After a block body, which needs no separator, `in` may start a range test entry.
+                    if (lexer->lookahead == 'i' && valid_symbols[IN] && !error_recovery) {
+                        advance(lexer);
+                        int32_t c = lexer->lookahead;
+                        if (c != 'n' && c != 'f') {
+                            return c == 'm' && scan_word(lexer, "mport") && !is_identifier_part(lexer->lookahead);
+                        }
+                        advance(lexer);
+                        if (is_identifier_part(lexer->lookahead)) {
+                            return false;
+                        }
+                        if (c == 'f') {
+                            goto entry_start;
+                        }
+                        lexer->result_symbol = IN;
+                        lexer->mark_end(lexer);
+                        return true;
+                    }
                     uint8_t keyword = 0;
                     bool listed = scan_words(lexer,
                                              (const char[16][16]){"import", "break", "continue", "false", "fun", "if",
@@ -1068,8 +1086,9 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                 case '9':
                 case '"':
                 case '\'':
-                    // As in Kotlin, a literal never continues a complete expression, but a literal after `return` is its
-                    // value.
+                // As in Kotlin, a literal never continues a complete expression, but a literal after `return` is its
+                // value.
+                entry_start:
                     return !error_recovery && in_entries(scanner) && !valid_symbols[RETURN_VALUE_POSITION];
                 // A string after an expression that may end here, e.g. `return $$"…"`, or else the condition of the next
                 // `when` entry.
