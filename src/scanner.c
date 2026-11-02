@@ -45,6 +45,7 @@ enum TokenType {
     IMPORT_END,
     IMPORT_CONTINUE,
     RETURN_VALUE_POSITION,
+    UNTERMINATED_BLOCK_COMMENT,
 };
 
 #define MAX_WORD_SIZE 16
@@ -156,7 +157,8 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
     return skipped;
 }
 
-static void scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
+// Returns whether the comment ends before the end of the input.
+static bool scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
     unsigned depth = 1;
     while (depth > 0 && !lexer->eof(lexer)) {
         int32_t c = lexer->lookahead;
@@ -169,6 +171,7 @@ static void scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
             depth++;
         }
     }
+    return depth == 0;
 }
 
 static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool skip_chars) {
@@ -1430,41 +1433,12 @@ comment:
             return false;
         }
         advance(lexer);
-
-        bool after_star = false;
-        unsigned nesting_depth = 1;
-        while (!lexer->eof(lexer)) {
-            switch (lexer->lookahead) {
-                case '*':
-                    advance(lexer);
-                    after_star = true;
-                    break;
-                case '/':
-                    if (after_star) {
-                        advance(lexer);
-                        after_star = false;
-                        nesting_depth--;
-                        if (nesting_depth == 0) {
-                            lexer->result_symbol = BLOCK_COMMENT;
-                            lexer->mark_end(lexer);
-                            scanner->newline_before_comment = scanner->newline_before_comment && needs_preceding_newline(lexer);
-                            return true;
-                        }
-                    } else {
-                        advance(lexer);
-                        after_star = false;
-                        if (lexer->lookahead == '*') {
-                            nesting_depth++;
-                            advance(lexer);
-                        }
-                    }
-                    break;
-                default:
-                    advance(lexer);
-                    after_star = false;
-                    break;
-            }
-        }
+        // As in Kotlin, an unterminated comment runs to the end of the input. Failing there instead would let each `/*`
+        // in it start another scan to the end, making the parse quadratic in the input length.
+        lexer->result_symbol = scan_block_comment_rest(lexer, false) ? BLOCK_COMMENT : UNTERMINATED_BLOCK_COMMENT;
+        lexer->mark_end(lexer);
+        scanner->newline_before_comment = scanner->newline_before_comment && needs_preceding_newline(lexer);
+        return true;
     }
 
     return false;

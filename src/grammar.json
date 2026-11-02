@@ -8504,6 +8504,10 @@
     {
       "type": "SYMBOL",
       "name": "_return_value_position"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_unterminated_block_comment"
     }
   ],
   "inline": [
