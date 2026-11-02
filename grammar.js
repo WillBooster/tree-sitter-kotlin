@@ -153,6 +153,8 @@ module.exports = grammar({
     sym('_import_continue'),
     // never scanned: it tells the scanner that a value may follow `return` (see `return_expression`)
     sym('_return_value_position'),
+    // valid nowhere, so that an unterminated block comment, which runs to the end of the input, is an error
+    sym('_unterminated_block_comment'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],

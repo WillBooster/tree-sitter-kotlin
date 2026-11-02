@@ -74,20 +74,14 @@ test.each([
   }
 });
 
-test('retains local getter ownership after an unfinished nested comment', () => {
+test('ends the input in an unfinished nested comment before a getter', () => {
   const parser = new Parser().setLanguage(language);
   const source = 'fun f(){ val p=1\n/* unfinished\n/*closed*/ get()=2\n}';
   const tree = parser.parse(source)!;
   try {
-    expect(tree.rootNode.hasError).toBe(false);
-    expect(
-      tree.rootNode
-        .descendantsOfType('property_declaration')
-        .map((node) => [
-          node.text,
-          node.namedChildren.filter((child) => child.type === 'getter').map(({ text }) => text),
-        ])
-    ).toEqual([['val p=1\n/* unfinished\n/*closed*/ get()=2', ['get()=2']]]);
+    // As in Kotlin, the outer comment runs to the end of the input, so the getter and the `}` are inside it.
+    expect(tree.rootNode.hasError).toBe(true);
+    expect(tree.rootNode.descendantsOfType('getter')).toEqual([]);
   } finally {
     tree.delete();
     parser.delete();
