@@ -1673,14 +1673,16 @@ static bool scan_is_or_in_rest(TSLexer *lexer) {
 }
 
 // Tells whether a `->` follows on the same line outside brackets, literals, and comments, as after the condition of a
-// `when` entry that starts on the line where the previous entry ends. The scan is bounded like `scan_else_entry_rest`.
+// `when` entry that starts on the line where the previous entry ends. The scan is bounded like `scan_else_entry_rest`;
+// at the bound, a separator is assumed, since a literal never continues a complete expression in valid Kotlin and the
+// scan only keeps it from separating invalid code such as `f() 1` in a block.
 static bool scan_same_line_entry_arrow(TSLexer *lexer) {
     TypeLookahead lookahead = {
         .lexer = {.lookahead = lexer->lookahead, .advance = advance_type_lookahead, .eof = type_lookahead_eof},
         .source = lexer,
         .remaining = 256,
     };
-    return scan_line_arrow(&lookahead.lexer);
+    return scan_line_arrow(&lookahead.lexer) || lookahead.remaining == 0;
 }
 
 static bool scan_line_arrow(TSLexer *lexer) {
