@@ -1139,8 +1139,11 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
         }
     _switch:
         switch (lexer->lookahead) {
-            case ',':
+            // A `.` continues an expression, unless it starts a number such as `.5`.
             case '.':
+                skip(lexer);
+                return iswdigit(lexer->lookahead);
+            case ',':
             case ':':
             case '*':
             case '%':
@@ -1202,15 +1205,15 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
                     return true;
                 }
 
-                // In a class body, `constructor` starts a secondary constructor; elsewhere, a statement only where a variable
-                // named `constructor` is accessed or assigned. Past `MAX_FRAMES`, where the frames are lost, it is taken
-                // as a member.
+                // In a class body, `constructor` starts a secondary constructor, and in a `when`'s braces an entry;
+                // elsewhere, a statement only where a variable named `constructor` is accessed or assigned. Past
+                // `MAX_FRAMES`, where the frames are lost, it is taken as a member.
                 if (index == 5) {
                     while (iswspace(lexer->lookahead)) {
                         skip(lexer);
                     }
-                    if (error_recovery || in_members(scanner) || scanner->depth > MAX_FRAMES || lexer->lookahead == '.' ||
-                        lexer->lookahead == '=') {
+                    if (error_recovery || in_members(scanner) || in_entries(scanner) || scanner->depth > MAX_FRAMES ||
+                        lexer->lookahead == '.' || lexer->lookahead == '=') {
                         return true;
                     }
                 }
