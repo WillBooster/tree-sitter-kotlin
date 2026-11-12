@@ -25,8 +25,8 @@ the trees that error recovery produces may change; such changes are released as 
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers. The Wasm parser requires `@willbooster/web-tree-sitter` 19.1.1 or later in the 19.x
-series: the upstream Tree-sitter runtime and pre-19.1.0 `@willbooster/web-tree-sitter` versions reject it.
+browsers, and Cloudflare Workers. The supported runtime is `@willbooster/web-tree-sitter` version 19.1.1 or later in the
+19.x series; the upstream Tree-sitter runtime rejects this parser.
 
 In Node.js and Bun:
 
