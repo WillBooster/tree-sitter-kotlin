@@ -25,8 +25,8 @@ the trees that error recovery produces may change; such changes are released as 
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers. The parser loads only with this runtime, version 17.0.1 or later in the 17.x series: the upstream
-Tree-sitter runtime rejects it.
+browsers, and Cloudflare Workers. The Wasm parser requires `@willbooster/web-tree-sitter` 19.1.1 or later in the 19.x
+series: the upstream Tree-sitter runtime and pre-19.1.0 `@willbooster/web-tree-sitter` versions reject it.
 
 In Node.js and Bun:
 
@@ -70,11 +70,11 @@ parser.setLanguage(await Language.load(kotlin));
 The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin) and on
-[willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime this package is tested and
-fuzzed with. The parser loads only with this runtime, version 17.0.1 or later in the 17.x series:
+[willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime with the matching ABI that this
+package is tested and fuzzed with. Use version 19.1.1 or later in the 19.x series:
 
 ```sh
-cargo add willbooster-tree-sitter@17.0.1 --rename tree-sitter
+cargo add willbooster-tree-sitter@19.1.1 --rename tree-sitter
 cargo add willbooster-tree-sitter-kotlin --rename tree-sitter-kotlin
 ```
 
