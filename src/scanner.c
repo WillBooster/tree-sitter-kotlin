@@ -49,11 +49,40 @@ enum TokenType {
 };
 
 #define MAX_WORD_SIZE 16
-#define MAX_WORDS 20
 
 static inline void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
 
 static inline void skip(TSLexer *lexer) { lexer->advance(lexer, true); }
+
+static inline bool at_eof(const TSLexer *lexer) { return lexer->lookahead == 0 && lexer->eof(lexer); }
+
+static inline bool is_digit(int32_t c) { return (uint32_t)c - '0' < 10; }
+
+static inline bool is_hex_digit(int32_t c) {
+    uint32_t u = (uint32_t)c;
+    return u - '0' < 10 || (u | 32) - 'a' < 6;
+}
+
+static inline bool is_ascii_alpha(int32_t c) { return ((uint32_t)c | 32) - 'a' < 26; }
+
+static inline bool is_alpha(int32_t c) {
+    return (uint32_t)c < 0x80 ? is_ascii_alpha(c) : iswalpha((wint_t)c) != 0;
+}
+
+static inline bool is_alnum(int32_t c) {
+    return (uint32_t)c < 0x80 ? is_digit(c) || is_ascii_alpha(c) : iswalnum((wint_t)c) != 0;
+}
+
+static inline bool is_space(int32_t c) {
+    return (uint32_t)c < 0x80 ? c == ' ' || (uint32_t)c - '\t' < 5 : iswspace((wint_t)c) != 0;
+}
+
+static inline bool streq(const char *a, const char *b) {
+    for (size_t i = 0; a[i] == b[i]; i++) {
+        if (a[i] == '\0') return true;
+    }
+    return false;
+}
 
 static bool scan_word(TSLexer *lexer, const char *const word) {
     for (uint8_t i = 0; word[i] != '\0'; i++) {
@@ -66,52 +95,56 @@ static bool scan_word(TSLexer *lexer, const char *const word) {
 }
 
 // Any non-ASCII character may be a letter, which `iswalpha` does not tell in the C locale.
-static inline bool is_identifier_part(int32_t c) { return iswalnum(c) || c == '_' || c > 0x7f; }
+static inline bool is_identifier_part(int32_t c) {
+    return c > 0x7f || is_digit(c) || is_ascii_alpha(c) || c == '_';
+}
 
-static bool scan_words(TSLexer *lexer, const char words[MAX_WORDS][MAX_WORD_SIZE], char scanned_word[16],
+static bool find_word(const char *word, const char (*words)[MAX_WORD_SIZE], uint8_t *index);
+
+static bool scan_words(TSLexer *lexer, const char (*words)[MAX_WORD_SIZE], char scanned_word[MAX_WORD_SIZE],
                        uint8_t *index) {
     // A word is a whole identifier, so that e.g. `value_x` does not match `value`.
     if (!scanned_word[0]) {
-        for (uint8_t i = 0; i < MAX_WORD_SIZE - 1; i++) {
-            if (!(i == 0 ? iswalpha(lexer->lookahead) : is_identifier_part(lexer->lookahead))) {
-                if (i == 0) {
-                    return false;
-                }
-                break;
-            }
-            // No keyword has a non-ASCII character, which a cast could turn into an ASCII one.
-            scanned_word[i] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
-            skip(lexer);
+        if (!is_alpha(lexer->lookahead)) {
+            return false;
         }
+        uint8_t i = 0;
+        do {
+            // No keyword has a non-ASCII character, which a cast could turn into an ASCII one.
+            scanned_word[i++] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
+            skip(lexer);
+        } while (i < MAX_WORD_SIZE - 1 && is_identifier_part(lexer->lookahead));
     }
+    return find_word(scanned_word, words, index);
+}
 
+static bool find_word(const char *word, const char (*words)[MAX_WORD_SIZE], uint8_t *index) {
     // A list ends at its first empty word.
-    for (uint8_t i = 0; i < MAX_WORDS && words[i][0]; i++) {
-        if (strncmp(scanned_word, words[i], MAX_WORD_SIZE) == 0) {
+    for (uint8_t i = 0; words[i][0] != '\0'; i++) {
+        if (streq(word, words[i])) {
             if (index != NULL) {
                 *index = i;
             }
             return true;
         }
     }
-
     return false;
 }
 
-static const char MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
-    "public",   "private", "protected",   "internal", "abstract", "final",   "open",   "override",
-    "lateinit", "vararg",  "noinline", "crossinline", "external", "suspend", "inline",
+static const char MODIFIER_WORDS[][MAX_WORD_SIZE] = {
+    "public",   "private", "protected", "internal",    "abstract", "final",   "open",   "override",
+    "lateinit", "vararg",  "noinline",  "crossinline", "external", "suspend", "inline", "",
 };
 
 // These common names are modifiers only before a declaration or in a primary constructor position. After an
 // expression, only the words above are skipped so that accessor modifiers (`internal set`) reach the accessor check.
-static const char OTHER_MODIFIER_WORDS[MAX_WORDS][MAX_WORD_SIZE] = {
+static const char OTHER_MODIFIER_WORDS[][MAX_WORD_SIZE] = {
     "data",  "enum",     "sealed",  "inner", "value",  "annotation",
-    "const", "operator", "tailrec", "infix", "expect", "actual",
+    "const", "operator", "tailrec", "infix", "expect", "actual",     "",
 };
 
-static const char DECLARATION_KEYWORDS[MAX_WORDS][MAX_WORD_SIZE] = {
-    "fun", "val", "var", "class", "interface", "object", "typealias",
+static const char DECLARATION_KEYWORDS[][MAX_WORD_SIZE] = {
+    "fun", "val", "var", "class", "interface", "object", "typealias", "",
 };
 
 static bool in_ranges(int32_t c, const uint32_t ranges[][2], size_t count) {
@@ -132,13 +165,14 @@ static bool in_ranges(int32_t c, const uint32_t ranges[][2], size_t count) {
 
 // Tells a letter as Kotlin identifiers use it (\p{L}), which `iswalpha` does only for ASCII in the C locale.
 static bool is_letter(int32_t c) {
-    return c < 0x80 ? iswalpha(c) : in_ranges(c, LETTER_RANGES, sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]));
+    return (uint32_t)c < 0x80 ? is_ascii_alpha(c)
+                              : in_ranges(c, LETTER_RANGES, sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]));
 }
 
 // Tells a character that continues a name in a string template (`[\p{L}_\p{Nd}]`).
 static bool is_template_name_part(int32_t c) {
-    return c < 0x80 ? iswalnum(c) || c == '_'
-                    : in_ranges(c, NAME_PART_RANGES, sizeof(NAME_PART_RANGES) / sizeof(NAME_PART_RANGES[0]));
+    return (uint32_t)c < 0x80 ? is_digit(c) || is_ascii_alpha(c) || c == '_'
+                              : in_ranges(c, NAME_PART_RANGES, sizeof(NAME_PART_RANGES) / sizeof(NAME_PART_RANGES[0]));
 }
 
 static inline bool is_identifier_start(int32_t c) { return is_letter(c) || c == '_'; }
@@ -150,7 +184,7 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
            (all && scan_words(lexer, OTHER_MODIFIER_WORDS, scanned_word, NULL))) {
         skipped = true;
         memset(scanned_word, 0, MAX_WORD_SIZE);
-        while (iswspace(lexer->lookahead)) {
+        while (is_space(lexer->lookahead)) {
             skip(lexer);
         }
     }
@@ -160,7 +194,7 @@ static bool skip_modifier_words(TSLexer *lexer, char scanned_word[MAX_WORD_SIZE]
 // Returns whether the comment ends before the end of the input.
 static bool scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
     unsigned depth = 1;
-    while (depth > 0 && !lexer->eof(lexer)) {
+    while (depth > 0 && !at_eof(lexer)) {
         int32_t c = lexer->lookahead;
         lexer->advance(lexer, skip_chars);
         if (c == '*' && lexer->lookahead == '/') {
@@ -174,9 +208,19 @@ static bool scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
     return depth == 0;
 }
 
+static inline bool is_whitespace_char(int32_t c, bool across_lines) {
+    return across_lines ? is_space(c) : c == ' ' || c == '\t';
+}
+
+static void scan_line_comment_rest(TSLexer *lexer, bool skip_chars) {
+    while (!at_eof(lexer) && lexer->lookahead != '\n') {
+        lexer->advance(lexer, skip_chars);
+    }
+}
+
 static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool skip_chars) {
     for (;;) {
-        while (across_lines ? iswspace(lexer->lookahead) : lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        while (is_whitespace_char(lexer->lookahead, across_lines)) {
             lexer->advance(lexer, skip_chars);
         }
         if (lexer->lookahead != '/') {
@@ -186,15 +230,14 @@ static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool
         if (lexer->lookahead == '*') {
             lexer->advance(lexer, skip_chars);
             scan_block_comment_rest(lexer, skip_chars);
-        } else if (lexer->lookahead == '/') {
-            while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
-                lexer->advance(lexer, skip_chars);
-            }
-            if (!across_lines) {
-                return true;
-            }
-        } else {
+            continue;
+        }
+        if (lexer->lookahead != '/') {
             return false;
+        }
+        scan_line_comment_rest(lexer, skip_chars);
+        if (!across_lines) {
+            return true;
         }
     }
 }
@@ -219,7 +262,7 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
     unsigned dollars = 0;
     while (depth > 0) {
         int32_t c = lexer->lookahead;
-        if (lexer->eof(lexer)) {
+        if (at_eof(lexer)) {
             return false;
         }
         if (c == '/') {
@@ -262,7 +305,7 @@ static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, un
     // A raw string ends at the last of three or more quotes.
     unsigned quotes = 0;
     unsigned run = 0;
-    while (!lexer->eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
+    while (!at_eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
         int32_t c = lexer->lookahead;
         quotes = c == '"' ? quotes + 1 : 0;
         run = c == '$' ? run + 1 : 0;
@@ -300,7 +343,7 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
         return false;
     }
     if (lexer->lookahead != '(') {
-        return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
+        return at_eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r' || lexer->lookahead == ';' ||
                lexer->lookahead == '}';
     }
     skip(lexer);
@@ -383,10 +426,10 @@ static bool scan_catch_parameter_start(TSLexer *lexer) {
 }
 
 // Kotlin's hard keywords other than `this`, which a string template cannot reference.
-static const char *const TEMPLATE_KEYWORDS[] = {
-    "as",  "break", "class", "continue", "do",     "else",    "false",  "for",       "fun",    "if",
-    "in",  "interface", "is", "null",   "object", "package", "return", "super",     "throw",  "true",
-    "try", "typealias", "typeof", "val", "var",   "when",    "while",
+static const char TEMPLATE_KEYWORDS[][MAX_WORD_SIZE] = {
+    "as",  "break",     "class", "continue", "do",     "else",    "false",  "for",   "fun",   "if",
+    "in",  "interface", "is",    "null",     "object", "package", "return", "super", "throw", "true",
+    "try", "typealias", "typeof", "val",     "var",    "when",    "while",  "",
 };
 
 // Scans a hard keyword other than `this` right after the `$` of a template, as a whole identifier.
@@ -399,17 +442,12 @@ static bool scan_template_keyword(TSLexer *lexer) {
         word[i] = (char)lexer->lookahead;
         advance(lexer);
     }
-    if (is_template_name_part(lexer->lookahead)) {
+    if (is_template_name_part(lexer->lookahead) || !find_word(word, TEMPLATE_KEYWORDS, NULL)) {
         return false;
     }
-    for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
-        if (strcmp(word, TEMPLATE_KEYWORDS[i]) == 0) {
-            lexer->mark_end(lexer);
-            lexer->result_symbol = KEYWORD_REFERENCE;
-            return true;
-        }
-    }
-    return false;
+    lexer->mark_end(lexer);
+    lexer->result_symbol = KEYWORD_REFERENCE;
+    return true;
 }
 
 typedef struct {
@@ -476,11 +514,7 @@ static bool can_start_destructuring_type(TSLexer *lexer) {
         advance(lexer);
     }
     if (is_identifier_part(lexer->lookahead)) return true;
-    if (strcmp(word, "this") == 0) return false;
-    for (size_t i = 0; i < sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]); i++) {
-        if (strcmp(word, TEMPLATE_KEYWORDS[i]) == 0) return false;
-    }
-    return true;
+    return !streq(word, "this") && !find_word(word, TEMPLATE_KEYWORDS, NULL);
 }
 
 // Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
@@ -560,6 +594,7 @@ void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payloa
 
 unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) {
     Scanner *scanner = (Scanner *)payload;
+    unsigned bytes = frame_bytes(scanner->depth);
     unsigned size = 0;
     memcpy(buffer, &scanner->depth, sizeof(uint32_t));
     size += sizeof(uint32_t);
@@ -567,37 +602,65 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     size += sizeof(uint32_t);
     buffer[size++] = (char)scanner->after_short_template;
     buffer[size++] = (char)scanner->newline_before_comment;
-    memcpy(buffer + size, scanner->frames, frame_bytes(scanner->depth));
-    size += frame_bytes(scanner->depth);
-    memcpy(buffer + size, scanner->separated_members, frame_bytes(scanner->depth));
-    size += frame_bytes(scanner->depth);
-    memcpy(buffer + size, scanner->strings, scanner->length * sizeof(uint16_t));
-    return size + scanner->length * sizeof(uint16_t);
+    if (bytes > 0) {
+        memcpy(buffer + size, scanner->frames, bytes);
+        size += bytes;
+        memcpy(buffer + size, scanner->separated_members, bytes);
+        size += bytes;
+    }
+    if (scanner->length > 0) {
+        unsigned string_bytes = scanner->length * sizeof(uint16_t);
+        memcpy(buffer + size, scanner->strings, string_bytes);
+        size += string_bytes;
+    }
+    return size;
 }
+
+static void clear_frames(Scanner *scanner, unsigned from_bytes, unsigned old_bytes);
+static void reset_scanner(Scanner *scanner, unsigned old_bytes);
 
 void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
     Scanner *scanner = (Scanner *)payload;
+    unsigned old_bytes = frame_bytes(scanner->depth);
+    if (length < 2 * sizeof(uint32_t) + 2) {
+        reset_scanner(scanner, old_bytes);
+        return;
+    }
+    unsigned size = 0;
+    memcpy(&scanner->depth, buffer, sizeof(uint32_t));
+    size += sizeof(uint32_t);
+    memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
+    size += sizeof(uint32_t);
+    scanner->after_short_template = (uint8_t)buffer[size++];
+    scanner->newline_before_comment = (uint8_t)buffer[size++];
+    unsigned new_bytes = frame_bytes(scanner->depth);
+    if (new_bytes > 0) {
+        memcpy(scanner->frames, buffer + size, new_bytes);
+        size += new_bytes;
+        memcpy(scanner->separated_members, buffer + size, new_bytes);
+        size += new_bytes;
+    }
+    clear_frames(scanner, new_bytes, old_bytes);
+    unsigned string_bytes = length - size;
+    scanner->length = string_bytes / sizeof(uint16_t);
+    if (string_bytes > 0) {
+        memcpy(scanner->strings, buffer + size, string_bytes);
+    }
+}
+
+static void reset_scanner(Scanner *scanner, unsigned old_bytes) {
     scanner->depth = 0;
     scanner->surplus_dollars = 0;
     scanner->after_short_template = 0;
     scanner->newline_before_comment = 0;
-    memset(scanner->frames, 0, sizeof(scanner->frames));
-    memset(scanner->separated_members, 0, sizeof(scanner->separated_members));
+    clear_frames(scanner, 0, old_bytes);
     scanner->length = 0;
-    if (length >= 2 * sizeof(uint32_t) + 2) {
-        unsigned size = 0;
-        memcpy(&scanner->depth, buffer, sizeof(uint32_t));
-        size += sizeof(uint32_t);
-        memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
-        size += sizeof(uint32_t);
-        scanner->after_short_template = (uint8_t)buffer[size++];
-        scanner->newline_before_comment = (uint8_t)buffer[size++];
-        memcpy(scanner->frames, buffer + size, frame_bytes(scanner->depth));
-        size += frame_bytes(scanner->depth);
-        memcpy(scanner->separated_members, buffer + size, frame_bytes(scanner->depth));
-        size += frame_bytes(scanner->depth);
-        scanner->length = (length - size) / sizeof(uint16_t);
-        memcpy(scanner->strings, buffer + size, length - size);
+}
+
+static void clear_frames(Scanner *scanner, unsigned from_bytes, unsigned old_bytes) {
+    if (old_bytes > from_bytes) {
+        memset(scanner->frames + from_bytes, 0, old_bytes - from_bytes);
+        memset(scanner->separated_members + from_bytes, 0, old_bytes - from_bytes);
     }
 }
 
@@ -652,6 +715,13 @@ static unsigned scan_quote_run(TSLexer *lexer, bool multiline, bool has_content)
     return run;
 }
 
+static bool scan_surplus_dollars(Scanner *scanner, TSLexer *lexer);
+static int step_multi_dollar_char(Scanner *scanner, TSLexer *lexer, unsigned dollar_count, bool multiline,
+                                  bool *has_content);
+static bool scan_multi_dollar_run(Scanner *scanner, TSLexer *lexer, unsigned dollar_count, bool *has_content);
+static bool scan_multi_dollar_quotes(Scanner *scanner, TSLexer *lexer, bool multiline, bool *has_content);
+static bool scan_multi_dollar_escape(TSLexer *lexer, bool multiline, bool *has_content, bool *result);
+
 // Scans the content of the innermost multi-dollar string up to an interpolation or the closing quotes, or else
 // those. Content ends before a run of dollars that starts an interpolation, and the run's leading dollars beyond
 // the string's dollar count are content. A token cannot end at a position already passed, so when such a run starts
@@ -662,105 +732,127 @@ static bool scan_multi_dollar_string_part(Scanner *scanner, TSLexer *lexer) {
     bool multiline = string & MULTILINE_FLAG;
     bool has_content = false;
     lexer->result_symbol = MULTI_DOLLAR_STRING_CONTENT;
-    uint32_t surplus_dollars = scanner->surplus_dollars;
-    scanner->surplus_dollars = 0;
-    if (surplus_dollars > 0) {
-        while (surplus_dollars > 0 && lexer->lookahead == '$') {
-            advance(lexer);
-            surplus_dollars--;
-            has_content = true;
-        }
-        if (has_content) {
-            lexer->mark_end(lexer);
-            return true;
-        }
+    if (scan_surplus_dollars(scanner, lexer)) {
+        return true;
     }
     for (;;) {
         lexer->mark_end(lexer);
-        if (lexer->eof(lexer)) {
+        if (at_eof(lexer)) {
             return has_content;
         }
-        switch (lexer->lookahead) {
-            case '$': {
-                advance(lexer);
-                if (!has_content) {
-                    lexer->mark_end(lexer);
-                }
-                unsigned run = 1;
-                while (lexer->lookahead == '$') {
-                    advance(lexer);
-                    run++;
-                }
-                if (run < dollar_count || !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '{')) {
-                    has_content = true;
-                    break;
-                }
-                if (!has_content) {
-                    if (run == dollar_count) {
-                        lexer->mark_end(lexer);
-                        lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
-                        scanner->after_short_template = lexer->lookahead != '{';
-                    } else {
-                        scanner->surplus_dollars = run - dollar_count - 1;
-                    }
-                }
-                return true;
-            }
-            case '"': {
-                unsigned run = scan_quote_run(lexer, multiline, has_content);
-                if (multiline && run < 3) {
-                    has_content = true;
-                    break;
-                }
-                if (has_content || (multiline && lexer->lookahead == '"')) {
-                    return true;
-                }
-                lexer->mark_end(lexer);
-                lexer->result_symbol = MULTI_DOLLAR_STRING_END;
-                scanner->length--;
-                return true;
-            }
-            case '\\': {
-                bool had_content = has_content;
-                advance(lexer);
-                has_content = true;
-                if (multiline) {
-                    break;
-                }
-                // An escape sequence is a token of its own in a single-line string. What `escape_sequence` does not
-                // accept is content, as `string_literal` takes a backslash and any other character as content.
-                int32_t escaped = lexer->lookahead;
-                if (escaped == 'u') {
-                    advance(lexer);
-                    unsigned digits = 0;
-                    while (digits < 4 && iswxdigit(lexer->lookahead)) {
-                        advance(lexer);
-                        digits++;
-                    }
-                    if (digits == 4) {
-                        return had_content;
-                    }
-                } else if (escaped == 'x' || (escaped >= '0' && escaped <= '7')) {
-                    advance(lexer);
-                } else {
-                    return had_content;
-                }
-                break;
-            }
-            case '\n':
-            case '\r':
-                if (!multiline) {
-                    return has_content;
-                }
-                advance(lexer);
-                has_content = true;
-                break;
-            default:
-                advance(lexer);
-                has_content = true;
-                break;
+        int decision = step_multi_dollar_char(scanner, lexer, dollar_count, multiline, &has_content);
+        if (decision >= 0) {
+            return decision != 0;
         }
     }
+}
+
+static int step_multi_dollar_char(Scanner *scanner, TSLexer *lexer, unsigned dollar_count, bool multiline,
+                                  bool *has_content) {
+    int32_t c = lexer->lookahead;
+    if (c == '$') {
+        return scan_multi_dollar_run(scanner, lexer, dollar_count, has_content) ? 1 : -1;
+    }
+    if (c == '"') {
+        return scan_multi_dollar_quotes(scanner, lexer, multiline, has_content) ? 1 : -1;
+    }
+    if (c == '\\') {
+        bool escape_result = false;
+        return scan_multi_dollar_escape(lexer, multiline, has_content, &escape_result) ? escape_result : -1;
+    }
+    if (!multiline && (c == '\n' || c == '\r')) {
+        return *has_content;
+    }
+    advance(lexer);
+    *has_content = true;
+    return -1;
+}
+
+static bool scan_surplus_dollars(Scanner *scanner, TSLexer *lexer) {
+    uint32_t surplus_dollars = scanner->surplus_dollars;
+    scanner->surplus_dollars = 0;
+    bool has_content = false;
+    while (surplus_dollars > 0 && lexer->lookahead == '$') {
+        advance(lexer);
+        surplus_dollars--;
+        has_content = true;
+    }
+    if (has_content) {
+        lexer->mark_end(lexer);
+    }
+    return has_content;
+}
+
+static bool scan_multi_dollar_run(Scanner *scanner, TSLexer *lexer, unsigned dollar_count, bool *has_content) {
+    advance(lexer);
+    if (!*has_content) {
+        lexer->mark_end(lexer);
+    }
+    unsigned run = 1;
+    while (lexer->lookahead == '$') {
+        advance(lexer);
+        run++;
+    }
+    if (run < dollar_count || !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '{')) {
+        *has_content = true;
+        return false;
+    }
+    if (!*has_content) {
+        if (run == dollar_count) {
+            lexer->mark_end(lexer);
+            lexer->result_symbol = MULTI_DOLLAR_INTERPOLATION_START;
+            scanner->after_short_template = lexer->lookahead != '{';
+        } else {
+            scanner->surplus_dollars = run - dollar_count - 1;
+        }
+    }
+    return true;
+}
+
+static bool scan_multi_dollar_quotes(Scanner *scanner, TSLexer *lexer, bool multiline, bool *has_content) {
+    unsigned run = scan_quote_run(lexer, multiline, *has_content);
+    if (multiline && run < 3) {
+        *has_content = true;
+        return false;
+    }
+    if (*has_content || (multiline && lexer->lookahead == '"')) {
+        return true;
+    }
+    lexer->mark_end(lexer);
+    lexer->result_symbol = MULTI_DOLLAR_STRING_END;
+    scanner->length--;
+    return true;
+}
+
+static bool scan_multi_dollar_escape(TSLexer *lexer, bool multiline, bool *has_content, bool *result) {
+    bool had_content = *has_content;
+    advance(lexer);
+    *has_content = true;
+    if (multiline) {
+        return false;
+    }
+    // An escape sequence is a token of its own in a single-line string. What `escape_sequence` does not
+    // accept is content, as `string_literal` takes a backslash and any other character as content.
+    int32_t escaped = lexer->lookahead;
+    if (escaped == 'u') {
+        advance(lexer);
+        unsigned digits = 0;
+        while (digits < 4 && is_hex_digit(lexer->lookahead)) {
+            advance(lexer);
+            digits++;
+        }
+        if (digits != 4) {
+            return false;
+        }
+        *result = had_content;
+        return true;
+    }
+    if (escaped == 'x' || (uint32_t)escaped - '0' < 8) {
+        advance(lexer);
+        return false;
+    }
+    *result = had_content;
+    return true;
 }
 
 static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor);
@@ -793,6 +885,23 @@ static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
 
 static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars);
 
+static const char EXPRESSION_START_KEYWORDS[][MAX_WORD_SIZE] = {
+    "import", "break", "continue", "false", "fun",  "if",   "null", "object",
+    "return", "super", "this",     "throw", "true", "try",  "when", "",
+};
+
+static const char CONTINUATION_KEYWORDS[][MAX_WORD_SIZE] = {
+    "else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where", "catch", "finally", "",
+};
+
+static const char VISIBILITY_WORDS[][MAX_WORD_SIZE] = {
+    "public", "private", "protected", "internal", "",
+};
+
+static const char CONSTRUCTOR_WORDS[][MAX_WORD_SIZE] = {
+    "constructor", "",
+};
+
 bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
     return scan((Scanner *)payload, lexer, valid_symbols, false);
 }
@@ -816,9 +925,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     if (!error_recovery && valid_symbols[TOP_LEVEL_STATEMENT_END]) {
         lexer->mark_end(lexer);
         lexer->result_symbol = TOP_LEVEL_STATEMENT_END;
+        clear_frames(scanner, 0, frame_bytes(scanner->depth));
         scanner->depth = 0;
-        memset(scanner->frames, 0, sizeof(scanner->frames));
-        memset(scanner->separated_members, 0, sizeof(scanner->separated_members));
         return true;
     }
     if (!error_recovery && scanner->depth > 0 && !in_statements(scanner) &&
@@ -882,7 +990,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     if (valid_symbols[MULTILINE_STRING_CONTENT] && !error_recovery) {
         bool did_advance = false;
         lexer->result_symbol = MULTILINE_STRING_CONTENT;
-        while (!lexer->eof(lexer)) {
+        while (!at_eof(lexer)) {
             switch (lexer->lookahead) {
                 case '$':
                     lexer->mark_end(lexer);
@@ -913,12 +1021,12 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         !(scanner->separated_members[(scanner->depth - 1) / 8] & (1u << ((scanner->depth - 1) % 8)))) {
         lexer->mark_end(lexer);
         bool has_horizontal_space = false;
-        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') {
+        while (is_space(lexer->lookahead) && lexer->lookahead != '\n' && lexer->lookahead != '\r') {
             has_horizontal_space = true;
             skip(lexer);
         }
-        if ((has_horizontal_space && lexer->lookahead == '@') || iswalpha(lexer->lookahead)) {
-            char scanned_word[16] = {0};
+        if ((has_horizontal_space && lexer->lookahead == '@') || is_alpha(lexer->lookahead)) {
+            char scanned_word[MAX_WORD_SIZE] = {0};
             for (;;) {
                 if (lexer->lookahead == '@') {
                     if (!scan_member_annotation(lexer, true)) return false;
@@ -931,15 +1039,15 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 if (!skip_whitespace_and_comments(lexer, true)) return false;
             }
             bool declaration = scan_words(lexer, DECLARATION_KEYWORDS, scanned_word, NULL);
-            if (declaration && strcmp(scanned_word, "fun") == 0 && !scan_named_function(lexer, true)) return false;
-            if (declaration && strcmp(scanned_word, "object") == 0 &&
+            if (declaration && streq(scanned_word, "fun") && !scan_named_function(lexer, true)) return false;
+            if (declaration && streq(scanned_word, "object") &&
                 (!scan_whitespace_and_comments(lexer, true, true) ||
                  !(is_identifier_start(lexer->lookahead) || lexer->lookahead == '`'))) return false;
             if (declaration ||
                 (!valid_symbols[INFIX_POSITION] && !valid_symbols[COMPANION_NAME_POSITION] &&
-                 (strcmp(scanned_word, "init") == 0 ||
-                  (strcmp(scanned_word, "constructor") == 0 && !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) ||
-                  strcmp(scanned_word, "companion") == 0))) {
+                 (streq(scanned_word, "init") ||
+                  (streq(scanned_word, "constructor") && !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION]) ||
+                  streq(scanned_word, "companion")))) {
                 lexer->result_symbol = SEMI;
                 return true;
             }
@@ -953,7 +1061,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     if (valid_symbols[SEMI] || can_end_delegation) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
-        while (iswspace(lexer->lookahead)) {
+        while (is_space(lexer->lookahead)) {
             saw_newline = saw_newline || lexer->lookahead == '\n' || lexer->lookahead == '\r';
             saw_space = true;
             skip(lexer);
@@ -968,7 +1076,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
 
     if (valid_symbols[SEMI]) {
         lexer->result_symbol = SEMI;
-        if (lexer->eof(lexer)) {
+        if (at_eof(lexer)) {
             return true;
         }
         if (lexer->lookahead == ';') {
@@ -1031,7 +1139,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 // A number such as `.5`, unlike a member access
                 case '.':
                     skip(lexer);
-                    if (!iswdigit(lexer->lookahead)) {
+                    if (!is_digit(lexer->lookahead)) {
                         return false;
                     }
                     goto entry_start;
@@ -1043,7 +1151,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 // `import`, or else a hard keyword that starts an expression, which no complete expression continues
                 // with; a name may continue it as an infix function.
                 default: {
-                    if (!iswalpha(lexer->lookahead)) {
+                    if (!is_alpha(lexer->lookahead)) {
                         return false;
                     }
                     // After a block body, which needs no separator, `in` may start a range test entry.
@@ -1065,11 +1173,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                         return true;
                     }
                     uint8_t keyword = 0;
-                    bool listed = scan_words(lexer,
-                                             (const char[16][16]){"import", "break", "continue", "false", "fun", "if",
-                                                                  "null", "object", "return", "super", "this", "throw",
-                                                                  "true", "try", "when"},
-                                             (char[16]){0}, &keyword);
+                    bool listed = scan_words(lexer, EXPRESSION_START_KEYWORDS, (char[MAX_WORD_SIZE]){0}, &keyword);
                     if (listed && keyword == 0) {
                         return true;
                     }
@@ -1109,7 +1213,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
             }
         }
 
-        char scanned_word[16] = {0};
+        char scanned_word[MAX_WORD_SIZE] = {0};
         bool skipped_modifiers = false;
         // Where a statement may end, `val` is valid only after a modifier that `_reserved_identifier` also reads as a
         // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration that
@@ -1118,13 +1222,13 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
             if (lexer->lookahead == '@') {
                 return false;
             }
-            if (iswalpha(lexer->lookahead)) {
+            if (is_alpha(lexer->lookahead)) {
                 // Modifiers not followed by a declaration, as in `open = 1` or `sealed = 1`, start a statement of their own.
                 // A context parameter list (`context(…)`) may stand among the modifiers.
                 for (;;) {
                     skipped_modifiers = skip_modifier_words(lexer, scanned_word, true) || skipped_modifiers;
-                    if (strncmp(scanned_word, "context", MAX_WORD_SIZE) != 0 ||
-                        !skip_whitespace_and_comments(lexer, true) || lexer->lookahead != '(') {
+                    if (!streq(scanned_word, "context") || !skip_whitespace_and_comments(lexer, true) ||
+                        lexer->lookahead != '(') {
                         break;
                     }
                     skip(lexer);
@@ -1146,7 +1250,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
             // A `.` continues an expression, unless it starts a number such as `.5`.
             case '.':
                 skip(lexer);
-                return iswdigit(lexer->lookahead);
+                return is_digit(lexer->lookahead);
             case ',':
             case ':':
             case '*':
@@ -1171,7 +1275,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     skip(lexer);
                     if (lexer->lookahead == 's') {
                         skip(lexer);
-                        if (!iswalnum(lexer->lookahead)) {
+                        if (!is_alnum(lexer->lookahead)) {
                             return true;
                         }
                     }
@@ -1200,10 +1304,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     lexer, scanned_word, valid_symbols[PRIMARY_CONSTRUCTOR_POSITION] && !error_recovery);
             keywords:;
                 uint8_t index = -1;
-                bool res = scan_words(
-                    lexer,
-                    (const char[16][16]){"else", "in", "instanceof", "get", "set", "constructor", "by", "as", "where", "catch", "finally"},
-                    scanned_word, &index);
+                bool res = scan_words(lexer, CONTINUATION_KEYWORDS, scanned_word, &index);
                 // Of these, only an accessor or a constructor follows modifiers; in `private as T`, `private` is a name.
                 if (skipped_modifiers && index != 3 && index != 4 && index != 5) {
                     return true;
@@ -1213,7 +1314,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 // elsewhere, a statement only where a variable named `constructor` is accessed or assigned. Past
                 // `MAX_FRAMES`, where the frames are lost, it is taken as a member.
                 if (index == 5) {
-                    while (iswspace(lexer->lookahead)) {
+                    while (is_space(lexer->lookahead)) {
                         skip(lexer);
                     }
                     if (error_recovery || in_members(scanner) || in_entries(scanner) || scanner->depth > MAX_FRAMES ||
@@ -1265,7 +1366,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     unsigned parentheses = 0, comments = 0, quote_run = 0;
                     int32_t quote = 0, previous = 0;
                     bool escaped = false, ambiguous = false, line_comment = false;
-                    while (!lexer->eof(lexer) && !iswspace(lexer->lookahead)) {
+                    while (!at_eof(lexer) && !is_space(lexer->lookahead)) {
                         int32_t c = lexer->lookahead;
                         if (line_comment) {
                             skip(lexer);
@@ -1303,24 +1404,24 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     // string, and skipping it as a comment could read to the end of the input at every annotation.
                     bool settled = !(parentheses || comments || quote || ambiguous || line_comment);
                     if (!settled) {
-                        while (iswspace(lexer->lookahead)) skip(lexer);
+                        while (is_space(lexer->lookahead)) skip(lexer);
                     } else if (!skip_whitespace_and_comments(lexer, true)) {
                         return true;
                     }
                     char scanned_word[MAX_WORD_SIZE] = {0};
-                    bool visibility = scan_words(lexer, (const char[16][16]){"public", "private", "protected", "internal"}, scanned_word, NULL);
-                    if (!visibility) return strncmp(scanned_word, "constructor", 11) != 0;
+                    bool visibility = scan_words(lexer, VISIBILITY_WORDS, scanned_word, NULL);
+                    if (!visibility) return !streq(scanned_word, "constructor");
                     if (!settled) return true;
                     memset(scanned_word, 0, MAX_WORD_SIZE);
                     if (!skip_whitespace_and_comments(lexer, true)) return true;
-                    if (!scan_words(lexer, (const char[16][16]){"constructor"}, scanned_word, NULL)) return true;
-                    while (iswspace(lexer->lookahead)) skip(lexer);
+                    if (!scan_words(lexer, CONSTRUCTOR_WORDS, scanned_word, NULL)) return true;
+                    while (is_space(lexer->lookahead)) skip(lexer);
                     return !scan_constructor_parameter_start(lexer);
                 }
                 if (valid_symbols[GET] || valid_symbols[SET]) {
                     bool saw_paren = false, escaped = false, settled = true;
                     int32_t quote = 0;
-                    while (!lexer->eof(lexer) && (saw_paren ? lexer->lookahead != '\n' : !iswspace(lexer->lookahead))) {
+                    while (!at_eof(lexer) && (saw_paren ? lexer->lookahead != '\n' : !is_space(lexer->lookahead))) {
                         int32_t c = lexer->lookahead;
                         skip(lexer);
                         if (quote) {
@@ -1346,7 +1447,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     // As above, comments are skipped only after an annotation that ends outside literals, comments,
                     // and parentheses.
                     if (!settled || quote || saw_paren) {
-                        while (iswspace(lexer->lookahead)) {
+                        while (is_space(lexer->lookahead)) {
                             skip(lexer);
                         }
                         if (lexer->lookahead == '/') {
@@ -1364,7 +1465,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         }
     }
 
-    while (iswspace(lexer->lookahead)) {
+    while (is_space(lexer->lookahead)) {
         skip(lexer);
     }
 
@@ -1395,7 +1496,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     advance(lexer);
                     lexer->result_symbol = NOT_IS;
                     lexer->mark_end(lexer);
-                    return !iswalnum(lexer->lookahead);
+                    return !is_alnum(lexer->lookahead);
                 }
             }
             // Past a `!` that starts no `!is`, a comment must not be scanned as a token that starts with the `!`.
@@ -1410,7 +1511,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 advance(lexer);
                 lexer->result_symbol = IN;
                 lexer->mark_end(lexer);
-                return !iswalnum(lexer->lookahead);
+                return !is_alnum(lexer->lookahead);
             }
             // Past an `i` that starts no `in`, a comment must not be scanned as a token that starts with the `i`.
             return false;
@@ -1419,7 +1520,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
 
 q_dot_from_semi:
     if (valid_symbols[Q_DOT]) {
-        while (iswspace(lexer->lookahead)) {
+        while (is_space(lexer->lookahead)) {
             skip(lexer);
         }
         if (lexer->lookahead == '?') {
@@ -1446,9 +1547,7 @@ comment:
             return lexer->lookahead == '/' || lexer->lookahead == '*';
         }
         if (lexer->lookahead == '/') {
-            while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
-                advance(lexer);
-            }
+            scan_line_comment_rest(lexer, false);
             lexer->mark_end(lexer);
             lexer->result_symbol = LINE_COMMENT;
             // The line break that ends the comment separates by itself.
@@ -1525,6 +1624,8 @@ static bool scan_full_destructuring_start(TSLexer *lexer) {
     return !is_identifier_part(lexer->lookahead);
 }
 
+static bool scan_constructor_parameter_item(TSLexer *lexer, bool *modifier);
+
 static bool scan_constructor_parameter_start(TSLexer *lexer) {
     if (lexer->lookahead != '(') return false;
     skip(lexer);
@@ -1532,19 +1633,7 @@ static bool scan_constructor_parameter_start(TSLexer *lexer) {
     if (lexer->lookahead == ')') return true;
     for (;;) {
         bool modifier = false;
-        if (lexer->lookahead == '`') {
-            skip(lexer);
-            if (!scan_literal_rest(lexer, '`', 0, true)) return false;
-        } else {
-            if (!is_identifier_start(lexer->lookahead)) return false;
-            char word[MAX_WORD_SIZE] = {0};
-            modifier = scan_words(lexer, MODIFIER_WORDS, word, NULL) || !strcmp(word, "val") || !strcmp(word, "var");
-            while (is_identifier_part(lexer->lookahead)) {
-                modifier = false;
-                skip(lexer);
-            }
-        }
-        if (!skip_whitespace_and_comments(lexer, true)) return false;
+        if (!scan_constructor_parameter_item(lexer, &modifier) || !skip_whitespace_and_comments(lexer, true)) return false;
         if (lexer->lookahead == ':') {
             skip(lexer);
             return lexer->lookahead != ':';
@@ -1553,6 +1642,23 @@ static bool scan_constructor_parameter_start(TSLexer *lexer) {
     }
 }
 
+static bool scan_constructor_parameter_item(TSLexer *lexer, bool *modifier) {
+    if (lexer->lookahead == '`') {
+        skip(lexer);
+        return scan_literal_rest(lexer, '`', 0, true);
+    }
+    if (!is_identifier_start(lexer->lookahead)) return false;
+    char word[MAX_WORD_SIZE] = {0};
+    *modifier = scan_words(lexer, MODIFIER_WORDS, word, NULL) || streq(word, "val") || streq(word, "var");
+    while (is_identifier_part(lexer->lookahead)) {
+        *modifier = false;
+        skip(lexer);
+    }
+    return true;
+}
+
+static bool can_follow_infix_get(TSLexer *lexer);
+static bool ends_infix_get_argument(const TSLexer *lexer);
 static bool scan_get_following_statement(TSLexer *lexer);
 static bool scan_get_following_assignment(TSLexer *lexer);
 
@@ -1565,11 +1671,14 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
     lexer->mark_end(lexer);
     if (!scan_whitespace_and_comments(lexer, false, false)) return false;
     bool newline = lexer->lookahead == '\n' || lexer->lookahead == '\r';
-    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-    if (lexer->eof(lexer) || lexer->lookahead == '}' || lexer->lookahead == ';' || lexer->lookahead == '=') return false;
+    if (!scan_whitespace_and_comments(lexer, true, false) || ends_infix_get_argument(lexer)) return false;
     if (newline && can_be_accessor) {
         return !scan_get_following_statement(lexer);
     }
+    return can_follow_infix_get(lexer);
+}
+
+static bool can_follow_infix_get(TSLexer *lexer) {
     if (lexer->lookahead == ':') {
         advance(lexer);
         if (lexer->lookahead != ':') return false;
@@ -1578,61 +1687,100 @@ static bool scan_infix_get_identifier(TSLexer *lexer, bool can_be_accessor) {
         advance(lexer);
         if (!scan_whitespace_and_comments(lexer, true, false) || lexer->lookahead == ')') return false;
     }
-    return !lexer->eof(lexer) && lexer->lookahead != '}' && lexer->lookahead != ';' && lexer->lookahead != '=';
+    return !ends_infix_get_argument(lexer);
 }
+
+static bool ends_infix_get_argument(const TSLexer *lexer) {
+    int32_t c = lexer->lookahead;
+    return at_eof(lexer) || c == '}' || c == ';' || c == '=';
+}
+
+static const char FOLLOWING_STATEMENT_KEYWORDS[][MAX_WORD_SIZE] = {
+    "for", "while", "do", "",
+};
+
+static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
+    "if", "when", "return", "throw", "continue", "break", "",
+};
+
+static int step_following_statement(TSLexer *lexer, bool *companion);
+static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
+static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
+static int classify_following_word(TSLexer *lexer, const char *word, bool companion);
+static bool scan_following_constructor(TSLexer *lexer);
+static bool is_following_modifier(const char *word, bool *companion);
 
 static bool scan_get_following_statement(TSLexer *lexer) {
     bool companion = false;
     for (;;) {
-        while (lexer->lookahead == '@') {
-            if (!scan_member_annotation(lexer, false) || !scan_whitespace_and_comments(lexer, true, false)) return false;
-        }
-        char word[MAX_WORD_SIZE] = {0};
-        unsigned length = 0;
-        while (is_identifier_part(lexer->lookahead)) {
-            if (length < MAX_WORD_SIZE - 1) word[length++] = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
-            else word[MAX_WORD_SIZE - 2] = '?';
-            advance(lexer);
-        }
-        if (!scan_whitespace_and_comments(lexer, false, false)) return lexer->eof(lexer) || scan_get_following_assignment(lexer);
-        bool line_after_word = lexer->lookahead == '\n' || lexer->lookahead == '\r';
-        if (!scan_whitespace_and_comments(lexer, true, false)) return true;
-        if (strcmp(word, "for") == 0 || strcmp(word, "while") == 0 || strcmp(word, "do") == 0) return true;
-        if (strcmp(word, "if") == 0 || strcmp(word, "when") == 0 || strcmp(word, "return") == 0 ||
-            strcmp(word, "throw") == 0 || strcmp(word, "continue") == 0 || strcmp(word, "break") == 0) return false;
-        if (strcmp(word, "fun") == 0) {
-            return scan_named_function(lexer, false);
-        }
-        if (strcmp(word, "constructor") == 0 && lexer->lookahead == '(') {
-            advance(lexer);
-            if (!scan_to_closing_bracket(lexer, '(', ')', 0, false) ||
-                !scan_whitespace_and_comments(lexer, true, false)) return true;
-            return lexer->lookahead == '{' || lexer->lookahead == ':';
-        }
-        if (strcmp(word, "init") == 0 && lexer->lookahead == '{') return true;
-        if (strcmp(word, "object") == 0) {
-            return companion || lexer->eof(lexer) || lexer->lookahead == '}' || is_identifier_start(lexer->lookahead) ||
-                   lexer->lookahead == '`';
-        }
-        for (unsigned i = 0; DECLARATION_KEYWORDS[i][0]; i++) {
-            if (strcmp(word, DECLARATION_KEYWORDS[i]) == 0) return true;
-        }
-        bool modifier = strcmp(word, "companion") == 0;
-        companion = companion || modifier;
-        for (unsigned i = 0; MODIFIER_WORDS[i][0]; i++) {
-            modifier = modifier || strcmp(word, MODIFIER_WORDS[i]) == 0;
-        }
-        for (unsigned i = 0; OTHER_MODIFIER_WORDS[i][0]; i++) {
-            modifier = modifier || strcmp(word, OTHER_MODIFIER_WORDS[i]) == 0;
-        }
-        if (!modifier && lexer->lookahead == '@') {
-            advance(lexer);
-            if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-            continue;
-        }
-        if (!modifier) return !line_after_word && scan_get_following_assignment(lexer);
-        if (!(is_identifier_start(lexer->lookahead) || lexer->lookahead == '@')) return false;
+        int decision = step_following_statement(lexer, &companion);
+        if (decision >= 0) return decision != 0;
     }
+}
+
+static int step_following_statement(TSLexer *lexer, bool *companion) {
+    if (!skip_member_annotations(lexer, false)) return 0;
+    char word[MAX_WORD_SIZE] = {0};
+    read_following_word(lexer, word);
+    if (!scan_whitespace_and_comments(lexer, false, false)) return at_eof(lexer) || scan_get_following_assignment(lexer);
+    bool line_after_word = lexer->lookahead == '\n' || lexer->lookahead == '\r';
+    if (!scan_whitespace_and_comments(lexer, true, false)) return 1;
+    int decision = classify_following_word(lexer, word, *companion);
+    if (decision >= 0) return decision;
+    if (is_following_modifier(word, companion)) {
+        return is_identifier_start(lexer->lookahead) || lexer->lookahead == '@' ? -1 : 0;
+    }
+    if (lexer->lookahead != '@') return !line_after_word && scan_get_following_assignment(lexer);
+    advance(lexer);
+    return scan_whitespace_and_comments(lexer, true, false) ? -1 : 0;
+}
+
+static bool skip_member_annotations(TSLexer *lexer, bool skip_chars) {
+    while (lexer->lookahead == '@') {
+        if (!scan_member_annotation(lexer, skip_chars) || !scan_whitespace_and_comments(lexer, true, skip_chars)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]) {
+    unsigned length = 0;
+    while (is_identifier_part(lexer->lookahead)) {
+        char c = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
+        if (length < MAX_WORD_SIZE - 1) word[length++] = c;
+        else word[MAX_WORD_SIZE - 2] = '?';
+        advance(lexer);
+    }
+}
+
+static int classify_following_word(TSLexer *lexer, const char *word, bool companion) {
+    if (find_word(word, FOLLOWING_STATEMENT_KEYWORDS, NULL)) return 1;
+    if (find_word(word, FOLLOWING_EXPRESSION_KEYWORDS, NULL)) return 0;
+    if (streq(word, "fun")) return scan_named_function(lexer, false);
+    if (streq(word, "constructor") && lexer->lookahead == '(') return scan_following_constructor(lexer);
+    if (streq(word, "init") && lexer->lookahead == '{') return 1;
+    if (streq(word, "object")) {
+        return companion || at_eof(lexer) || lexer->lookahead == '}' || is_identifier_start(lexer->lookahead) ||
+               lexer->lookahead == '`';
+    }
+    return find_word(word, DECLARATION_KEYWORDS, NULL) ? 1 : -1;
+}
+
+static bool scan_following_constructor(TSLexer *lexer) {
+    advance(lexer);
+    if (!scan_to_closing_bracket(lexer, '(', ')', 0, false) || !scan_whitespace_and_comments(lexer, true, false)) {
+        return true;
+    }
+    return lexer->lookahead == '{' || lexer->lookahead == ':';
+}
+
+static bool is_following_modifier(const char *word, bool *companion) {
+    if (streq(word, "companion")) {
+        *companion = true;
+        return true;
+    }
+    return find_word(word, MODIFIER_WORDS, NULL) || find_word(word, OTHER_MODIFIER_WORDS, NULL);
 }
 
 static bool scan_get_following_assignment(TSLexer *lexer) {
