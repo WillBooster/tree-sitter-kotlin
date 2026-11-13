@@ -81,15 +81,17 @@ test('recovers from repeated trailing-dot imports with comments in linear time',
 test('parses repeated unterminated block comments in linear time', { timeout: 60_000 }, () => {
   const small = `fun f() {\n${'  if (a) b\n  else /* x\n'.repeat(2000)}}\n`;
   const large = `fun f() {\n${'  if (a) b\n  else /* x\n'.repeat(20_000)}}\n`;
-  parseCpuTime(large);
+  // A single parse can be shorter than the runner's thread CPU clock resolution.
+  const repetitions = 100;
+  parseCpuTime(large, repetitions);
   let smallFastest = Infinity;
   let largeFastest = Infinity;
   for (let run = 0; run < 3; run++) {
-    smallFastest = Math.min(smallFastest, parseCpuTime(small));
-    largeFastest = Math.min(largeFastest, parseCpuTime(large));
+    smallFastest = Math.min(smallFastest, parseCpuTime(small, repetitions));
+    largeFastest = Math.min(largeFastest, parseCpuTime(large, repetitions));
   }
   expect(largeFastest / smallFastest).toBeLessThan(18);
-  expect(largeFastest).toBeLessThan(5_000_000);
+  expect(largeFastest / repetitions).toBeLessThan(5_000_000);
 });
 
 // A `/*` in an annotation's string is no comment, so the lookahead for a constructor or an accessor after the
@@ -109,13 +111,18 @@ test('parses comment openers in annotation strings in linear time', { timeout: 6
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
-function parseCpuTime(source: string): number {
+function parseCpuTime(source: string, repetitions = 1): number {
+  const trees = [];
   const start = process.threadCpuUsage();
-  const tree = parser.parse(source);
+  for (let i = 0; i < repetitions; i++) {
+    trees.push(parser.parse(source));
+  }
   const { system, user } = process.threadCpuUsage(start);
-  if (!tree) throw new Error('The parser returned no tree');
-  const { hasError } = tree.rootNode;
-  tree.delete();
-  expect(hasError).toBe(true);
+  for (const tree of trees) {
+    if (!tree) throw new Error('The parser returned no tree');
+    const { hasError } = tree.rootNode;
+    tree.delete();
+    expect(hasError).toBe(true);
+  }
   return system + user;
 }
