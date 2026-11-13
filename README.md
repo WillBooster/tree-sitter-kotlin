@@ -17,16 +17,16 @@ This fork fixes parsing bugs and raises conformance with the Kotlin grammar.
 ## Support Scope
 
 This fork maintains only full parsing: valid input yields a correct tree, and invalid input yields `ERROR` or `MISSING`
-nodes without crashing, hanging, or taking more than linear time. Incremental parsing works as in upstream tree-sitter
-but is not tested here, and no queries (highlights, locals, injections, tags) are shipped. Node types, field names, and
-the trees that error recovery produces may change; such changes are released as new major versions.
+nodes without crashing, hanging, or taking more than linear time. Incremental parsing is not supported, and no queries
+(highlights, locals, injections, tags) are shipped. Node types, field names, and the trees that error recovery produces
+may change; such changes are released as new major versions.
 
 ## Usage
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers. The supported runtime is `@willbooster/web-tree-sitter` version 19.1.1 or later in the
-19.x series; the upstream Tree-sitter runtime rejects this parser.
+browsers, and Cloudflare Workers. The supported runtime is `@willbooster/web-tree-sitter` version 20.0.0 or later in the
+20.x series; the upstream Tree-sitter runtime rejects this parser.
 
 In Node.js and Bun:
 
@@ -71,10 +71,10 @@ The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin) and on
 [willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime with the matching ABI that this
-package is tested and fuzzed with. Use version 19.1.1 or later in the 19.x series:
+package is tested and fuzzed with. Use version 20.0.0 or later in the 20.x series:
 
 ```sh
-cargo add willbooster-tree-sitter@19.1.1 --rename tree-sitter
+cargo add willbooster-tree-sitter@20.0.0 --rename tree-sitter
 cargo add willbooster-tree-sitter-kotlin --rename tree-sitter-kotlin
 ```
 
@@ -90,44 +90,14 @@ mise install
 bun install --frozen-lockfile
 bun run test/ci-setup
 bun run build/ci
+bun run verify
 bun run test
-script/parse-examples
 cargo test
 ```
 
-Every `tree-sitter` command, from `generate` to the tests, runs the CLI of the WillBooster/tree-sitter runtime version
-locked in `Cargo.lock` (`script/tree-sitter`), whose generator and runtime have fixes that the upstream CLI lacks.
-`script/fork-cli` downloads that CLI into `.tmp/` from its GitHub Release on first use, or builds it with `cargo` when
-the download fails or the release has no binary that runs here.
-
-`bun run generate` records a fresh generation profile from the applicable `test/corpus` cases and Git-tracked
-files in `examples/`, then generates compact parser tables. The parser also embeds metadata from `tree-sitter.json`. After changing a grammar,
-`tree-sitter.json`, a corpus case, or a tracked example,
-regenerate and commit `src/`. Stage added or removed examples with `git add -A examples` before generation so the profile uses the intended file list.
-Profiles in `.tmp/generation-profiles/` are temporary and must not be committed. `bun run build-wasm`, `bun run build/ci`,
-and the release build regenerate the parsers before compiling them.
-
-`bun run test` runs:
-
-- the corpus in `test/corpus`, with the native build and with the Wasm build (the first run downloads the WASI SDK);
-- a check that real-world Kotlin files cloned into `examples/` fail to parse exactly as listed in
-  `script/known-failures.txt`. The first run clones them. The example repositories are pinned to commits in
-  `script/parse-examples`. After a grammar change or a moved pin alters that list, `script/parse-examples` rewrites
-  it; review its diff before committing;
-- a performance check (`test/unit/performance.test.ts`) that recovering from an error on each line takes linear time
-  (ten times the lines take about ten times the CPU time, under a ceiling), since consumers parse files while they are
-  being edited. It loads the Wasm build through @willbooster/web-tree-sitter, which `bun run build/ci` rebuilds after
-  regenerating the parser;
-- a check that `package.json` and `Cargo.lock` test the same runtime version (`test/unit/runtimeVersion.test.ts`);
-- checks that the Wasm build parses Kotlin through @willbooster/web-tree-sitter in Chromium
-  (`test/unit/browser.test.ts`) and in Cloudflare Workers with and without Node.js compatibility
-  (`test/unit/workers.test.ts`).
-
-The tests and `script/parse-examples` compile the parser into `.tmp/tree-sitter-lib` rather than the CLI's cache shared
-by every checkout, and `mise.toml` sets `TREE_SITTER_LIBDIR` to it for any other command run in the checkout.
-
-CI also runs these tests on Linux arm64 and macOS, where the Rust binding compiles the parser natively, and fuzzes the
-parser with libFuzzer and sanitizers (`.github/workflows/robustness.yml`).
+- `script/tree-sitter` runs the `WillBooster/tree-sitter` CLI locked in `Cargo.lock` (`script/runtime-version`). Keep `@willbooster/web-tree-sitter` in `package.json` and `willbooster-tree-sitter` in `Cargo.lock` at the same version.
+- Run `bun run build-wasm` and commit `src/` after changing `grammar.js`, `tree-sitter.json`, `test/corpus/`, or Git-tracked `examples/`. Stage added or removed files under `examples/` with `git add -A examples` before regenerating.
+- Run `script/parse-examples` to update `script/known-failures.txt` after a grammar change or a pin update in `script/parse-examples` alters which pinned examples fail to parse.
 
 ### References
 
