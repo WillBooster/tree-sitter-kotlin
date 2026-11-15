@@ -14,10 +14,10 @@
 //! assert!(!tree.root_node().has_error());
 //! ```
 //!
-//! The supported [willbooster-tree-sitter] runtime is version 20.0.0 or later in the 20.x series; the upstream
-//! tree-sitter runtime rejects the parser.
+//! The supported [willbooster-tree-sitter] runtime is version 23.0.0 or later in the 23.x series; the upstream
+//! tree-sitter runtime and WillBooster runtimes prior to 22.0.0 reject the parser.
 //!
-//! [`Parser`]: https://docs.rs/willbooster-tree-sitter/20.0.0/tree_sitter/struct.Parser.html
+//! [`Parser`]: https://docs.rs/willbooster-tree-sitter/23.0.0/tree_sitter/struct.Parser.html
 //! [willbooster-tree-sitter]: https://crates.io/crates/willbooster-tree-sitter
 //! [tree-sitter]: https://tree-sitter.github.io/
 

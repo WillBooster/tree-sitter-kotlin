@@ -25,8 +25,8 @@ may change; such changes are released as new major versions.
 
 The npm package ships `tree-sitter-kotlin.wasm` for
 [@willbooster/web-tree-sitter](https://www.npmjs.com/package/@willbooster/web-tree-sitter), which runs in Node.js, Bun,
-browsers, and Cloudflare Workers. The supported runtime is `@willbooster/web-tree-sitter` version 20.0.0 or later in the
-20.x series; the upstream Tree-sitter runtime rejects this parser.
+browsers, and Cloudflare Workers. The supported runtime is `@willbooster/web-tree-sitter` version 23.0.0 or later in the
+23.x series; the upstream Tree-sitter runtime and WillBooster runtimes prior to 22.0.0 reject this parser.
 
 In Node.js and Bun:
 
@@ -71,10 +71,10 @@ The package also ships the node types in `src/node-types.json`.
 
 In Rust, depend on the [crate](https://crates.io/crates/willbooster-tree-sitter-kotlin) and on
 [willbooster-tree-sitter](https://crates.io/crates/willbooster-tree-sitter), the runtime with the matching ABI that this
-package is tested and fuzzed with. Use version 20.0.0 or later in the 20.x series:
+package is tested and fuzzed with. Use version 23.0.0 or later in the 23.x series:
 
 ```sh
-cargo add willbooster-tree-sitter@20.0.0 --rename tree-sitter
+cargo add willbooster-tree-sitter@23.0.0 --rename tree-sitter
 cargo add willbooster-tree-sitter-kotlin --rename tree-sitter-kotlin
 ```
 

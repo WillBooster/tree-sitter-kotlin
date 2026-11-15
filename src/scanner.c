@@ -4,6 +4,7 @@
 
 #include "letter_ranges.h"
 
+#include <stddef.h>
 #include <string.h>
 #include <wctype.h>
 
@@ -425,12 +426,14 @@ static bool scan_catch_parameter_start(TSLexer *lexer) {
     return false;
 }
 
-// Kotlin's hard keywords other than `this`, which a string template cannot reference.
+// Kotlin's hard keywords other than `this`, which a string template cannot reference, sorted for binary search.
 static const char TEMPLATE_KEYWORDS[][MAX_WORD_SIZE] = {
     "as",  "break",     "class", "continue", "do",     "else",    "false",  "for",   "fun",   "if",
     "in",  "interface", "is",    "null",     "object", "package", "return", "super", "throw", "true",
-    "try", "typealias", "typeof", "val",     "var",    "when",    "while",  "",
+    "try", "typealias", "typeof", "val",     "var",    "when",    "while",
 };
+
+static bool is_template_keyword(const char *word);
 
 // Scans a hard keyword other than `this` right after the `$` of a template, as a whole identifier.
 static bool scan_template_keyword(TSLexer *lexer) {
@@ -442,7 +445,7 @@ static bool scan_template_keyword(TSLexer *lexer) {
         word[i] = (char)lexer->lookahead;
         advance(lexer);
     }
-    if (is_template_name_part(lexer->lookahead) || !find_word(word, TEMPLATE_KEYWORDS, NULL)) {
+    if (is_template_name_part(lexer->lookahead) || !is_template_keyword(word)) {
         return false;
     }
     lexer->mark_end(lexer);
@@ -514,11 +517,44 @@ static bool can_start_destructuring_type(TSLexer *lexer) {
         advance(lexer);
     }
     if (is_identifier_part(lexer->lookahead)) return true;
-    return !streq(word, "this") && !find_word(word, TEMPLATE_KEYWORDS, NULL);
+    return !streq(word, "this") && !is_template_keyword(word);
+}
+
+static inline int word_cmp(const char *a, const char *b);
+
+static bool is_template_keyword(const char *word) {
+    if (word[0] == '\0') {
+        return false;
+    }
+    size_t low = 0;
+    size_t high = sizeof(TEMPLATE_KEYWORDS) / sizeof(TEMPLATE_KEYWORDS[0]);
+    while (low < high) {
+        size_t middle = (low + high) / 2;
+        int cmp = word_cmp(word, TEMPLATE_KEYWORDS[middle]);
+        if (cmp == 0) {
+            return true;
+        }
+        if (cmp < 0) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    return false;
+}
+
+static inline int word_cmp(const char *a, const char *b) {
+    size_t i = 0;
+    while (a[i] != '\0' && a[i] == b[i]) {
+        i++;
+    }
+    return (int)(unsigned char)a[i] - (int)(unsigned char)b[i];
 }
 
 // Frames deeper than this are not recorded and read as statement lists, which nest far more often than class bodies.
 #define MAX_FRAMES 256
+#define FULL_SERIALIZATION_TAG 0xffu
+#define FULL_SERIALIZATION_HEADER_SIZE (1 + 2 * sizeof(uint32_t) + 2)
 
 typedef struct {
     // How many braces that hold statements (blocks, lambdas, and `when` bodies) or members (class bodies) enclose the
@@ -540,7 +576,7 @@ typedef struct {
     // The open multi-dollar strings, innermost last, since an interpolation may contain another string. Each entry is
     // the string's dollar count, with MULTILINE_FLAG set for a multiline string.
     unsigned length;
-    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2 * sizeof(uint32_t) - 2 - 2 * MAX_FRAMES / 8) /
+    uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - FULL_SERIALIZATION_HEADER_SIZE - 2 * MAX_FRAMES / 8) /
                      sizeof(uint16_t)];
 } Scanner;
 
@@ -588,15 +624,42 @@ static void pop_frame(Scanner *scanner) {
 #define MULTILINE_FLAG 0x8000
 #define MAX_DOLLAR_COUNT 0x7fff
 
-void *tree_sitter_kotlin_external_scanner_create() { return ts_calloc(1, sizeof(Scanner)); }
+void *tree_sitter_kotlin_external_scanner_create(void) { return ts_calloc(1, sizeof(Scanner)); }
 
 void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payload); }
 
+static unsigned serialize_compact_scanner(const Scanner *scanner, char *buffer);
+static unsigned serialize_full_scanner(const Scanner *scanner, char *buffer);
+static bool deserialize_compact_scanner(Scanner *scanner, const char *buffer, unsigned length, unsigned old_bytes);
+static bool deserialize_full_scanner(Scanner *scanner, const char *buffer, unsigned length, unsigned old_bytes);
+static void clear_frames(Scanner *scanner, unsigned from_bytes, unsigned old_bytes);
+static void reset_scanner(Scanner *scanner, unsigned old_bytes);
+
 unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buffer) {
-    Scanner *scanner = (Scanner *)payload;
+    const Scanner *scanner = (const Scanner *)payload;
+    if (scanner->depth < FULL_SERIALIZATION_TAG && scanner->surplus_dollars == 0 && scanner->length == 0) {
+        return serialize_compact_scanner(scanner, buffer);
+    }
+    return serialize_full_scanner(scanner, buffer);
+}
+
+static unsigned serialize_compact_scanner(const Scanner *scanner, char *buffer) {
+    uint8_t flags = (uint8_t)((scanner->after_short_template ? 1u : 0u) | (scanner->newline_before_comment ? 2u : 0u));
+    unsigned bytes = frame_bytes(scanner->depth);
+    buffer[0] = (char)scanner->depth;
+    buffer[1] = (char)flags;
+    if (bytes > 0) {
+        memcpy(buffer + 2, scanner->frames, bytes);
+        memcpy(buffer + 2 + bytes, scanner->separated_members, bytes);
+    }
+    return 2 + 2 * bytes;
+}
+
+static unsigned serialize_full_scanner(const Scanner *scanner, char *buffer) {
     unsigned bytes = frame_bytes(scanner->depth);
     unsigned size = 0;
-    memcpy(buffer, &scanner->depth, sizeof(uint32_t));
+    buffer[size++] = (char)FULL_SERIALIZATION_TAG;
+    memcpy(buffer + size, &scanner->depth, sizeof(uint32_t));
     size += sizeof(uint32_t);
     memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
     size += sizeof(uint32_t);
@@ -616,24 +679,65 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     return size;
 }
 
-static void clear_frames(Scanner *scanner, unsigned from_bytes, unsigned old_bytes);
-static void reset_scanner(Scanner *scanner, unsigned old_bytes);
-
 void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
     Scanner *scanner = (Scanner *)payload;
     unsigned old_bytes = frame_bytes(scanner->depth);
-    if (length < 2 * sizeof(uint32_t) + 2) {
+    if (length == 0) {
         reset_scanner(scanner, old_bytes);
         return;
     }
-    unsigned size = 0;
-    memcpy(&scanner->depth, buffer, sizeof(uint32_t));
+    bool ok = (uint8_t)buffer[0] == FULL_SERIALIZATION_TAG
+                  ? deserialize_full_scanner(scanner, buffer, length, old_bytes)
+                  : deserialize_compact_scanner(scanner, buffer, length, old_bytes);
+    if (!ok) {
+        reset_scanner(scanner, old_bytes);
+    }
+}
+
+static bool deserialize_compact_scanner(Scanner *scanner, const char *buffer, unsigned length, unsigned old_bytes) {
+    if (length < 2) {
+        return false;
+    }
+    uint32_t depth = (uint8_t)buffer[0];
+    unsigned new_bytes = frame_bytes(depth);
+    if (length != 2 + 2 * new_bytes) {
+        return false;
+    }
+    uint8_t flags = (uint8_t)buffer[1];
+    scanner->depth = depth;
+    scanner->surplus_dollars = 0;
+    scanner->after_short_template = flags & 1u;
+    scanner->newline_before_comment = (flags >> 1) & 1u;
+    if (new_bytes > 0) {
+        memcpy(scanner->frames, buffer + 2, new_bytes);
+        memcpy(scanner->separated_members, buffer + 2 + new_bytes, new_bytes);
+    }
+    clear_frames(scanner, new_bytes, old_bytes);
+    scanner->length = 0;
+    return true;
+}
+
+static bool deserialize_full_scanner(Scanner *scanner, const char *buffer, unsigned length, unsigned old_bytes) {
+    if (length < FULL_SERIALIZATION_HEADER_SIZE) {
+        return false;
+    }
+    unsigned size = 1;
+    uint32_t depth = 0;
+    memcpy(&depth, buffer + size, sizeof(uint32_t));
     size += sizeof(uint32_t);
+    unsigned new_bytes = frame_bytes(depth);
+    if (length < FULL_SERIALIZATION_HEADER_SIZE + 2 * new_bytes) {
+        return false;
+    }
+    unsigned string_bytes = length - (FULL_SERIALIZATION_HEADER_SIZE + 2 * new_bytes);
+    if (string_bytes > sizeof(scanner->strings) || string_bytes % sizeof(uint16_t) != 0) {
+        return false;
+    }
+    scanner->depth = depth;
     memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
     size += sizeof(uint32_t);
     scanner->after_short_template = (uint8_t)buffer[size++];
     scanner->newline_before_comment = (uint8_t)buffer[size++];
-    unsigned new_bytes = frame_bytes(scanner->depth);
     if (new_bytes > 0) {
         memcpy(scanner->frames, buffer + size, new_bytes);
         size += new_bytes;
@@ -641,11 +745,11 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
         size += new_bytes;
     }
     clear_frames(scanner, new_bytes, old_bytes);
-    unsigned string_bytes = length - size;
     scanner->length = string_bytes / sizeof(uint16_t);
     if (string_bytes > 0) {
         memcpy(scanner->strings, buffer + size, string_bytes);
     }
+    return true;
 }
 
 static void reset_scanner(Scanner *scanner, unsigned old_bytes) {
@@ -1595,7 +1699,8 @@ static bool prediction_eof(const TSLexer *lexer) {
 // state until the next external token, so it must be forgotten unless that next scan returns one: otherwise it would
 // apply to later tokens on the line, as in `a\n/* c */ .b(1 * 2)`.
 static bool scans_token_after_line_break(const Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
-    Scanner next = *scanner;
+    Scanner next;
+    memcpy(&next, scanner, offsetof(Scanner, strings) + scanner->length * sizeof(uint16_t));
     Prediction prediction = {
         .lexer = {.lookahead = lexer->lookahead,
                   .advance = advance_prediction,
