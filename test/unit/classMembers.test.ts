@@ -177,6 +177,14 @@ test.each([
   ['n as String.() -> () -> Boolean', '"other"'],
   ['@Ann n', '2'],
   ['@Ann(1) n', '2, 3'],
+  ['+@Ann n', '2'],
+  ['-@Ann(1) n', '2, 3'],
+  ['!@Ann p', 'is String'],
+  ['n as () -> @Ann Boolean', '2'],
+  ['n as () -> @Ann(1) Boolean', '2, 3'],
+  ['n as () -> @Ann (1) Boolean', '2'],
+  ['n as () -> @Ann() (Boolean) -> Boolean', 'is String'],
+  ['n as () -> @Ann (Boolean) -> Boolean', '"other"'],
   ['@example.Ann("argument") c!!', 'is String'],
 ])('keeps an ordinary else-if body %s before another when entry (%s)', (alternative, condition) => {
   const body = `if (p) println(1); else if (q) ${alternative}`;
