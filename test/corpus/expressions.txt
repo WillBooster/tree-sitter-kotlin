@@ -2625,6 +2625,16 @@ fun g(n: Int, b: Boolean) = when (n) {
 else -> Unit
 }
 
+fun empty(n: Int, b: Boolean) {
+    when (n) {
+        1 -> if (b); else -> println(n)
+    }
+    when (n) {
+        1 -> if (b) if (b); /* before else */ else /* before arrow */ -> println(n)
+    }
+    if (b); else println(n)
+}
+
 --------------------------------------------------------------------------------
 
 (source_file
@@ -2725,4 +2735,54 @@ else -> Unit
             (identifier))
           (identifier))
         (when_entry
-          (identifier))))))
+          (identifier)))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier))))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (if_expression
+                (identifier)))
+            (block_comment))
+          (when_entry
+            (block_comment)
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier))))))
+        (if_expression
+          (identifier)
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (identifier)))))))))

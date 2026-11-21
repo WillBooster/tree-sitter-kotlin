@@ -29,6 +29,24 @@ test('separates same-line class members, including nested members', () => {
   }
 });
 
+test('preserves literal semicolon spans inside property initializers', () => {
+  const source = `class C {
+    val x: Int = if (true) 1; else 2
+    var y: Int = if (true) 1; /* note */ else 2; get() = field; set(value) { field = value }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const semicolons = tree.rootNode
+      .descendantsOfType('if_expression')
+      .map((node) => node?.children.find((child) => child?.type === ';'));
+    expect(semicolons.map((node) => node?.text)).toEqual([';', ';']);
+    expect(semicolons.map((node) => node?.startIndex)).toEqual([source.indexOf(';'), source.indexOf('; /* note */')]);
+  } finally {
+    tree.delete();
+  }
+});
+
 test('requires a separator after properties even when nested bodies contain adjacent functions', () => {
   for (const source of [
     'class C { fun first() {} val x = 1 val y = 2 }',

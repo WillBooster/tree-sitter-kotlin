@@ -1871,7 +1871,7 @@ static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool
     // After a property semicolon, a newline before the next token ends the property. A newline inside a
     // block comment does not count, and an annotation on the same line may itself continue onto later lines.
     bool initial = accessors && valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
-                   skip_whitespace_and_comments(lexer, false) &&
+                   scan_whitespace_and_comments(lexer, false, false) &&
                    lexer->lookahead != '\n' && lexer->lookahead != '\r';
     accessors = initial || (accessors && (valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]));
     if (!accessors && !before_else) return SEMI;

@@ -885,7 +885,7 @@ module.exports = grammar({
       return choice(
         prec.right(seq(head, choice(body, ';', elseBranch))),
         // Shift the literal semicolon in the nearest if before choosing its else or the next when entry.
-        prec.dynamic(-1, seq(head, body, semicolonBeforeElse()))
+        prec.dynamic(-1, seq(head, optional(body), semicolonBeforeElse()))
       );
     },
 
