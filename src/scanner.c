@@ -1936,6 +1936,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if);
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard);
 static bool starts_guard_operand_after_line(int32_t c, int32_t next);
+static void scan_guard_number_tail(TSLexer *lexer);
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head);
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c);
 static void scan_guard_punctuation(TSLexer *lexer, GuardScan *guard, int32_t c);
@@ -1996,7 +1997,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     }
     const bool follows_explicit_else = guard->follows_explicit_else;
     guard->follows_explicit_else = false;
-    if (c != '$' && is_identifier_start(c)) return scan_guard_word(lexer, guard, follows_explicit_else);
+    if (is_identifier_start(c)) return scan_guard_word(lexer, guard, follows_explicit_else);
     return scan_guard_symbol(lexer, guard, c);
 }
 
@@ -2017,6 +2018,7 @@ static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool contin
     return scan_guard_word_token(guard, word) ? GUARD_MORE : GUARD_ABSENT;
 }
 
+// code-gauge-allow functionCognitiveComplexity 16 -- separators and completed operands use the same lexical step.
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c) {
     GuardLookahead *input = (GuardLookahead *)lexer;
     const bool initial_group = c == '(' && guard->branch.prefix == GUARD_START;
@@ -2034,6 +2036,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     if (group != GUARD_GROUP_CLOSED) return guard_result(guard->shared_arrow || group != GUARD_GROUP_UNTERMINATED);
     const bool postfix = guard->completed_operand && (c == '!' || c == '+' || c == '-') && lexer->lookahead == c;
     if (postfix) advance(lexer);
+    if (is_digit(c)) scan_guard_number_tail(lexer);
     scan_guard_punctuation(lexer, guard, c);
     guard->completed_operand = postfix || completed_guard_operand(c, initial_group, guard->control_head);
     guard->control_head = false;
@@ -2059,8 +2062,12 @@ static bool starts_guard_operand_after_line(int32_t c, int32_t next) {
            ((c == '+' || c == '-') && next != '=');
 }
 
+static void scan_guard_number_tail(TSLexer *lexer) {
+    while (is_ascii_alpha(lexer->lookahead) || is_digit(lexer->lookahead) || lexer->lookahead == '_') advance(lexer);
+}
+
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head) {
-    return is_digit(c) || c == '"' || c == '\'' || c == '`' || c == '[' ||
+    return is_digit(c) || c == '"' || c == '\'' || c == '`' || c == '[' || c == '{' ||
            (c == '(' && !initial_group && !control_head);
 }
 
@@ -2203,7 +2210,7 @@ static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
     bool saw_newline = false;
     bool trivia = scan_trivia(lexer, true, false, &saw_newline);
     if (saw_newline && guard->branch.can_be_alternative &&
-        (guard->branch.prefix == GUARD_EXPRESSION || guard->branch.prefix == GUARD_INFIX_ARGUMENT)) {
+        (guard->completed_operand || guard->branch.prefix == GUARD_INFIX_ARGUMENT)) {
         guard->crossed_line_after_body = true;
         guard->after_operand_line = guard->completed_operand;
     }

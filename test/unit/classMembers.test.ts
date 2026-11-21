@@ -187,6 +187,32 @@ test('a guarded when entry owns the literal even when initial lookahead is ambig
   }
 });
 
+test.each([0, 256])('keeps multiline infix guards at %i enclosing blocks', (depth) => {
+  const wrappers = 'if (p) { '.repeat(depth);
+  const guards = [
+    '(p) xor run { true } xor\n q',
+    '(p) xor { true } xor\n (q)',
+    '(n) xor 42L xor\n n',
+    '(n) xor 0x2a xor\n n',
+    '(n) xor 4.2F xor\n n',
+  ];
+  for (const guard of guards) {
+    const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Int) { ${wrappers}
+      when (n) { 1 -> if (p) f(); else if ${guard} -> Unit
+        else -> Unit }
+      ${'}'.repeat(depth)}
+    }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, guarded] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe('if (p) f()');
+      expect(guarded?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
 test('preserves guarded when entries across nested templates and conditional bodies', () => {
   let template = '"x"';
   for (let depth = 0; depth < 32; depth++) template = '"${' + template + '}"';
