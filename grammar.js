@@ -157,6 +157,7 @@ module.exports = grammar({
     sym('_unterminated_block_comment'),
     sym('_getter_separator'),
     sym('_setter_separator'),
+    sym('_accessor_parameters_position'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -441,10 +442,12 @@ module.exports = grammar({
 
     setter: ($) => prec.right(seq(optional($.modifiers), 'set', optional(seq($._setter_parameters, $.function_body)))),
 
-    _getter_parameters: ($) => seq('(', ')', optional(seq(':', $.type))),
+    _getter_parameters: ($) =>
+      seq(optional(sym('_accessor_parameters_position')), '(', ')', optional(seq(':', $.type))),
 
     _setter_parameters: ($) =>
       seq(
+        optional(sym('_accessor_parameters_position')),
         '(',
         optional($.parameter_modifiers),
         $.identifier,

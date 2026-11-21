@@ -49,6 +49,7 @@ enum TokenType {
     UNTERMINATED_BLOCK_COMMENT,
     GETTER_SEPARATOR,
     SETTER_SEPARATOR,
+    ACCESSOR_PARAMETERS_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -1467,10 +1468,10 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 advance(lexer);
                 lexer->mark_end(lexer);
                 return true;
-            // Kotlin allows a primary constructor on the line after the class name. During error recovery, where every
-            // token is valid, a `(` on a new line still starts a statement.
+            // A parameter list can start on the next line of a primary constructor or property accessor.
             case '(':
-                return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
+                return error_recovery ||
+                       !(valid_symbols[PRIMARY_CONSTRUCTOR_POSITION] || valid_symbols[ACCESSOR_PARAMETERS_POSITION]);
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
                     // Full literal/comment scans cross the inherited prefix's whitespace boundary and alter separator recovery.

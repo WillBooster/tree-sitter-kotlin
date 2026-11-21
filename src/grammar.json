@@ -2621,6 +2621,18 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_accessor_parameters_position"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": "("
         },
@@ -2654,6 +2666,18 @@
     "_setter_parameters": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_accessor_parameters_position"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
         {
           "type": "STRING",
           "value": "("
@@ -8937,6 +8961,10 @@
     {
       "type": "SYMBOL",
       "name": "_setter_separator"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_accessor_parameters_position"
     }
   ],
   "inline": [
