@@ -668,8 +668,25 @@
                         "type": "CHOICE",
                         "members": [
                           {
-                            "type": "SYMBOL",
-                            "name": "setter"
+                            "type": "SEQ",
+                            "members": [
+                              {
+                                "type": "CHOICE",
+                                "members": [
+                                  {
+                                    "type": "SYMBOL",
+                                    "name": "_accessor_separator"
+                                  },
+                                  {
+                                    "type": "BLANK"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "SYMBOL",
+                                "name": "setter"
+                              }
+                            ]
                           },
                           {
                             "type": "BLANK"
@@ -689,8 +706,25 @@
                         "type": "CHOICE",
                         "members": [
                           {
-                            "type": "SYMBOL",
-                            "name": "getter"
+                            "type": "SEQ",
+                            "members": [
+                              {
+                                "type": "CHOICE",
+                                "members": [
+                                  {
+                                    "type": "SYMBOL",
+                                    "name": "_accessor_separator"
+                                  },
+                                  {
+                                    "type": "BLANK"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "SYMBOL",
+                                "name": "getter"
+                              }
+                            ]
                           },
                           {
                             "type": "BLANK"
@@ -8795,6 +8829,10 @@
     {
       "type": "SYMBOL",
       "name": "_unterminated_block_comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_accessor_separator"
     }
   ],
   "inline": [
