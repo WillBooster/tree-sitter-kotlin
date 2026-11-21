@@ -75,6 +75,11 @@ test('preserves guarded when entries across nested templates and conditional bod
     '(p) xor (n == 0)',
     'p as (Boolean)',
     'p is (Int) -> Int',
+    '(p)!! as (Boolean)',
+    '(n) !is (Int)',
+    '(n) / 2 is (Int)',
+    '(n)++ is (Int)',
+    '(n)-- is (Int)',
   ]) {
     const tree = parser.parse(`fun f(p: Boolean, n: Int) {
       when (n) {

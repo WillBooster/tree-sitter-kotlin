@@ -119,6 +119,9 @@ const ifChainCases = [
   ['with casts of call results', 150],
   ['with generic receivers and conditional alternatives', 150],
   ['with nested if branches in conditions', 150],
+  ['with statement blocks inside when entries', 150],
+  ['with type prefixes on casts', 150],
+  ['with nested alternatives past the scanner frame limit', 40],
   ['with nested when bodies', 40],
   ['with nested when conditions', 40],
   ['with deeply interpolated conditions', 40],
@@ -157,6 +160,12 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
     const suffix = '\nelse -> Unit }'.repeat(depth);
     return `fun f(a: Boolean) { ${prefix}f()${suffix}`;
   }
+  if (context === 'with nested alternatives past the scanner frame limit') {
+    const scopes = 'if (a) {'.repeat(256);
+    const prefixes = 'if (a) f(); else if (a) {'.repeat(depth);
+    const suffixes = '} else f()\n'.repeat(depth);
+    return `fun f(a: Boolean) { ${scopes}${prefixes}f()${suffixes}${'}'.repeat(256)}`;
+  }
   if (context === 'with nested when conditions') {
     const prefix = 'when (0) { 0 -> if (a) f(); else if (when (0) { 0 -> '.repeat(depth);
     const suffix = '}) f()\nelse -> Unit }'.repeat(depth);
@@ -174,11 +183,14 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
 function castBody(context: (typeof ifChainCases)[number][0]): string | undefined {
   if (context === 'with function casts') return 'fn as (Int) -> Int else fn';
   if (context === 'with casts of call results') return '(fn(0)) as? (Int) -> Int';
+  if (context === 'with type prefixes on casts') return 'fn(0) as @Ann context(String) (Int) -> Int else h()';
   if (context === 'with generic receivers and conditional alternatives')
     return 'fn(0) as Map<Int, List<Int>>.() -> Int else if (a) g() else h()';
 }
 
 function alternativeWithNestedTokens(context: (typeof ifChainCases)[number][0]): string | undefined {
+  if (context === 'with statement blocks inside when entries')
+    return '; else if (when (0) { else -> { if (a) f(); else if (a) g(); true } }) g() else h()';
   if (context === 'with nested if branches in conditions')
     return '; else if (if (a) true; /* branch */ else if (a) false else true) g() else h()';
   if (context === 'with deeply interpolated conditions')
