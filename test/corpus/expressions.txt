@@ -2927,3 +2927,71 @@ fun conditionalGuard(n: Int, p: Boolean) {
             (call_expression
               (identifier)
               (value_arguments))))))))
+
+================================================================================
+Whitespace before a guarded entry arrow
+================================================================================
+
+fun f(p: Boolean, n: Int) {
+    when (n) {
+        1 -> if (p) println(1); else if (p)-> Unit
+        else -> Unit
+    }
+    when (n) {
+        1 -> if (p) println(1); else if (p)-> Unit
+        else -> Unit
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (number_literal))))))
+          (when_entry
+            (parenthesized_expression
+              (identifier))
+            (identifier))
+          (when_entry
+            (identifier)))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments
+                  (value_argument
+                    (number_literal))))))
+          (when_entry
+            (parenthesized_expression
+              (identifier))
+            (identifier))
+          (when_entry
+            (identifier)))))))

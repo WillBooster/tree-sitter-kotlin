@@ -231,9 +231,11 @@ static void scan_line_comment_rest(TSLexer *lexer, bool skip_chars) {
     }
 }
 
-static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool skip_chars) {
+// code-gauge-allow functionCognitiveComplexity 16 -- trivia consumption and newline observation share each advance.
+static bool scan_trivia(TSLexer *lexer, bool across_lines, bool skip_chars, bool *saw_newline) {
     for (;;) {
         while (is_whitespace_char(lexer->lookahead, across_lines)) {
+            if (saw_newline && (lexer->lookahead == '\n' || lexer->lookahead == '\r')) *saw_newline = true;
             lexer->advance(lexer, skip_chars);
         }
         if (lexer->lookahead != '/') {
@@ -253,6 +255,10 @@ static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool
             return true;
         }
     }
+}
+
+static bool scan_whitespace_and_comments(TSLexer *lexer, bool across_lines, bool skip_chars) {
+    return scan_trivia(lexer, across_lines, skip_chars, NULL);
 }
 
 static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
@@ -2143,13 +2149,11 @@ static bool guard_word_requires_operand(const char *word) {
 }
 
 static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
-    bool trivia = scan_whitespace_and_comments(lexer, false, false);
-    if (trivia && (lexer->lookahead == '\n' || lexer->lookahead == '\r')) {
-        if (guard->branch.can_be_alternative &&
-            (guard->branch.prefix == GUARD_EXPRESSION || guard->branch.prefix == GUARD_INFIX_ARGUMENT))
-            guard->crossed_line_after_body = true;
-        trivia = scan_whitespace_and_comments(lexer, true, false);
-    }
+    bool saw_newline = false;
+    bool trivia = scan_trivia(lexer, true, false, &saw_newline);
+    if (saw_newline && guard->branch.can_be_alternative &&
+        (guard->branch.prefix == GUARD_EXPRESSION || guard->branch.prefix == GUARD_INFIX_ARGUMENT))
+        guard->crossed_line_after_body = true;
     if (!trivia) {
         if (before_guard_operand(guard->branch.prefix)) guard->branch.can_be_alternative = false;
         guard->branch.prefix = GUARD_EXPRESSION;
