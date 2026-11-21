@@ -283,13 +283,22 @@ module.exports = grammar({
           choice($.variable_declaration, $.multi_variable_declaration),
           optional($.type_constraints),
           optional(choice(seq('=', $.expression), $.property_delegate)),
-          optional(';'),
           optional(
             choice(
-              seq($.getter, optional($.setter)),
-              seq($.setter, optional($.getter)),
-              seq(alias($._expression_getter, $.getter), sym('_setter_separator'), $.setter),
-              seq(alias($._expression_setter, $.setter), sym('_getter_separator'), $.getter)
+              seq(
+                optional(sym('_getter_separator')),
+                choice(
+                  seq($.getter, optional($.setter)),
+                  seq(alias($._expression_getter, $.getter), sym('_setter_separator'), $.setter)
+                )
+              ),
+              seq(
+                optional(sym('_setter_separator')),
+                choice(
+                  seq($.setter, optional($.getter)),
+                  seq(alias($._expression_setter, $.setter), sym('_getter_separator'), $.getter)
+                )
+              )
             )
           )
         )
