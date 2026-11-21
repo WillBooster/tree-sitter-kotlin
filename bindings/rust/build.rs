@@ -27,5 +27,6 @@ fn main() {
         println!("cargo:rerun-if-changed={}", scanner_path.to_str().unwrap());
     }
 
+    println!("cargo:rerun-if-changed={}", src_dir.join("guard_lookahead.h").display());
     c_config.compile("tree-sitter-kotlin");
 }
