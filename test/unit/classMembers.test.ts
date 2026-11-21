@@ -270,6 +270,11 @@ test.each([
   [3, '(if (a) { println(1) } else { println(2) })', '{ println(3) }'],
   [2, 'use()\n      /* argument */ { println(n) }', '3'],
   [2, 'use<Unit>()\n      { println(n) }', '3'],
+  [2, 'use()\n      @Mark { println(n) }', '3'],
+  [2, 'use()\n      label@ { println(n); return@label }', '3'],
+  [3, 'use() // comment\n      @Mark(1) { println(n) }', '3'],
+  [3, 'use()\n      /* comment */ @Mark @Suppress("UNUSED_EXPRESSION") label@ { println(n) }', '3'],
+  [2, 'use()', '@Mark ::marker'],
   [3, 'items[0]!!', '!in 0..3'],
 ])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
   const source = `fun f(a: Boolean, c: Boolean, n: Any, items: List<Int?>) {

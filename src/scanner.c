@@ -1031,6 +1031,9 @@ static int token_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *v
 static bool scan_else_arrow(TSLexer *lexer);
 
 static bool scan_annotated_condition_start(TSLexer *lexer);
+static bool scan_prefixed_trailing_lambda(TSLexer *lexer);
+static bool lambda_follows_label(TSLexer *lexer, bool skip_chars);
+static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
 
 static bool scan_bounded_annotated_condition_start(TSLexer *lexer);
 
@@ -1395,6 +1398,19 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
 
         char scanned_word[MAX_WORD_SIZE] = {0};
         bool skipped_modifiers = false;
+        if (can_continue_lambda) {
+            int32_t next = lexer->lookahead;
+            if (next == '@' || next == '`') {
+                if (scan_prefixed_trailing_lambda(lexer)) lexer->result_symbol = TRAILING_LAMBDA_POSITION;
+                return true;
+            }
+            if (is_identifier_start(next)) {
+                read_following_word(lexer, scanned_word);
+                if (lexer->lookahead != '@') goto keywords;
+                if (lambda_follows_label(lexer, false)) lexer->result_symbol = TRAILING_LAMBDA_POSITION;
+                return true;
+            }
+        }
         // Where a statement may end, `val` is valid only after a modifier that `_reserved_identifier` also reads as a
         // whole statement (`private` alone on its line). As in Kotlin, the modifier then belongs to a declaration that
         // starts on the next line, possibly with more modifiers or annotations.
@@ -1889,7 +1905,6 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
-static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
 typedef enum {
     GUARD_START,
     GUARD_AFTER_HEAD,
@@ -1947,6 +1962,8 @@ static GuardResult scan_guard_input(GuardLookahead *input, unsigned brace_depth,
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_annotation(TSLexer *lexer, GuardScan *guard);
 static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at_separator, GuardScan *guard);
+static bool scan_lambda_prefix(TSLexer *lexer, bool skip_chars, GuardScan *guard);
+static GuardResult scan_guard_prefixed_lambda(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if);
 static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard);
 static bool has_guard_label_suffix(const char *word);
@@ -2019,9 +2036,17 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     guard->follows_explicit_else = false;
     guard->return_value_optional = false;
     if (is_identifier_start(c)) return scan_guard_word(lexer, guard, follows_explicit_else);
+    if (guard->after_operand_line && guard->completed_call_arguments && (c == '@' || c == '`'))
+        return scan_guard_prefixed_lambda(lexer, guard);
     if (c == '@' && (!guard->completed_operand || !guard->completed_body_operand))
         return scan_guard_annotation(lexer, guard);
     return scan_guard_symbol(lexer, guard, c);
+}
+
+static GuardResult scan_guard_prefixed_lambda(TSLexer *lexer, GuardScan *guard) {
+    if (!scan_lambda_prefix(lexer, false, guard)) return guard_result(guard->shared_arrow);
+    guard->after_operand_line = false;
+    return GUARD_MORE;
 }
 
 static GuardResult scan_guard_annotation(TSLexer *lexer, GuardScan *guard) {
@@ -2053,7 +2078,12 @@ static bool has_guard_label_suffix(const char *word) {
 
 static GuardResult scan_guard_label(TSLexer *lexer, GuardScan *guard) {
     if (guard->branch.prefix == GUARD_AFTER_HEAD) return GUARD_ABSENT;
-    if (guard->after_operand_line) return guard_result(guard->shared_arrow);
+    if (guard->after_operand_line) {
+        if (!guard->completed_call_arguments || !lambda_follows_label(lexer, false))
+            return guard_result(guard->shared_arrow);
+        guard->after_operand_line = false;
+        return GUARD_MORE;
+    }
     if (guard->reading_alternative && guard->alternative.prefix == GUARD_AFTER_HEAD)
         finish_guard_alternative_prefix(lexer, guard, true);
     advance(lexer);
@@ -2791,6 +2821,25 @@ static bool scan_annotated_condition_start(TSLexer *lexer) {
         .remaining = 1024,
     };
     return scan_bounded_annotated_condition_start(&lookahead.lexer);
+}
+
+static bool scan_prefixed_trailing_lambda(TSLexer *lexer) {
+    return scan_lambda_prefix(lexer, false, NULL);
+}
+
+static bool scan_lambda_prefix(TSLexer *lexer, bool skip_chars, GuardScan *guard) {
+    while (lexer->lookahead == '@') {
+        if (!scan_annotation_prefix(lexer, skip_chars, false, guard) ||
+            !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
+    }
+    if (lexer->lookahead == '{') return true;
+    return scan_prefixed_identifier(lexer, skip_chars, false, guard) && lambda_follows_label(lexer, skip_chars);
+}
+
+static bool lambda_follows_label(TSLexer *lexer, bool skip_chars) {
+    if (lexer->lookahead != '@') return false;
+    lexer->advance(lexer, skip_chars);
+    return scan_whitespace_and_comments(lexer, true, skip_chars) && lexer->lookahead == '{';
 }
 
 static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
