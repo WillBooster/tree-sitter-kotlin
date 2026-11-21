@@ -1544,8 +1544,9 @@ Same-name calls after property accessors remain separate statements
 val first: Int
     get() = 1; get() { 2 }
 
+val current = 2
 var second = 0
-    set(value) { field = value }; set(2) { 3 }
+    set(value) = run { field = value }; set(current) { 3 }
 
 --------------------------------------------------------------------------------
 
@@ -1567,19 +1568,26 @@ var second = 0
   (property_declaration
     (variable_declaration
       (identifier))
+    (number_literal))
+  (property_declaration
+    (variable_declaration
+      (identifier))
     (number_literal)
     (setter
       (identifier)
       (function_body
-        (block
-          (assignment
-            (identifier)
-            (identifier))))))
+        (call_expression
+          (identifier)
+          (annotated_lambda
+            (lambda_literal
+              (assignment
+                (identifier)
+                (identifier))))))))
   (call_expression
     (identifier)
     (value_arguments
       (value_argument
-        (number_literal)))
+        (identifier)))
     (annotated_lambda
       (lambda_literal
         (number_literal)))))
