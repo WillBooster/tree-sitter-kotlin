@@ -6343,7 +6343,7 @@
                           },
                           {
                             "type": "SYMBOL",
-                            "name": "_else_after_semicolon"
+                            "name": "_if_else_after_semicolon"
                           }
                         ]
                       },
@@ -6411,7 +6411,12 @@
                 }
               },
               {
-                "type": "STRING",
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_semicolon_before_else"
+                },
+                "named": false,
                 "value": ";"
               }
             ]
@@ -6419,22 +6424,27 @@
         }
       ]
     },
-    "_else_after_semicolon": {
-      "type": "PREC_DYNAMIC",
-      "value": 1,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": ";"
+    "_if_else_after_semicolon": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_semicolon_before_else"
           },
-          {
-            "type": "STRING",
-            "value": "else"
-          }
-        ]
-      }
+          "named": false,
+          "value": ";"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_semi"
+        },
+        {
+          "type": "STRING",
+          "value": "else"
+        }
+      ]
     },
     "_control_structure_body": {
       "type": "CHOICE",
@@ -6840,17 +6850,8 @@
                   "type": "CHOICE",
                   "members": [
                     {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_semi"
-                        },
-                        {
-                          "type": "STRING",
-                          "value": ";"
-                        }
-                      ]
+                      "type": "SYMBOL",
+                      "name": "_semi"
                     },
                     {
                       "type": "BLANK"
@@ -6871,17 +6872,8 @@
                   }
                 },
                 {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "_semi"
-                    },
-                    {
-                      "type": "STRING",
-                      "value": ";"
-                    }
-                  ]
+                  "type": "SYMBOL",
+                  "name": "_semi"
                 }
               ]
             }
@@ -7047,17 +7039,8 @@
                   "type": "CHOICE",
                   "members": [
                     {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_semi"
-                        },
-                        {
-                          "type": "STRING",
-                          "value": ";"
-                        }
-                      ]
+                      "type": "SYMBOL",
+                      "name": "_semi"
                     },
                     {
                       "type": "BLANK"
@@ -7078,17 +7061,8 @@
                   }
                 },
                 {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "_semi"
-                    },
-                    {
-                      "type": "STRING",
-                      "value": ";"
-                    }
-                  ]
+                  "type": "SYMBOL",
+                  "name": "_semi"
                 }
               ]
             }
@@ -8645,7 +8619,7 @@
     ],
     [
       "if_expression",
-      "_else_after_semicolon"
+      "_if_else_after_semicolon"
     ],
     [
       "class_body",
@@ -9084,6 +9058,10 @@
     {
       "type": "SYMBOL",
       "name": "_accessor_parameters_position"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_semicolon_before_else"
     }
   ],
   "inline": [

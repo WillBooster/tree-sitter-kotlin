@@ -2612,3 +2612,117 @@ fun main() {
         (call_expression
           (identifier)
           (value_arguments))))))
+
+================================================================================
+Plain and guarded when alternatives after nested if statements
+================================================================================
+
+fun f(n: Int, b: Boolean) = when (n) {
+1 -> if (b) if (b) if (b) if (b) if (b) if (b) if (b) if (b) if (b) if (b) f(n, b); /* before else */ else /* before arrow */ -> Unit
+}
+fun g(n: Int, b: Boolean) = when (n) {
+1 -> if (b) if (b) if (b) if (b) if (b) if (b) if (b) if (b) if (b) if (b) g(n, b); else if (b) -> Unit
+else -> Unit
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (when_expression
+        (when_subject
+          (identifier))
+        (when_entry
+          (number_literal)
+          (if_expression
+            (identifier)
+            (if_expression
+              (identifier)
+              (if_expression
+                (identifier)
+                (if_expression
+                  (identifier)
+                  (if_expression
+                    (identifier)
+                    (if_expression
+                      (identifier)
+                      (if_expression
+                        (identifier)
+                        (if_expression
+                          (identifier)
+                          (if_expression
+                            (identifier)
+                            (if_expression
+                              (identifier)
+                              (call_expression
+                                (identifier)
+                                (value_arguments
+                                  (value_argument
+                                    (identifier))
+                                  (value_argument
+                                    (identifier))))))))))))))
+          (block_comment))
+        (when_entry
+          (block_comment)
+          (identifier)))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (when_expression
+        (when_subject
+          (identifier))
+        (when_entry
+          (number_literal)
+          (if_expression
+            (identifier)
+            (if_expression
+              (identifier)
+              (if_expression
+                (identifier)
+                (if_expression
+                  (identifier)
+                  (if_expression
+                    (identifier)
+                    (if_expression
+                      (identifier)
+                      (if_expression
+                        (identifier)
+                        (if_expression
+                          (identifier)
+                          (if_expression
+                            (identifier)
+                            (if_expression
+                              (identifier)
+                              (call_expression
+                                (identifier)
+                                (value_arguments
+                                  (value_argument
+                                    (identifier))
+                                  (value_argument
+                                    (identifier)))))))))))))))
+        (when_entry
+          (parenthesized_expression
+            (identifier))
+          (identifier))
+        (when_entry
+          (identifier))))))
