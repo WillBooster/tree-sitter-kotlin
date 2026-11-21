@@ -211,11 +211,17 @@ test.each([
   }
 });
 
-test.each([2, 3])('binds a shared else to the innermost of %i pending conditionals', (depth) => {
-  const source = `fun f(a: Boolean, c: Boolean, n: Int) {
+test.each([
+  [2, 'n', '3'],
+  [3, 'n', '3'],
+  [2, 'items[0]!!', '!is String'],
+  [3, '(items[0])!!', '!is String?'],
+  [3, 'items[0]!!', '!in 0..3'],
+])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
+  const source = `fun f(a: Boolean, c: Boolean, n: Any, items: List<Int?>) {
     when (n) {
-      1 -> ${'if (a) '.repeat(depth)}println(n); else if (c) n
-      3 -> Unit
+      1 -> ${'if (a) '.repeat(depth)}println(n); else if (c) ${body}
+      ${condition} -> Unit
       else -> Unit
     }
   }`;
@@ -228,8 +234,8 @@ test.each([2, 3])('binds a shared else to the innermost of %i pending conditiona
       expect(inner?.childForFieldName('alternative')).toBeNull();
       inner = inner?.childForFieldName('consequence');
     }
-    expect(inner?.childForFieldName('alternative')?.text).toBe('if (c) n');
-    expect(next?.text).toBe('3 -> Unit');
+    expect(inner?.childForFieldName('alternative')?.text).toBe(`if (c) ${body}`);
+    expect(next?.text).toBe(`${condition} -> Unit`);
   } finally {
     tree.delete();
   }

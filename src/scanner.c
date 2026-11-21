@@ -2092,7 +2092,7 @@ static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard) {
 
 static bool starts_guard_operand_after_line(int32_t c, int32_t next) {
     return starts_guard_number(c, next) || c == '"' || c == '\'' || c == '`' || c == '(' ||
-           ((c == '+' || c == '-') && next != '=');
+           ((c == '+' || c == '-' || c == '!') && next != '=');
 }
 
 static bool starts_guard_number(int32_t c, int32_t next) {
