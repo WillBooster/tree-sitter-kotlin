@@ -47,6 +47,9 @@ enum TokenType {
     IMPORT_CONTINUE,
     RETURN_VALUE_POSITION,
     UNTERMINATED_BLOCK_COMMENT,
+    GETTER_SEPARATOR,
+    SETTER_SEPARATOR,
+    ACCESSOR_PARAMETERS_POSITION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -210,7 +213,7 @@ static bool scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
 }
 
 static inline bool is_whitespace_char(int32_t c, bool across_lines) {
-    return across_lines ? is_space(c) : c == ' ' || c == '\t';
+    return across_lines ? is_space(c) : c == ' ' || c == '\t' || c == '\f';
 }
 
 static void scan_line_comment_rest(TSLexer *lexer, bool skip_chars) {
@@ -974,6 +977,7 @@ static bool scan_full_destructuring_start(TSLexer *lexer);
 static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
+static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols);
 
 static bool scan_else_arrow(TSLexer *lexer);
 
@@ -1162,7 +1166,9 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     // A line break before a comment that the next token shares a line with separates as if right before the token.
     bool saw_newline = newline_before_comment;
     bool saw_space = false;
-    if (valid_symbols[SEMI] || can_end_delegation) {
+    bool can_separate_accessors = (valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
+                                  !error_recovery && !in_statements(scanner);
+    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (is_space(lexer->lookahead)) {
@@ -1178,14 +1184,17 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         }
     }
 
+    if ((valid_symbols[SEMI] || can_separate_accessors) && lexer->lookahead == ';') {
+        advance(lexer);
+        lexer->mark_end(lexer);
+        if (can_separate_accessors && scan_accessor_after_separator(lexer, valid_symbols)) return true;
+        lexer->result_symbol = SEMI;
+        return valid_symbols[SEMI];
+    }
+
     if (valid_symbols[SEMI]) {
         lexer->result_symbol = SEMI;
         if (at_eof(lexer)) {
-            return true;
-        }
-        if (lexer->lookahead == ';') {
-            advance(lexer);
-            lexer->mark_end(lexer);
             return true;
         }
         if (lexer->lookahead == '/') {
@@ -1459,10 +1468,10 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                 advance(lexer);
                 lexer->mark_end(lexer);
                 return true;
-            // Kotlin allows a primary constructor on the line after the class name. During error recovery, where every
-            // token is valid, a `(` on a new line still starts a statement.
+            // A parameter list can start on the next line of a primary constructor or property accessor.
             case '(':
-                return error_recovery || !valid_symbols[PRIMARY_CONSTRUCTOR_POSITION];
+                return error_recovery ||
+                       !(valid_symbols[PRIMARY_CONSTRUCTOR_POSITION] || valid_symbols[ACCESSOR_PARAMETERS_POSITION]);
             case '@':
                 if (valid_symbols[CONSTRUCTOR]) {
                     // Full literal/comment scans cross the inherited prefix's whitespace boundary and alter separator recovery.
@@ -1811,6 +1820,24 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
+static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+    while (skip_whitespace_and_comments(lexer, true)) {
+        if (lexer->lookahead == '@') {
+            if (!scan_member_annotation(lexer, true)) return false;
+            continue;
+        }
+        char word[MAX_WORD_SIZE] = {0};
+        read_following_word(lexer, word);
+        if (streq(word, "get") || streq(word, "set")) {
+            bool setter = streq(word, "set");
+            lexer->result_symbol = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
+            return valid_symbols[lexer->result_symbol] && scan_accessor_rest(lexer, setter);
+        }
+        if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return false;
+    }
+    return false;
+}
+
 static int classify_following_word(TSLexer *lexer, const char *word, bool companion);
 static bool scan_following_constructor(TSLexer *lexer);
 static bool is_following_modifier(const char *word, bool *companion);

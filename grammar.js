@@ -155,6 +155,9 @@ module.exports = grammar({
     sym('_return_value_position'),
     // valid nowhere, so that an unterminated block comment, which runs to the end of the input, is an error
     sym('_unterminated_block_comment'),
+    sym('_getter_separator'),
+    sym('_setter_separator'),
+    sym('_accessor_parameters_position'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -281,7 +284,14 @@ module.exports = grammar({
           optional($.type_constraints),
           optional(choice(seq('=', $.expression), $.property_delegate)),
           optional(';'),
-          optional(choice(seq($.getter, optional($.setter)), seq($.setter, optional($.getter))))
+          optional(
+            choice(
+              seq($.getter, optional($.setter)),
+              seq($.setter, optional($.getter)),
+              seq(alias($._expression_getter, $.getter), sym('_setter_separator'), $.setter),
+              seq(alias($._expression_setter, $.setter), sym('_getter_separator'), $.getter)
+            )
+          )
         )
       ),
 
@@ -428,33 +438,36 @@ module.exports = grammar({
     // last operand of an operator (`B by a ?: b { … }`): the scanner ends the expression before it.
     explicit_delegation: ($) => seq($.type, 'by', $.expression, optional(sym('_delegation_end'))),
 
-    getter: ($) =>
-      prec.right(
-        seq(optional($.modifiers), 'get', optional(seq('(', ')', optional(seq(':', $.type)), $.function_body)))
+    getter: ($) => prec.right(seq(optional($.modifiers), 'get', optional(seq($._getter_parameters, $.function_body)))),
+
+    setter: ($) => prec.right(seq(optional($.modifiers), 'set', optional(seq($._setter_parameters, $.function_body)))),
+
+    _getter_parameters: ($) =>
+      seq(optional(sym('_accessor_parameters_position')), '(', ')', optional(seq(':', $.type))),
+
+    _setter_parameters: ($) =>
+      seq(
+        optional(sym('_accessor_parameters_position')),
+        '(',
+        optional($.parameter_modifiers),
+        $.identifier,
+        optional(seq(':', $.type)),
+        optional(seq('=', $.expression)),
+        optional(','),
+        ')',
+        optional(seq(':', $.type))
       ),
 
-    setter: ($) =>
-      prec.right(
-        seq(
-          optional($.modifiers),
-          'set',
-          optional(
-            seq(
-              '(',
-              optional($.parameter_modifiers),
-              $.identifier,
-              optional(seq(':', $.type)),
-              optional(seq('=', $.expression)),
-              optional(','),
-              ')',
-              optional(seq(':', $.type)),
-              $.function_body
-            )
-          )
-        )
-      ),
+    // Kotlin's parseFunctionBody consumes a semicolon after an expression body, but leaves it after a block body.
+    _expression_getter: ($) =>
+      seq(optional($.modifiers), 'get', $._getter_parameters, alias($._expression_body, $.function_body)),
 
-    function_body: ($) => choice($.block, seq('=', $.expression)),
+    _expression_setter: ($) =>
+      seq(optional($.modifiers), 'set', $._setter_parameters, alias($._expression_body, $.function_body)),
+
+    function_body: ($) => choice($.block, $._expression_body),
+
+    _expression_body: ($) => seq('=', $.expression),
 
     block: ($) => seq('{', sym('_open_statements'), optional($._statements), '}', sym('_close_braces')),
 

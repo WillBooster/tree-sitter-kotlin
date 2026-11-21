@@ -1485,3 +1485,164 @@ fun f(a: Int) {
         (identifier)
         (navigation_expression
           (identifier))))))
+
+================================================================================
+Explicit semicolons between property accessors
+================================================================================
+
+var first = 0
+    get() = field; /* between */ set
+      (value) { field = value };
+
+class Counter {
+    var second = 0
+        private set(value) = println(value); get
+          () = field
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (getter
+      (function_body
+        (identifier)))
+    (block_comment)
+    (setter
+      (identifier)
+      (function_body
+        (block
+          (assignment
+            (identifier)
+            (identifier))))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (modifiers
+            (visibility_modifier))
+          (identifier)
+          (function_body
+            (call_expression
+              (identifier)
+              (value_arguments
+                (value_argument
+                  (identifier))))))
+        (getter
+          (function_body
+            (identifier)))))))
+
+================================================================================
+Same-name calls after property accessors remain separate statements
+================================================================================
+
+val first: Int
+    get() = 1; get() { 2 }
+
+val current = 2
+var second = 0
+    set(value) = run { field = value }; set(current) { 3 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (getter
+      (function_body
+        (number_literal))))
+  (call_expression
+    (identifier)
+    (value_arguments)
+    (annotated_lambda
+      (lambda_literal
+        (number_literal))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (setter
+      (identifier)
+      (function_body
+        (call_expression
+          (identifier)
+          (annotated_lambda
+            (lambda_literal
+              (assignment
+                (identifier)
+                (identifier))))))))
+  (call_expression
+    (identifier)
+    (value_arguments
+      (value_argument
+        (identifier)))
+    (annotated_lambda
+      (lambda_literal
+        (number_literal)))))
+
+================================================================================
+Calls after block-bodied accessors remain separate statements
+================================================================================
+
+var first = 0
+    set(value) { field = value }; get() { 1 }
+
+val current = 2
+var second = 0
+    get() { return field }; set(current) { 3 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (setter
+      (identifier)
+      (function_body
+        (block
+          (assignment
+            (identifier)
+            (identifier))))))
+  (call_expression
+    (identifier)
+    (value_arguments)
+    (annotated_lambda
+      (lambda_literal
+        (number_literal))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (getter
+      (function_body
+        (block
+          (return_expression
+            (identifier))))))
+  (call_expression
+    (identifier)
+    (value_arguments
+      (value_argument
+        (identifier)))
+    (annotated_lambda
+      (lambda_literal
+        (number_literal)))))
