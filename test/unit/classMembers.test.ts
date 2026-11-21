@@ -148,6 +148,10 @@ test.each([
   ['c!!', '2, 3'],
   ['x++', '2'],
   ['y--', 'in 2..3'],
+  ['n as () -> Boolean', '2'],
+  ['n as (Boolean) -> Boolean', '2, 3'],
+  ['n as (Boolean) -> List<Boolean>?', 'is String'],
+  ['n as String.() -> () -> Boolean', '"other"'],
 ])('keeps an ordinary else-if body %s before another when entry (%s)', (alternative, condition) => {
   const body = `if (p) println(1); else if (q) ${alternative}`;
   for (const depth of [0, 256]) {

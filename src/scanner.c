@@ -2073,6 +2073,7 @@ static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard) {
     guard->saw_type_arrow = true;
     guard->shared_arrow = guard->shared_arrow || !guard->branch.can_be_alternative;
     guard->type = GUARD_TYPE;
+    guard->completed_operand = guard->completed_body_operand = false;
     return GUARD_MORE;
 }
 
