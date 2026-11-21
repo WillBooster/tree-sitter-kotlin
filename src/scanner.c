@@ -1894,7 +1894,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
 static void scan_guard_punctuation(GuardScan *guard, int32_t c);
 static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard);
 static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard);
-static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars);
+static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard);
 static bool guard_word_starts_body(const char *word);
 static bool guard_word_requires_operand(const char *word);
 
@@ -1957,7 +1957,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
         guard->type = GUARD_TYPE;
         return GUARD_MORE;
     }
-    if (!scan_guard_delimiter(lexer, c, guard->dollars)) return guard_result(guard->shared_arrow || !at_eof(lexer));
+    if (!scan_guard_delimiter(lexer, c, guard)) return guard_result(guard->shared_arrow || !at_eof(lexer));
     scan_guard_punctuation(guard, c);
     return GUARD_MORE;
 }
@@ -2026,14 +2026,140 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     return true;
 }
 
-static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars) {
+static bool scan_guard_head(TSLexer *lexer);
+
+static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
+    if (c == '(' && guard->prefix == GUARD_START) return scan_guard_head(lexer);
     switch (c) {
         case '(': return scan_to_closing_bracket(lexer, '(', ')', 0, false);
         case '[': return scan_to_closing_bracket(lexer, '[', ']', 0, false);
         case '{': return scan_to_closing_bracket(lexer, '{', '}', 0, false);
-        case '"': case '\'': case '`': return scan_string_rest(lexer, c, dollars > 1 ? dollars : 1, 0, false, false);
+        case '"': case '\'': case '`':
+            return scan_string_rest(lexer, c, guard->dollars > 1 ? guard->dollars : 1, 0, false, false);
         default: return true;
     }
+}
+
+typedef struct {
+    int32_t end;
+    unsigned dollars;
+    unsigned repeated_dollars;
+    unsigned repeated_quotes;
+    bool literal;
+    bool raw;
+} GuardFrame;
+
+typedef struct {
+    GuardFrame *frames;
+    size_t count;
+    size_t capacity;
+} GuardHead;
+
+static bool scan_balanced_guard_head(TSLexer *lexer);
+static bool step_guard_group(TSLexer *lexer, GuardHead *head);
+static bool step_guard_literal(TSLexer *lexer, GuardHead *head);
+static bool push_guard_frame(GuardHead *head, GuardFrame frame);
+
+static bool scan_guard_head(TSLexer *lexer) {
+    Prediction *prediction = (Prediction *)lexer;
+    unsigned *budget = prediction->budget;
+    // Every ordinary else-if must cross its condition before the continuation can be identified. Skip that
+    // balanced condition as one probe item so a long comment or nested interpolation does not open a second parse.
+    prediction->budget = NULL;
+    bool closed = scan_balanced_guard_head(lexer);
+    prediction->budget = budget;
+    return closed;
+}
+
+static bool scan_balanced_guard_head(TSLexer *lexer) {
+    GuardHead head = {0};
+    if (!push_guard_frame(&head, (GuardFrame){.end = ')'})) return false;
+    bool valid = true;
+    while (head.count > 0 && valid && !at_eof(lexer)) {
+        valid = head.frames[head.count - 1].literal ? step_guard_literal(lexer, &head) : step_guard_group(lexer, &head);
+    }
+    bool closed = valid && head.count == 0;
+    ts_free(head.frames);
+    return closed;
+}
+
+static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars);
+static bool starts_nested_guard_probe(TSLexer *lexer);
+
+// code-gauge-allow functionNcss 32 -- the bracket, comment, and quote transitions advance the same frame.
+static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
+    GuardFrame *group = &head->frames[head->count - 1];
+    int32_t c = lexer->lookahead;
+    if (c == '/') {
+        scan_whitespace_and_comments(lexer, true, false);
+        group->repeated_dollars = 0;
+        return true;
+    }
+    advance(lexer);
+    if (c == group->end) {
+        head->count--;
+        return true;
+    }
+    unsigned dollars = group->repeated_dollars;
+    group->repeated_dollars = c == '$' ? dollars + 1 : 0;
+    switch (c) {
+        case ';': return !starts_nested_guard_probe(lexer);
+        case '(': return push_guard_frame(head, (GuardFrame){.end = ')'});
+        case '[': return push_guard_frame(head, (GuardFrame){.end = ']'});
+        case '{': return push_guard_frame(head, (GuardFrame){.end = '}'});
+        case '"': case '\'': case '`': return push_guard_quote(lexer, head, c, dollars);
+        case ')': case ']': case '}': return false;
+        default: return true;
+    }
+}
+
+// Leave the choice open at another potential probe so nested conditions do not rescan each other's contents.
+static bool starts_nested_guard_probe(TSLexer *lexer) {
+    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+    char word[MAX_WORD_SIZE] = {0};
+    read_following_word(lexer, word);
+    return streq(word, "else") && scan_else_follower(lexer) == ELSE_GUARD;
+}
+
+static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars) {
+    GuardFrame literal = {.end = quote, .dollars = dollars > 1 ? dollars : 1, .literal = true};
+    if (quote == '"' && lexer->lookahead == '"') {
+        advance(lexer);
+        if (lexer->lookahead != '"') return true;
+        advance(lexer);
+        literal.raw = true;
+    }
+    return push_guard_frame(head, literal);
+}
+
+static bool step_guard_literal(TSLexer *lexer, GuardHead *head) {
+    GuardFrame *literal = &head->frames[head->count - 1];
+    int32_t c = lexer->lookahead;
+    advance(lexer);
+    literal->repeated_quotes = c == '"' ? literal->repeated_quotes + 1 : 0;
+    literal->repeated_dollars = c == '$' ? literal->repeated_dollars + 1 : 0;
+    if (literal->raw ? literal->repeated_quotes >= 3 && lexer->lookahead != '"' : c == literal->end) {
+        head->count--;
+    } else if (c == '\\' && !literal->raw && literal->end != '`') {
+        advance(lexer);
+    } else if (literal->end == '"' && literal->repeated_dollars >= literal->dollars && lexer->lookahead == '{') {
+        advance(lexer);
+        return push_guard_frame(head, (GuardFrame){.end = '}'});
+    }
+    return true;
+}
+
+static bool push_guard_frame(GuardHead *head, GuardFrame frame) {
+    if (head->count == head->capacity) {
+        size_t capacity = head->capacity ? head->capacity * 2 : 16;
+        if (capacity > SIZE_MAX / sizeof(GuardFrame) || capacity < head->capacity) return false;
+        GuardFrame *frames = ts_realloc(head->frames, capacity * sizeof(GuardFrame));
+        if (!frames) return false;
+        head->frames = frames;
+        head->capacity = capacity;
+    }
+    head->frames[head->count++] = frame;
+    return true;
 }
 
 static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer) {

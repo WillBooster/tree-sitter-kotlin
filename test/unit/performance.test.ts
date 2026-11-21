@@ -111,14 +111,19 @@ test('parses comment openers in annotation strings in linear time', { timeout: 6
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
-test.each([
+const ifChainCases = [
   ['in a function', 250],
   ['in a when entry', 250],
   ['past the scanner frame limit', 250],
   ['with function casts', 150],
   ['with casts of call results', 150],
   ['with nested when bodies', 40],
-] as const)(
+  ['with nested when conditions', 40],
+  ['with deeply interpolated conditions', 40],
+  ['with long comments in conditions', 20],
+] as const;
+
+test.each(ifChainCases)(
   'parses unfinished nested if chains with explicit semicolons in linear time %s',
   { timeout: 60_000 },
   (context, depth) => {
@@ -136,16 +141,7 @@ test.each([
   }
 );
 
-function unfinishedIfChain(
-  depth: number,
-  context:
-    | 'in a function'
-    | 'in a when entry'
-    | 'past the scanner frame limit'
-    | 'with function casts'
-    | 'with casts of call results'
-    | 'with nested when bodies'
-): string {
+function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number][0]): string {
   const body = `${'if (a) '.repeat(depth)}f()`;
   const alternatives = '; else if (a) g() else h()'.repeat(depth / 2);
   if (context === 'with function casts' || context === 'with casts of call results') {
@@ -158,11 +154,30 @@ function unfinishedIfChain(
     const suffix = '\nelse -> Unit }'.repeat(depth);
     return `fun f(a: Boolean) { ${prefix}f()${suffix}`;
   }
+  if (context === 'with nested when conditions') {
+    const prefix = 'when (0) { 0 -> if (a) f(); else if (when (0) { 0 -> '.repeat(depth);
+    const suffix = '}) f()\nelse -> Unit }'.repeat(depth);
+    return `fun f(a: Boolean) { ${prefix}f()${suffix}`;
+  }
+  if (context === 'with deeply interpolated conditions' || context === 'with long comments in conditions') {
+    const condition =
+      context === 'with deeply interpolated conditions'
+        ? `(${nestedTemplate(32)}).isNotEmpty()`
+        : `/* ${'a '.repeat(2250)}*/ a`;
+    const longAlternatives = `; else if (${condition}) g() else h()`.repeat(depth / 2);
+    return `fun f(a: Boolean) { when (0) { 0 -> ${body}${longAlternatives}\nelse -> Unit }`;
+  }
   if (context === 'in a when entry')
     return `fun f(a: Boolean) { when (0) { 0 -> ${body}${alternatives}\nelse -> Unit }`;
   if (context === 'past the scanner frame limit')
     return `fun f(a: Boolean) { ${'if (a) {'.repeat(256)}${body}${alternatives}${'}'.repeat(256)}`;
   return `fun f(a: Boolean) { ${body}${'; else g()'.repeat(depth / 2)}`;
+}
+
+function nestedTemplate(depth: number): string {
+  let text = '"x"';
+  for (let index = 0; index < depth; index++) text = '"${' + text + '}"';
+  return text;
 }
 
 function parseCpuTime(source: string, repetitions = 1): number {
