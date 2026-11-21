@@ -8,6 +8,8 @@
 #include <string.h>
 #include <wctype.h>
 
+#include "guard_lookahead.h"
+
 enum TokenType {
     DESTRUCTURING_TYPE_START,
     SEMI,
@@ -606,6 +608,7 @@ typedef struct {
     unsigned length;
     uint16_t strings[(TREE_SITTER_SERIALIZATION_BUFFER_SIZE - FULL_SERIALIZATION_HEADER_SIZE - 2 * MAX_FRAMES / 8) /
                      sizeof(uint16_t)];
+    GuardCache guard_cache;
 } Scanner;
 
 static unsigned frame_bytes(uint32_t depth) { return ((depth < MAX_FRAMES ? depth : MAX_FRAMES) + 7) / 8; }
@@ -654,7 +657,10 @@ static void pop_frame(Scanner *scanner) {
 
 void *tree_sitter_kotlin_external_scanner_create(void) { return ts_calloc(1, sizeof(Scanner)); }
 
-void tree_sitter_kotlin_external_scanner_destroy(void *payload) { ts_free(payload); }
+void tree_sitter_kotlin_external_scanner_destroy(void *payload) {
+    ts_free(((Scanner *)payload)->guard_cache.characters);
+    ts_free(payload);
+}
 
 static unsigned serialize_compact_scanner(const Scanner *scanner, char *buffer);
 static unsigned serialize_full_scanner(const Scanner *scanner, char *buffer);
@@ -1896,6 +1902,7 @@ typedef enum { ELSE_BODY, ELSE_ENTRY, ELSE_GUARD } ElseFollower;
 
 static ElseFollower scan_else_follower(TSLexer *lexer);
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
+static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c);
 static void scan_guard_punctuation(GuardScan *guard, int32_t c, int32_t next);
 static void scan_guard_type_word(GuardScan *guard, const char *word, bool operator);
 static bool before_guard_operand(GuardPrefix prefix);
@@ -1907,7 +1914,11 @@ static bool guard_word_requires_operand(const char *word);
 
 // Balanced constructs keep their own separators and arrows. After the first parenthesized value, a guard must
 // continue that value as an expression, while an else-if starts a distinct body after the parenthesized condition.
-static bool scan_when_guard_arrow(TSLexer *lexer, unsigned brace_depth, bool in_entries) {
+static bool scan_when_guard_arrow(Scanner *scanner, TSLexer *source, bool in_entries) {
+    // The cache belongs to a full parse, including its competing GLR versions; the line-break predictor uses a proxy.
+    GuardLookahead input = guard_lookahead(source->get_position ? &scanner->guard_cache : NULL, source);
+    TSLexer *lexer = &input.lexer;
+    const unsigned brace_depth = scanner->depth;
     GuardScan guard = {.prefix = GUARD_START, .brace_depth = brace_depth, .in_entries = in_entries};
     while (!at_eof(lexer)) {
         GuardResult result = scan_guard_token(lexer, &guard);
@@ -1920,7 +1931,6 @@ static GuardResult guard_result(bool possible) {
     return possible ? GUARD_POSSIBLE : GUARD_ABSENT;
 }
 
-// code-gauge-allow functionCognitiveComplexity 23 -- lexical boundaries and their possible arrow roles share one token step.
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     int32_t c = lexer->lookahead;
     if (is_space(c) || c == '/') {
@@ -1938,6 +1948,14 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
             return guard_result(guard->shared_arrow && scan_else_follower(lexer) != ELSE_BODY);
         return scan_guard_word_token(guard, word) ? GUARD_MORE : GUARD_ABSENT;
     }
+    return scan_guard_symbol(lexer, guard, c);
+}
+
+static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c) {
+    GuardLookahead *input = (GuardLookahead *)lexer;
+    const bool initial_group = c == '(' && guard->prefix == GUARD_START;
+    if (initial_group) guard_capture_start(input);
+    const uint32_t group_start = input->offset;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS)
@@ -1949,7 +1967,10 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
         guard->type = GUARD_TYPE;
         return GUARD_MORE;
     }
-    if (!scan_guard_delimiter(lexer, c, guard)) return guard_result(guard->shared_arrow || !at_eof(lexer));
+    const bool closed = (initial_group && guard_replay_group(input, group_start, guard->brace_depth)) ||
+                        scan_guard_delimiter(lexer, c, guard);
+    if (initial_group) guard_capture_end(input, closed);
+    if (!closed) return guard_result(guard->shared_arrow || !at_eof(lexer));
     scan_guard_punctuation(guard, c, lexer->lookahead);
     return GUARD_MORE;
 }
@@ -2083,6 +2104,7 @@ typedef struct {
     bool can_have_entries;
     bool when_head;
     unsigned brace_depth;
+    uint32_t start_offset;
 } GuardFrame;
 
 typedef struct {
@@ -2139,7 +2161,7 @@ static bool group_may_have_entries(int32_t opener, const GuardScan *guard) {
 }
 
 static bool starts_nested_guard_probe(TSLexer *lexer);
-static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c);
+static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, uint32_t offset);
 
 static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
     GuardFrame *group = &head->frames[head->count - 1];
@@ -2156,6 +2178,8 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         group->repeated_dollars = 0;
         return true;
     }
+    GuardLookahead *input = (GuardLookahead *)lexer;
+    const uint32_t offset = input->offset;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         advance(lexer);
@@ -2164,13 +2188,14 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         return true;
     }
     if (c == group->end) {
+        if (c == ')' && head->count > 1) guard_capture_group(input, group->start_offset, group->brace_depth);
         head->count--;
         return true;
     }
-    return step_guard_group_punctuation(lexer, head, c);
+    return step_guard_group_punctuation(lexer, head, c, offset);
 }
 
-static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c) {
+static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, uint32_t offset) {
     GuardFrame *group = &head->frames[head->count - 1];
     const unsigned brace_depth = group->brace_depth;
     const bool can_have_entries = group->can_have_entries;
@@ -2180,7 +2205,9 @@ static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_
     group->when_head = when_head && c == '(';
     switch (c) {
         case ';': return group->end != '>' && (!can_have_entries || !starts_nested_guard_probe(lexer));
-        case '(': return push_guard_frame(head, (GuardFrame){.end = ')', .can_have_entries = can_have_entries, .brace_depth = brace_depth});
+        case '(': return push_guard_frame(head, (GuardFrame){
+            .end = ')', .can_have_entries = can_have_entries, .brace_depth = brace_depth, .start_offset = offset,
+        });
         case '[': return push_guard_frame(head, (GuardFrame){.end = ']', .can_have_entries = can_have_entries, .brace_depth = brace_depth});
         case '{': return push_guard_frame(head, (GuardFrame){
             .end = '}', .can_have_entries = when_head || brace_depth + 1 > MAX_FRAMES, .brace_depth = brace_depth + 1,
@@ -2253,7 +2280,7 @@ static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer) {
     const bool entries = in_entries(scanner);
     if (!entries && scanner->depth <= MAX_FRAMES) return false;
     ElseFollower follower = scan_else_follower(lexer);
-    return follower == ELSE_ENTRY || (follower == ELSE_GUARD && scan_when_guard_arrow(lexer, scanner->depth, entries));
+    return follower == ELSE_ENTRY || (follower == ELSE_GUARD && scan_when_guard_arrow(scanner, lexer, entries));
 }
 
 static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {

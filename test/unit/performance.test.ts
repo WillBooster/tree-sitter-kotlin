@@ -15,9 +15,13 @@ parser.setLanguage(await Language.load(WasmPath));
 
 // The tests load the existing Wasm build, so a check against a stale one would miss an edit that restores the slowdown.
 test('uses a Wasm build built from the current parser', () => {
-  const sources = ['grammar.js', 'src/parser.c', 'src/scanner.c', 'src/tree_sitter/parser.h'].map(
-    (name) => fs.statSync(path.join(Root, name)).mtimeMs
-  );
+  const sources = [
+    'grammar.js',
+    'src/parser.c',
+    'src/scanner.c',
+    'src/guard_lookahead.h',
+    'src/tree_sitter/parser.h',
+  ].map((name) => fs.statSync(path.join(Root, name)).mtimeMs);
   expect(
     Math.max(generationInputMtime(Root), ...sources) > fs.statSync(WasmPath).mtimeMs,
     'generation inputs or src/ changed after the Wasm build was built; run `bun run build/ci`'
@@ -143,6 +147,8 @@ const ifChainCases = [
   ['with casts of call results', 150],
   ['with generic receivers and conditional alternatives', 150],
   ['with nested if branches in conditions', 150],
+  ['with deeply nested conditional heads', 40],
+  ['with deeply nested conditional heads past the scanner frame limit', 40],
   ['with statement blocks inside when entries', 150],
   ['with type prefixes on casts', 150],
   ['with function receiver types named context', 150],
@@ -182,6 +188,17 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
   if (cast) {
     const casts = `; else if (a) ${cast}`.repeat(depth / 2);
     return `fun f(a: Boolean, fn: (Int) -> Any) { when (0) { 0 -> ${body}${casts}\nelse -> Unit }`;
+  }
+  if (context === 'with deeply nested conditional heads') {
+    const prefix = 'if (a) true; else if ('.repeat(depth);
+    const suffix = ') true else false'.repeat(depth);
+    return `fun f(a: Boolean) { when (0) { 0 -> ${prefix}true${suffix}\nelse -> Unit }`;
+  }
+  if (context === 'with deeply nested conditional heads past the scanner frame limit') {
+    const wrappers = 'if (a) {'.repeat(256);
+    const prefix = 'if (a) true; else if ('.repeat(depth);
+    const suffix = ') true else false'.repeat(depth);
+    return `fun f(a: Boolean) { ${wrappers}${prefix}true${suffix}${'}'.repeat(256)}`;
   }
   if (context === 'with nested when bodies') {
     const prefix = 'when (0) { 0 -> if (a) f(); else if (a) '.repeat(depth);
