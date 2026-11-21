@@ -1,11 +1,18 @@
 #ifndef TREE_SITTER_KOTLIN_GUARD_LOOKAHEAD_H_
 #define TREE_SITTER_KOTLIN_GUARD_LOOKAHEAD_H_
 
+typedef enum {
+    GUARD_GROUP_UNKNOWN,
+    GUARD_GROUP_CLOSED,
+    GUARD_GROUP_UNTERMINATED
+} GuardGroupStatus;
+
 typedef struct {
     int32_t codepoint;
     uint32_t after_group;
     unsigned brace_depth;
     uint8_t width;
+    bool closed_group;
 } GuardCharacter;
 
 typedef struct {
@@ -124,19 +131,20 @@ static void guard_capture_end(GuardLookahead *input, bool complete) {
     input->recording = false;
 }
 
-static void guard_capture_group(GuardLookahead *input, uint32_t start, unsigned brace_depth) {
+static void guard_capture_group(GuardLookahead *input, uint32_t start, unsigned brace_depth, bool closed) {
     if (!input->recording) return;
     GuardCharacter *character = &input->cache->characters[start - input->cache->start];
     character->after_group = input->offset;
     character->brace_depth = brace_depth;
+    character->closed_group = closed;
 }
 
-static bool guard_replay_group(GuardLookahead *input, uint32_t start, unsigned brace_depth) {
-    if (!input->replay) return false;
+static GuardGroupStatus guard_replay_group(GuardLookahead *input, uint32_t start, unsigned brace_depth) {
+    if (!input->replay) return GUARD_GROUP_UNKNOWN;
     const GuardCharacter *character = &input->cache->characters[start - input->cache->start];
-    if (character->after_group == 0 || character->brace_depth != brace_depth) return false;
+    if (character->after_group == 0 || character->brace_depth != brace_depth) return GUARD_GROUP_UNKNOWN;
     guard_replay_at(input, character->after_group);
-    return true;
+    return character->closed_group ? GUARD_GROUP_CLOSED : GUARD_GROUP_UNTERMINATED;
 }
 
 static bool known_ordinary_alternative(const GuardLookahead *input) {

@@ -148,6 +148,7 @@ const ifChainCases = [
   ['with generic receivers and conditional alternatives', 150],
   ['with nested if branches in conditions', 150],
   ['with deeply nested conditional heads', 40],
+  ['with unterminated nested conditional heads', 280],
   ['with unary plus on conditional bodies', 40],
   ['with unary minus on conditional bodies', 40],
   ['with negation on conditional bodies', 40],
@@ -206,6 +207,8 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
     const branch = ('if (a) true; else if (a) ' + operator).repeat(depth);
     return `fun f(a: Boolean) { when (0) { 0 -> ${branch}true${' else false'.repeat(depth)}\nelse -> Unit }`;
   }
+  if (context === 'with unterminated nested conditional heads')
+    return `fun f(a: Boolean) { when (0) { 0 -> ${'if (a) true; else if ('.repeat(depth)}true`;
   if (context === 'with deeply nested conditional heads') {
     const prefix = 'if (a) true; else if ('.repeat(depth);
     const suffix = ') true else false'.repeat(depth);

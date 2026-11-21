@@ -1977,8 +1977,8 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
         guard->type = GUARD_TYPE;
         return GUARD_MORE;
     }
-    const bool closed = (initial_group && guard_replay_group(input, group_start, guard->brace_depth)) ||
-                        scan_guard_delimiter(lexer, c, guard);
+    const GuardGroupStatus group = initial_group ? guard_replay_group(input, group_start, guard->brace_depth) : GUARD_GROUP_UNKNOWN;
+    const bool closed = group == GUARD_GROUP_UNKNOWN ? scan_guard_delimiter(lexer, c, guard) : group == GUARD_GROUP_CLOSED;
     if (initial_group) guard_capture_end(input, closed);
     if (!closed) return guard_result(guard->shared_arrow || !at_eof(lexer));
     scan_guard_punctuation(guard, c, lexer->lookahead);
@@ -2125,6 +2125,7 @@ typedef struct {
     size_t capacity;
 } GuardHead;
 
+static void cache_unterminated_guard_groups(GuardLookahead *input, const GuardHead *head);
 static bool step_guard_group(TSLexer *lexer, GuardHead *head);
 static bool step_guard_literal(TSLexer *lexer, GuardHead *head);
 static bool push_guard_frame(GuardHead *head, GuardFrame frame);
@@ -2133,7 +2134,7 @@ static bool push_guard_quote(TSLexer *lexer, GuardHead *head, GuardFrame frame);
 
 static bool group_may_have_entries(int32_t opener, const GuardScan *guard);
 
-// code-gauge-allow functionNcss 34 -- the delimiter family and its explicit lexical stack share one scan.
+// code-gauge-allow functionNcss 36 -- the delimiter family and its explicit lexical stack share one scan.
 static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
     int32_t end = 0;
     switch (c) {
@@ -2161,8 +2162,17 @@ static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *gua
         valid = head.frames[head.count - 1].literal ? step_guard_literal(lexer, &head) : step_guard_group(lexer, &head);
     }
     bool closed = valid && head.count == 0;
+    if (!closed) cache_unterminated_guard_groups((GuardLookahead *)lexer, &head);
     if (head.frames != head.initial) ts_free(head.frames);
     return closed;
+}
+
+static void cache_unterminated_guard_groups(GuardLookahead *input, const GuardHead *head) {
+    if (!input->recording || !at_eof(&input->lexer)) return;
+    for (size_t index = 1; index < head->count; index++) {
+        const GuardFrame *frame = &head->frames[index];
+        if (frame->end == ')') guard_capture_group(input, frame->start_offset, frame->brace_depth, false);
+    }
 }
 
 static bool group_may_have_entries(int32_t opener, const GuardScan *guard) {
@@ -2199,7 +2209,7 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         return true;
     }
     if (c == group->end) {
-        if (c == ')' && head->count > 1) guard_capture_group(input, group->start_offset, group->brace_depth);
+        if (c == ')' && head->count > 1) guard_capture_group(input, group->start_offset, group->brace_depth, true);
         head->count--;
         return true;
     }
