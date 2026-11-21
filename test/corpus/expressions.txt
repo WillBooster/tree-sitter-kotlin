@@ -2265,3 +2265,194 @@ fun sample(a: Boolean, b: Boolean, n: Int) {
             (call_expression
               (identifier)
               (value_arguments))))))))
+
+================================================================================
+When guards and unary alternatives following explicit semicolons
+================================================================================
+
+fun guards(n: Int, values: List<Int>) {
+    when (n) {
+        1 -> if (n > 0) f(); else if (n + 1) + 2 > 0 -> g()
+        else -> h()
+    }
+    when (n) {
+        1 -> if (n > 0) f(); else if (n) in 1..10 -> g()
+        else -> h()
+    }
+    when (n) {
+        1 -> if (a) f(); else if (values.any { it > 0 }) -> g()
+        else -> h()
+    }
+    when (n) {
+        1 -> if (a) f(); else if (b) - /* comment */ x else y
+        else -> h()
+    }
+    when (n) {
+        1 -> if (a) f(); else if (b) - // comment
+            x else y
+        else -> h()
+    }
+    var x = 0
+    if (a) x = 1
+    if (a) x = 2; else x = 3
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)
+          (type_arguments
+            (type_projection
+              (user_type
+                (identifier)))))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments))))
+          (when_entry
+            (binary_expression
+              (binary_expression
+                (parenthesized_expression
+                  (binary_expression
+                    (identifier)
+                    (number_literal)))
+                (number_literal))
+              (number_literal))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (call_expression
+                (identifier)
+                (value_arguments))))
+          (when_entry
+            (in_expression
+              (parenthesized_expression
+                (identifier))
+              (range_expression
+                (number_literal)
+                (number_literal)))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))))
+          (when_entry
+            (parenthesized_expression
+              (call_expression
+                (navigation_expression
+                  (identifier)
+                  (identifier))
+                (annotated_lambda
+                  (lambda_literal
+                    (binary_expression
+                      (identifier)
+                      (number_literal))))))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))
+              (if_expression
+                (identifier)
+                (unary_expression
+                  (block_comment)
+                  (identifier))
+                (identifier))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))
+              (if_expression
+                (identifier)
+                (unary_expression
+                  (line_comment)
+                  (identifier))
+                (identifier))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (if_expression
+          (identifier)
+          (assignment
+            (identifier)
+            (number_literal)))
+        (if_expression
+          (identifier)
+          (assignment
+            (identifier)
+            (number_literal))
+          (assignment
+            (identifier)
+            (number_literal)))))))
