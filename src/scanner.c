@@ -1910,10 +1910,11 @@ static GuardWord guard_branch_word(GuardBranch *branch, const char *word, bool o
 static void guard_branch_symbol(GuardBranch *branch, int32_t c, int32_t next);
 static void finish_guard_alternative_prefix(TSLexer *lexer, GuardScan *guard, bool stops);
 static bool scan_guard_word_token(GuardScan *guard, const char *word);
-typedef enum { GUARD_MORE, GUARD_ABSENT, GUARD_POSSIBLE } GuardResult;
+typedef enum { GUARD_MORE, GUARD_ABSENT, GUARD_POSSIBLE, GUARD_ARROW } GuardResult;
 typedef enum { ELSE_BODY, ELSE_ENTRY, ELSE_GUARD } ElseFollower;
 
 static ElseFollower scan_else_follower(TSLexer *lexer);
+static GuardResult scan_guard_input(GuardLookahead *input, unsigned brace_depth, bool in_entries);
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c);
 static void scan_guard_punctuation(TSLexer *lexer, GuardScan *guard, int32_t c);
@@ -1927,20 +1928,30 @@ static bool guard_word_requires_operand(const char *word);
 
 // Balanced constructs keep their own separators and arrows. After the first parenthesized value, a guard must
 // continue that value as an expression, while an else-if starts a distinct body after the parenthesized condition.
-static bool scan_when_guard_arrow(Scanner *scanner, TSLexer *source, bool in_entries) {
+static GuardResult scan_when_guard_arrow(Scanner *scanner, TSLexer *source, bool in_entries) {
     // The cache belongs to a full parse, including its competing GLR versions; the line-break predictor uses a proxy.
-    GuardLookahead input = guard_lookahead(source->get_position ? &scanner->guard_cache : NULL, source);
-    if (known_ordinary_alternative(&input)) return false;
-    TSLexer *lexer = &input.lexer;
-    const unsigned brace_depth = scanner->depth;
+    GuardCache *cache = source->get_position ? &scanner->guard_cache : NULL;
+    GuardLookahead input = guard_lookahead(cache, source, true);
+    if (known_ordinary_alternative(&input)) return GUARD_ABSENT;
+    GuardResult result = scan_guard_input(&input, scanner->depth, in_entries);
+    if (guard_replay_needs_source(&input)) {
+        input = guard_lookahead(cache, source, false);
+        result = scan_guard_input(&input, scanner->depth, in_entries);
+    }
+    return result;
+}
+
+static GuardResult scan_guard_input(GuardLookahead *input, unsigned brace_depth, bool in_entries) {
+    TSLexer *lexer = &input->lexer;
     GuardScan guard = {.brace_depth = brace_depth, .in_entries = in_entries};
     GuardResult result = GUARD_MORE;
     while (result == GUARD_MORE && !at_eof(lexer)) result = scan_guard_token(lexer, &guard);
-    const bool possible = result == GUARD_POSSIBLE || (result == GUARD_MORE && guard.shared_arrow);
+    if (result == GUARD_MORE) result = guard.shared_arrow ? GUARD_POSSIBLE : GUARD_ABSENT;
     // An inner candidate has fewer pending ifs. It reaches an unclaimed arrow only if its own prefix can read
     // one of the type arrows that this scan passed as a guard terminator.
-    if (!possible) commit_ordinary_alternatives(&input, guard.saw_type_arrow);
-    return possible;
+    if (result == GUARD_ABSENT && !guard_replay_needs_source(input))
+        commit_ordinary_alternatives(input, guard.saw_type_arrow);
+    return result;
 }
 
 static GuardResult guard_result(bool possible) {
@@ -1977,6 +1988,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     return scan_guard_symbol(lexer, guard, c);
 }
 
+// code-gauge-allow functionCognitiveComplexity 16 -- groups and function-type arrows share one punctuation step.
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c) {
     GuardLookahead *input = (GuardLookahead *)lexer;
     const bool initial_group = c == '(' && guard->branch.prefix == GUARD_START;
@@ -1985,7 +1997,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS)
-            return guard_result(guard->branch.prefix != GUARD_INFIX_ARGUMENT);
+            return guard->branch.prefix == GUARD_INFIX_ARGUMENT ? GUARD_ABSENT : GUARD_ARROW;
         // After an ordinary else-if head, a cast claims its function-type arrow. In a guard-only
         // expression the same arrow can also end a cast to a parenthesized type.
         advance(lexer);
@@ -2169,7 +2181,7 @@ typedef struct {
     GuardFrame initial[16];
     size_t count;
     size_t capacity;
-    bool mismatched;
+    GuardGroupStatus failure;
 } GuardHead;
 
 static GuardGroupStatus guard_group_status(TSLexer *lexer, const GuardHead *head, bool valid);
@@ -2215,13 +2227,14 @@ static GuardGroupStatus scan_guard_delimiter(TSLexer *lexer, int32_t c, const Gu
 
 static GuardGroupStatus guard_group_status(TSLexer *lexer, const GuardHead *head, bool valid) {
     if (valid && head->count == 0) return GUARD_GROUP_CLOSED;
-    const GuardGroupStatus status = at_eof(lexer) ? GUARD_GROUP_UNTERMINATED
-                                   : head->mismatched ? GUARD_GROUP_MISMATCHED : GUARD_GROUP_UNRESOLVED;
+    const GuardGroupStatus failure = head->failure ? head->failure : GUARD_GROUP_UNRESOLVED;
+    const GuardGroupStatus status = at_eof(lexer) ? GUARD_GROUP_UNTERMINATED : failure;
     GuardLookahead *input = (GuardLookahead *)lexer;
     if (input->recording && status != GUARD_GROUP_UNRESOLVED) {
         for (size_t index = 1; index < head->count; index++) {
             const GuardFrame *frame = &head->frames[index];
-            if (frame->end == ')') guard_capture_group(input, frame->start_offset, frame->brace_depth, status);
+            if (frame->end == ')' && (status != GUARD_GROUP_YIELDED || !frame->can_have_entries))
+                guard_capture_group(input, frame->start_offset, frame->brace_depth, status);
         }
     }
     return status;
@@ -2268,6 +2281,7 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
     return step_guard_group_punctuation(lexer, head, c, offset);
 }
 
+// code-gauge-allow functionNcss 35 -- delimiter roles and nested probe yields update the current lexical frame.
 static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, uint32_t offset) {
     GuardFrame *group = &head->frames[head->count - 1];
     const unsigned brace_depth = group->brace_depth;
@@ -2277,7 +2291,11 @@ static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_
     group->repeated_dollars = c == '$' ? dollars + 1 : 0;
     group->when_head = when_head && c == '(';
     switch (c) {
-        case ';': return group->end != '>' && (!can_have_entries || !starts_nested_guard_probe(lexer));
+        case ';':
+            if (group->end == '>') return false;
+            if (!can_have_entries || !starts_nested_guard_probe(lexer)) return true;
+            head->failure = GUARD_GROUP_YIELDED;
+            return false;
         case '(': return push_guard_frame(head, (GuardFrame){
             .end = ')', .can_have_entries = can_have_entries, .brace_depth = brace_depth, .start_offset = offset,
         });
@@ -2289,7 +2307,7 @@ static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_
         case '"': case '\'': case '`': return push_guard_quote(lexer, head, (GuardFrame){
             .end = c, .dollars = dollars, .can_have_entries = can_have_entries, .brace_depth = brace_depth,
         });
-        case ')': case ']': case '}': head->mismatched = true; return false;
+        case ')': case ']': case '}': head->failure = GUARD_GROUP_MISMATCHED; return false;
         default: return true;
     }
 }
@@ -2349,11 +2367,13 @@ static bool push_guard_frame(GuardHead *head, GuardFrame frame) {
     return true;
 }
 
-static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer) {
+static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer, bool require_arrow) {
     const bool entries = in_entries(scanner);
     if (!entries && scanner->depth <= MAX_FRAMES) return false;
     ElseFollower follower = scan_else_follower(lexer);
-    return follower == ELSE_ENTRY || (follower == ELSE_GUARD && scan_when_guard_arrow(scanner, lexer, entries));
+    if (follower != ELSE_GUARD) return follower == ELSE_ENTRY;
+    const GuardResult result = scan_when_guard_arrow(scanner, lexer, entries);
+    return result == GUARD_ARROW || (!require_arrow && result == GUARD_POSSIBLE);
 }
 
 static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
@@ -2367,7 +2387,7 @@ static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bo
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
     if (!streq(word, "else")) return false;
-    bool continue_if = valid_symbols[IF_ELSE_CONTINUATION] && (!valid_symbols[SEMI] || !may_start_when_fallback(scanner, lexer));
+    bool continue_if = valid_symbols[IF_ELSE_CONTINUATION] && (!valid_symbols[SEMI] || !may_start_when_fallback(scanner, lexer, false));
     lexer->result_symbol = continue_if ? IF_ELSE_CONTINUATION : SEMI;
     scanner->after_else_semicolon = NO_EXPLICIT_ELSE;
     return valid_symbols[lexer->result_symbol];
@@ -2401,7 +2421,7 @@ static int token_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *v
         read_following_word(lexer, word);
         if (before_else != SEMI && streq(word, "else")) {
             // Attach a when separator to the entry before shifting it into a nonempty if expression.
-            if (before_else == SEMICOLON_BEFORE_ELSE && valid_symbols[SEMI] && may_start_when_fallback(scanner, lexer))
+            if (before_else == SEMICOLON_BEFORE_ELSE && valid_symbols[SEMI] && may_start_when_fallback(scanner, lexer, true))
                 return SEMI;
             return before_else;
         }

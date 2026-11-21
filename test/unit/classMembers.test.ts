@@ -88,6 +88,25 @@ test.each([
   }
 });
 
+test('keeps an ordinary else-if when its nested condition yields to another probe', () => {
+  const tree = parser.parse(`fun f(p: Boolean, n: Int) {
+    when (n) {
+        1 -> if (p) true; else if (when (n) {
+            0 -> if (p) true; else if (p) false else true
+            else -> false
+        }) true else false
+        else -> Unit
+    }
+}`)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [entry] = tree.rootNode.descendantsOfType('when_entry');
+    expect(entry?.childForFieldName('body')?.childForFieldName('alternative')?.type).toBe('if_expression');
+  } finally {
+    tree.delete();
+  }
+});
+
 test('preserves guarded when entries across nested templates and conditional bodies', () => {
   let template = '"x"';
   for (let depth = 0; depth < 32; depth++) template = '"${' + template + '}"';

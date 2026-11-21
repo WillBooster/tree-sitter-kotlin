@@ -6,6 +6,7 @@ typedef enum {
     GUARD_GROUP_CLOSED,
     GUARD_GROUP_UNTERMINATED,
     GUARD_GROUP_MISMATCHED,
+    GUARD_GROUP_YIELDED,
     GUARD_GROUP_UNRESOLVED
 } GuardGroupStatus;
 
@@ -27,6 +28,7 @@ typedef struct {
     size_t capacity;
     uint32_t start;
     uint32_t end;
+    GuardGroupStatus status;
     GuardProbePoint *pending_alternatives;
     size_t pending_capacity;
     uint8_t *ordinary_alternatives;
@@ -40,6 +42,7 @@ typedef struct {
     uint32_t offset;
     size_t pending_count;
     bool replay;
+    bool used_terminal_group;
     bool recording;
 } GuardLookahead;
 
@@ -108,12 +111,12 @@ static void advance_guard_lookahead(TSLexer *lexer, bool skip) {
     if (input->recording) guard_cache_record(input, codepoint);
 }
 
-static GuardLookahead guard_lookahead(GuardCache *cache, TSLexer *source) {
+static GuardLookahead guard_lookahead(GuardCache *cache, TSLexer *source, bool allow_replay) {
     GuardLookahead input = {
         .lexer = {.lookahead = source->lookahead, .advance = advance_guard_lookahead, .eof = guard_lookahead_eof},
         .cache = cache, .source = source,
     };
-    if (cache && cache->end > cache->start) {
+    if (allow_replay && cache && cache->end > cache->start) {
         const uint32_t offset = guard_source_offset(source);
         if (offset > cache->start && offset < cache->end && cache->characters[offset - cache->start].width != 0) {
             input.offset = offset;
@@ -134,7 +137,10 @@ static void guard_capture_start(GuardLookahead *input) {
 
 static void guard_capture_end(GuardLookahead *input, GuardGroupStatus status) {
     if (!input->recording) return;
-    if (status != GUARD_GROUP_UNRESOLVED) input->cache->end = input->offset;
+    if (status != GUARD_GROUP_UNRESOLVED) {
+        input->cache->end = input->offset;
+        input->cache->status = status;
+    }
     input->recording = false;
 }
 
@@ -151,7 +157,15 @@ static GuardGroupStatus guard_replay_group(GuardLookahead *input, uint32_t start
     const GuardCharacter *character = &input->cache->characters[start - input->cache->start];
     if (character->after_group == 0 || character->brace_depth != brace_depth) return GUARD_GROUP_UNKNOWN;
     guard_replay_at(input, character->after_group);
-    return (GuardGroupStatus)character->group_status;
+    const GuardGroupStatus status = (GuardGroupStatus)character->group_status;
+    input->used_terminal_group = status != GUARD_GROUP_CLOSED;
+    return status;
+}
+
+static bool guard_replay_needs_source(const GuardLookahead *input) {
+    if (!input->replay || input->used_terminal_group || input->offset < input->cache->end) return false;
+    const GuardGroupStatus status = input->cache->status;
+    return status == GUARD_GROUP_MISMATCHED || status == GUARD_GROUP_YIELDED;
 }
 
 static bool known_ordinary_alternative(const GuardLookahead *input) {

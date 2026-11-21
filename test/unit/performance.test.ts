@@ -158,6 +158,9 @@ const ifChainCases = [
   ['with casts and unary-plus bodies', 40],
   ['with a cast in the innermost unary body', 40],
   ['with deeply nested conditional heads past the scanner frame limit', 40],
+  ['when nested conditions yield at a when entry', 40],
+  ['when nested conditions yield in an interpolation', 40],
+  ['when nested conditions yield in a lambda past the scanner frame limit', 40],
   ['with statement blocks inside when entries', 150],
   ['with type prefixes on casts', 150],
   ['with function receiver types named context', 150],
@@ -240,6 +243,14 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
     const suffix = ') true else false'.repeat(depth);
     return `fun f(a: Boolean) { ${wrappers}${prefix}true${suffix}${'}'.repeat(256)}`;
   }
+  const yieldingCondition = conditionWithDeeperProbe(context);
+  if (yieldingCondition) {
+    const prefix = 'if (a) true; else if ('.repeat(depth);
+    const conditional = `${prefix}${yieldingCondition}${') true else false'.repeat(depth)}`;
+    return context === 'when nested conditions yield in a lambda past the scanner frame limit'
+      ? `fun f(a: Boolean) { ${'if (a) {'.repeat(256)}${conditional}${'}'.repeat(256)}`
+      : `fun f(a: Boolean) { when (0) { 0 -> ${conditional}\nelse -> Unit }`;
+  }
   if (context === 'with nested when bodies') {
     const prefix = 'when (0) { 0 -> if (a) f(); else if (a) '.repeat(depth);
     const suffix = '\nelse -> Unit }'.repeat(depth);
@@ -268,6 +279,14 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
   if (context === 'past the scanner frame limit')
     return `fun f(a: Boolean) { ${'if (a) {'.repeat(256)}${body}${alternatives}${'}'.repeat(256)}`;
   return `fun f(a: Boolean) { ${body}${'; else g()'.repeat(depth / 2)}`;
+}
+
+function conditionWithDeeperProbe(context: (typeof ifChainCases)[number][0]): string | undefined {
+  const inside = 'if (a) true; else if (a) false else true';
+  const nestedWhen = `when (0) { 0 -> ${inside}\nelse -> false }`;
+  if (context === 'when nested conditions yield at a when entry') return nestedWhen;
+  if (context === 'when nested conditions yield in an interpolation') return `"\${${nestedWhen}}".isNotEmpty()`;
+  if (context === 'when nested conditions yield in a lambda past the scanner frame limit') return `{ ${inside} }()`;
 }
 
 function castBody(context: (typeof ifChainCases)[number][0]): string | undefined {
