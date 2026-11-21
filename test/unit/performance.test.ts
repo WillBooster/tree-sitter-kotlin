@@ -121,6 +121,9 @@ const ifChainCases = [
   ['with nested if branches in conditions', 150],
   ['with statement blocks inside when entries', 150],
   ['with type prefixes on casts', 150],
+  ['with function receiver types named context', 150],
+  ['with generic function receiver types named context', 150],
+  ['with qualified function receiver types named context', 150],
   ['with nested alternatives past the scanner frame limit', 40],
   ['with nested when bodies', 40],
   ['with nested when conditions', 40],
@@ -190,6 +193,11 @@ function castBody(context: (typeof ifChainCases)[number][0]): string | undefined
   if (context === 'with function casts') return 'fn as (Int) -> Int else fn';
   if (context === 'with casts of call results') return '(fn(0)) as? (Int) -> Int';
   if (context === 'with type prefixes on casts') return 'fn(0) as @Ann(1) context(String) (Int) -> Int else h()';
+  if (context === 'with function receiver types named context') return 'fn(0) as @Ann(1) context.(Int) -> Int else h()';
+  if (context === 'with generic function receiver types named context')
+    return 'fn(0) as @Ann(1) context<String>.(Int) -> Int else h()';
+  if (context === 'with qualified function receiver types named context')
+    return 'fn(0) as @Ann(1) context.Nested.(Int) -> Int else h()';
   if (context === 'with generic receivers and conditional alternatives')
     return 'fn(0) as Map<Int, List<Int>>.() -> Int else if (a) g() else h()';
 }

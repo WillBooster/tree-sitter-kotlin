@@ -1872,7 +1872,7 @@ typedef enum {
 typedef enum {
     GUARD_NO_TYPE,
     GUARD_TYPE,
-    GUARD_CONTEXT_TYPE,
+    GUARD_POSSIBLE_CONTEXT_PREFIX,
     GUARD_ANNOTATION_TYPE,
     GUARD_ANNOTATION_OR_PARAMETERS,
     GUARD_TYPE_PARAMETERS
@@ -1974,12 +1974,13 @@ static bool scan_guard_word_token(GuardScan *guard, const char *word) {
 }
 
 static void scan_guard_type_word(GuardScan *guard, const char *word, bool operator) {
+    if (guard->type == GUARD_POSSIBLE_CONTEXT_PREFIX) guard->type = GUARD_TYPE;
     if (streq(word, "as") || streq(word, "is")) {
         guard->type = GUARD_TYPE;
     } else if (operator || guard_word_starts_body(word) || guard->type == GUARD_TYPE_PARAMETERS) {
         guard->type = GUARD_NO_TYPE;
     } else if ((guard->type == GUARD_TYPE || guard->type == GUARD_ANNOTATION_OR_PARAMETERS) && streq(word, "context")) {
-        guard->type = GUARD_CONTEXT_TYPE;
+        guard->type = GUARD_POSSIBLE_CONTEXT_PREFIX;
     } else if (guard->type == GUARD_ANNOTATION_OR_PARAMETERS) {
         guard->type = GUARD_TYPE;
     }
@@ -2026,11 +2027,14 @@ static void scan_guard_punctuation(GuardScan *guard, int32_t c, int32_t next) {
 
 static GuardType guard_type_after_punctuation(GuardType type, int32_t c) {
     if (type == GUARD_NO_TYPE) return type;
+    if (type == GUARD_POSSIBLE_CONTEXT_PREFIX) {
+        if (c == '(') return GUARD_TYPE;
+        type = GUARD_TYPE;
+    }
     switch (c) {
         case '@': return GUARD_ANNOTATION_TYPE;
         case '(':
             if (type == GUARD_ANNOTATION_TYPE) return GUARD_ANNOTATION_OR_PARAMETERS;
-            if (type == GUARD_CONTEXT_TYPE) return GUARD_TYPE;
             return type != GUARD_TYPE_PARAMETERS ? GUARD_TYPE_PARAMETERS : GUARD_NO_TYPE;
         case '.': return type == GUARD_TYPE_PARAMETERS ? GUARD_TYPE : type;
         case '?': case '`': case '<': return type;
