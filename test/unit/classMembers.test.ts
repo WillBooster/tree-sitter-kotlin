@@ -173,6 +173,30 @@ test.each([
   }
 });
 
+test.each([2, 3])('binds a shared else to the innermost of %i pending conditionals', (depth) => {
+  const source = `fun f(a: Boolean, c: Boolean, n: Int) {
+    when (n) {
+      1 -> ${'if (a) '.repeat(depth)}println(n); else if (c) n
+      3 -> Unit
+      else -> Unit
+    }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    let inner = first?.childForFieldName('body');
+    for (let index = 1; index < depth; index++) {
+      expect(inner?.childForFieldName('alternative')).toBeNull();
+      inner = inner?.childForFieldName('consequence');
+    }
+    expect(inner?.childForFieldName('alternative')?.text).toBe('if (c) n');
+    expect(next?.text).toBe('3 -> Unit');
+  } finally {
+    tree.delete();
+  }
+});
+
 test('a guarded when entry owns the literal even when initial lookahead is ambiguous', () => {
   const inner = `when (n) {
     0 -> if (p) true; else if (p) false else true

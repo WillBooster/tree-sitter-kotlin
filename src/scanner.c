@@ -2231,7 +2231,7 @@ static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
     bool trivia = scan_trivia(lexer, true, false, &saw_newline);
     if (saw_newline && guard->branch.can_be_alternative) {
         guard->crossed_line_after_body |= guard->completed_body_operand;
-        guard->after_operand_line = guard->completed_operand;
+        guard->after_operand_line = guard->completed_body_operand;
     }
     if (!trivia) {
         guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
