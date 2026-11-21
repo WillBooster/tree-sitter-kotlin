@@ -107,8 +107,15 @@ test('keeps an ordinary else-if when its nested condition yields to another prob
   }
 });
 
-test.each(['2', 'n', '2, 3'])('keeps an ordinary else-if before another when entry (%s)', (condition) => {
-  const body = 'if (p) println(1); else if (q) println(2)';
+test.each([
+  ['println(2)', '2'],
+  ['42', '2'],
+  ['0x2a', 'n'],
+  ['1_000', '2, 3'],
+  ['42L', '2, 3'],
+  ['n', '2'],
+])('keeps an ordinary else-if body %s before another when entry (%s)', (alternative, condition) => {
+  const body = `if (p) println(1); else if (q) ${alternative}`;
   const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Int) {
     when (n) {
       1 -> ${body}

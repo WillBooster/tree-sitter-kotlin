@@ -1977,7 +1977,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     }
     const bool follows_explicit_else = guard->follows_explicit_else;
     guard->follows_explicit_else = false;
-    if (c != '$' && is_identifier_part(c)) {
+    if (c != '$' && is_identifier_start(c)) {
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
         if (follows_explicit_else && streq(word, "if")) {
@@ -2003,8 +2003,8 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS) {
-            if (guard->branch.prefix == GUARD_INFIX_ARGUMENT) return GUARD_ABSENT;
-            return guard->crossed_line_after_body ? GUARD_POSSIBLE : GUARD_ARROW;
+            if (guard->crossed_line_after_body) return GUARD_POSSIBLE;
+            return guard->branch.prefix == GUARD_INFIX_ARGUMENT ? GUARD_ABSENT : GUARD_ARROW;
         }
         // After an ordinary else-if head, a cast claims its function-type arrow. In a guard-only
         // expression the same arrow can also end a cast to a parenthesized type.
@@ -2145,7 +2145,8 @@ static bool guard_word_requires_operand(const char *word) {
 static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
     bool trivia = scan_whitespace_and_comments(lexer, false, false);
     if (trivia && (lexer->lookahead == '\n' || lexer->lookahead == '\r')) {
-        if (guard->branch.can_be_alternative && guard->branch.prefix == GUARD_EXPRESSION)
+        if (guard->branch.can_be_alternative &&
+            (guard->branch.prefix == GUARD_EXPRESSION || guard->branch.prefix == GUARD_INFIX_ARGUMENT))
             guard->crossed_line_after_body = true;
         trivia = scan_whitespace_and_comments(lexer, true, false);
     }
