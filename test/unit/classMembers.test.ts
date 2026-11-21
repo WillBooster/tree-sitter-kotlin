@@ -170,6 +170,9 @@ test.each([
   ['x until y', '"other"'],
   ['c!!', '2, 3'],
   ['x++', '2'],
+  ['again@ do {} while (p)', '2'],
+  ['again@ do { if (!p) break@again } while (p)', '2, 3'],
+  ['again@ while (p) continue@again', 'is String'],
   ['y--', 'in 2..3'],
   ['n as () -> Boolean', '2'],
   ['n as (Boolean) -> Boolean', '2, 3'],
@@ -208,6 +211,37 @@ test.each([
     } finally {
       tree.delete();
     }
+  }
+});
+
+test.each([
+  'n ?: return@work false',
+  'n ?: return@work (false)',
+  'n ?: return@work q',
+  'n ?: return@work',
+  'n ?: return',
+  'n ?: continue@again',
+  'n ?: break',
+])('preserves ordinary alternatives ending in the jump %s', (body) => {
+  const source = `fun f(p: Boolean, q: Boolean, n: Int?) {
+    again@ while (p) {
+      run work@ {
+        when (n) {
+          1 -> if (p) println(n); else if (q) ${body}
+          2 -> Unit
+          else -> Unit
+        }
+      }
+    }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    expect(first?.childForFieldName('body')?.childForFieldName('alternative')?.text).toBe(`if (q) ${body}`);
+    expect(next?.text).toBe('2 -> Unit');
+  } finally {
+    tree.delete();
   }
 });
 

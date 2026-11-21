@@ -1913,6 +1913,7 @@ typedef struct {
     bool completed_operand;
     bool completed_body_operand;
     bool after_operand_line;
+    bool return_value_optional;
     bool saw_type_arrow;
     bool follows_explicit_else;
     bool reading_alternative;
@@ -1936,6 +1937,9 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_annotation(TSLexer *lexer, GuardScan *guard);
 static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at_separator, GuardScan *guard);
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if);
+static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard);
+static bool has_guard_label_suffix(const char *word);
+static GuardResult scan_guard_label(TSLexer *lexer, GuardScan *guard);
 static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if);
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard);
 static bool starts_guard_operand_after_line(int32_t c, int32_t next);
@@ -2002,6 +2006,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     }
     const bool follows_explicit_else = guard->follows_explicit_else;
     guard->follows_explicit_else = false;
+    guard->return_value_optional = false;
     if (is_identifier_start(c)) return scan_guard_word(lexer, guard, follows_explicit_else);
     if (c == '@' && (!guard->completed_operand || !guard->completed_body_operand))
         return scan_guard_annotation(lexer, guard);
@@ -2019,7 +2024,29 @@ static GuardResult scan_guard_annotation(TSLexer *lexer, GuardScan *guard) {
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if) {
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
+    if (lexer->lookahead == '@') {
+        if (has_guard_label_suffix(word)) {
+            advance(lexer);
+            if (!scan_prefixed_identifier(lexer, false, false, guard)) return GUARD_POSSIBLE;
+        } else if (!guard_word_requires_operand(word) && !guard_word_starts_body(word)) {
+            return scan_guard_label(lexer, guard);
+        }
+    }
     return classify_guard_word(lexer, guard, word, continues_if);
+}
+
+static bool has_guard_label_suffix(const char *word) {
+    return streq(word, "break") || streq(word, "continue") || streq(word, "return") ||
+           streq(word, "this") || streq(word, "super");
+}
+
+static GuardResult scan_guard_label(TSLexer *lexer, GuardScan *guard) {
+    if (guard->branch.prefix == GUARD_AFTER_HEAD) return GUARD_ABSENT;
+    if (guard->after_operand_line) return guard_result(guard->shared_arrow);
+    if (guard->reading_alternative && guard->alternative.prefix == GUARD_AFTER_HEAD)
+        finish_guard_alternative_prefix(lexer, guard, true);
+    advance(lexer);
+    return GUARD_MORE;
 }
 
 static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if) {
@@ -2114,7 +2141,9 @@ static bool scan_guard_word_token(GuardScan *guard, const char *word) {
     guard->when_head = streq(word, "when");
     guard->control_head = starts_guard_control_head(word);
     const GuardWord kind = guard_branch_word(&guard->branch, word, operator);
-    const bool value_keyword = streq(word, "true") || streq(word, "false") || streq(word, "null") || streq(word, "this");
+    guard->return_value_optional = streq(word, "return");
+    const bool value_keyword = streq(word, "true") || streq(word, "false") || streq(word, "null") || streq(word, "this") ||
+                               streq(word, "break") || streq(word, "continue");
     const bool operand = !operator &&
                          (value_keyword || (!guard_word_starts_body(word) && !continues_guard_after_line(word)));
     guard->completed_operand = kind == GUARD_WORD_BODY && !guard->completed_operand && operand;
@@ -2246,10 +2275,11 @@ static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
     bool saw_newline = false;
     bool trivia = scan_trivia(lexer, true, false, &saw_newline);
     if (saw_newline && guard->branch.can_be_alternative) {
-        guard->crossed_line_after_body |= guard->completed_body_operand;
-        guard->after_operand_line = guard->completed_body_operand;
+        guard->after_operand_line = guard->completed_body_operand || guard->return_value_optional;
+        guard->crossed_line_after_body |= guard->after_operand_line;
     }
     if (!trivia) {
+        guard->return_value_optional = false;
         guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
         if (before_guard_operand(guard->branch.prefix)) guard->branch.can_be_alternative = false;
         guard->branch.prefix = GUARD_EXPRESSION;
@@ -2276,6 +2306,7 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     guard->type = GUARD_NO_TYPE;
     guard->dollars = 0;
     guard->follows_explicit_else = true;
+    guard->return_value_optional = false;
     guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
     return true;
 }
@@ -2795,7 +2826,6 @@ static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separa
     return scan_annotation_prefix(lexer, skip_chars, stop_at_separator, NULL);
 }
 
-static bool scan_annotation_name(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard);
 static bool scan_annotation_part(TSLexer *lexer, unsigned char opener, bool skip_chars, bool stop_at_separator,
                                  const GuardScan *guard);
 
@@ -2806,7 +2836,7 @@ static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at
     for (;;) {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         if (lexer->lookahead == '[') return scan_annotation_part(lexer, '[', skip_chars, stop_at_separator, guard);
-        if (!scan_annotation_name(lexer, skip_chars, stop_at_separator, guard)) return false;
+        if (!scan_prefixed_identifier(lexer, skip_chars, stop_at_separator, guard)) return false;
         spaced_arguments = is_space(lexer->lookahead) || lexer->lookahead == '/';
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         if (lexer->lookahead == '<') {
@@ -2823,7 +2853,7 @@ static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at
     return scan_annotation_part(lexer, '(', skip_chars, stop_at_separator, guard);
 }
 
-static bool scan_annotation_name(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard) {
+static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard) {
     if (lexer->lookahead == '`') return scan_annotation_part(lexer, '`', skip_chars, stop_at_separator, guard);
     if (!is_identifier_start(lexer->lookahead)) return false;
     do {
