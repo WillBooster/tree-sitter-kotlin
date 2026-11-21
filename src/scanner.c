@@ -1910,6 +1910,8 @@ typedef struct {
     GuardType type;
     bool shared_arrow;
     bool crossed_line_after_body;
+    bool callable_word;
+    bool completed_call;
     bool saw_type_arrow;
     bool follows_explicit_else;
     bool reading_alternative;
@@ -1924,7 +1926,7 @@ static GuardWord guard_branch_word(GuardBranch *branch, const char *word, bool o
 static void guard_branch_symbol(GuardBranch *branch, int32_t c, int32_t next);
 static void finish_guard_alternative_prefix(TSLexer *lexer, GuardScan *guard, bool stops);
 static bool scan_guard_word_token(GuardScan *guard, const char *word);
-typedef enum { GUARD_MORE, GUARD_ABSENT, GUARD_POSSIBLE, GUARD_ARROW } GuardResult;
+typedef enum { GUARD_MORE, GUARD_ABSENT, GUARD_POSSIBLE, GUARD_ARROW, GUARD_ARROW_AFTER_LINE } GuardResult;
 typedef enum { ELSE_BODY, ELSE_ENTRY, ELSE_GUARD } ElseFollower;
 
 static ElseFollower scan_else_follower(TSLexer *lexer);
@@ -1935,7 +1937,7 @@ static void scan_guard_punctuation(TSLexer *lexer, GuardScan *guard, int32_t c);
 static void scan_guard_type_word(GuardScan *guard, const char *word, bool operator);
 static bool before_guard_operand(GuardPrefix prefix);
 static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard);
-static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard);
+static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard);
 static GuardGroupStatus scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard);
 static bool guard_word_starts_body(const char *word);
 static bool guard_word_requires_operand(const char *word);
@@ -1946,7 +1948,9 @@ static GuardResult scan_when_guard_arrow(Scanner *scanner, TSLexer *source, bool
     // The cache belongs to a full parse, including its competing GLR versions; the line-break predictor uses a proxy.
     GuardCache *cache = source->get_position ? &scanner->guard_cache : NULL;
     GuardLookahead input = guard_lookahead(cache, source, true);
-    if (known_ordinary_alternative(&input)) return GUARD_ABSENT;
+    const GuardAlternative cached = known_guard_alternative(&input);
+    if (cached == GUARD_ALTERNATIVE_ORDINARY) return GUARD_ABSENT;
+    if (in_entries && cached == GUARD_ALTERNATIVE_SHARED) return GUARD_POSSIBLE;
     GuardResult result = scan_guard_input(&input, scanner->depth, in_entries);
     if (guard_replay_needs_source(&input)) {
         input = guard_lookahead(cache, source, false);
@@ -1963,9 +1967,13 @@ static GuardResult scan_guard_input(GuardLookahead *input, unsigned brace_depth,
     if (result == GUARD_MORE) result = guard.shared_arrow ? GUARD_POSSIBLE : GUARD_ABSENT;
     // An inner candidate has fewer pending ifs. It reaches an unclaimed arrow only if its own prefix can read
     // one of the type arrows that this scan passed as a guard terminator.
-    if (result == GUARD_ABSENT && !guard_replay_needs_source(input))
-        commit_ordinary_alternatives(input, guard.saw_type_arrow);
-    return result;
+    if (!guard_replay_needs_source(input)) {
+        if (result == GUARD_ABSENT)
+            commit_guard_alternatives(input, guard.saw_type_arrow, GUARD_ALTERNATIVE_ORDINARY);
+        else if (result == GUARD_ARROW_AFTER_LINE && in_entries)
+            commit_guard_alternatives(input, guard.saw_type_arrow, GUARD_ALTERNATIVE_SHARED);
+    }
+    return result == GUARD_ARROW_AFTER_LINE ? GUARD_POSSIBLE : result;
 }
 
 static GuardResult guard_result(bool possible) {
@@ -1975,10 +1983,7 @@ static GuardResult guard_result(bool possible) {
 // code-gauge-allow functionCognitiveComplexity 19 -- trivia, boundaries, and conditional keywords update the same token state.
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     int32_t c = lexer->lookahead;
-    if (is_space(c) || c == '/') {
-        scan_guard_trivia(lexer, guard);
-        return GUARD_MORE;
-    }
+    if (is_space(c) || c == '/') return scan_guard_trivia(lexer, guard);
     if (c == ')' || c == ']' || c == '}') return guard_result(guard->shared_arrow);
     if (c == ';') {
         return scan_guard_else_after_semicolon(lexer, guard) ? GUARD_MORE : guard_result(guard->shared_arrow);
@@ -2011,7 +2016,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS) {
-            if (guard->crossed_line_after_body) return GUARD_POSSIBLE;
+            if (guard->crossed_line_after_body) return GUARD_ARROW_AFTER_LINE;
             return guard->branch.prefix == GUARD_INFIX_ARGUMENT ? GUARD_ABSENT : GUARD_ARROW;
         }
         // After an ordinary else-if head, a cast claims its function-type arrow. In a guard-only
@@ -2034,6 +2039,8 @@ static bool scan_guard_word_token(GuardScan *guard, const char *word) {
     const bool operator = guard_word_requires_operand(word);
     guard->dollars = 0;
     guard->when_head = streq(word, "when");
+    guard->completed_call = false;
+    guard->callable_word = !operator && !guard_word_starts_body(word) && !streq(word, "else") && !streq(word, "catch");
     const GuardWord kind = guard_branch_word(&guard->branch, word, operator);
     if (kind != GUARD_WORD_BODY) return kind == GUARD_WORD_INFIX;
     if (streq(word, "else")) guard->ifs--;
@@ -2101,6 +2108,8 @@ static bool before_guard_operand(GuardPrefix prefix) {
 static GuardType guard_type_after_punctuation(GuardType type, int32_t c);
 
 static void scan_guard_punctuation(TSLexer *lexer, GuardScan *guard, int32_t c) {
+    guard->completed_call = c == '(' && guard->callable_word;
+    guard->callable_word = false;
     guard_branch_symbol(&guard->branch, c, lexer->lookahead);
     if (guard->reading_alternative) {
         guard_branch_symbol(&guard->alternative, c, lexer->lookahead);
@@ -2150,13 +2159,20 @@ static bool guard_word_requires_operand(const char *word) {
     return streq(word, "as") || streq(word, "is") || streq(word, "in");
 }
 
-static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
+// code-gauge-allow functionCognitiveComplexity 16 -- trivia, operator detection, and entry boundaries share the same read.
+static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
     bool saw_newline = false;
     bool trivia = scan_trivia(lexer, true, false, &saw_newline);
+    // A standalone literal after a closed call cannot belong to the same guard expression.
+    if (saw_newline && trivia && guard->completed_call) {
+        const int32_t next = lexer->lookahead;
+        if (is_digit(next) || next == '\'' || next == '"') return guard_result(guard->shared_arrow);
+    }
     if (saw_newline && guard->branch.can_be_alternative &&
         (guard->branch.prefix == GUARD_EXPRESSION || guard->branch.prefix == GUARD_INFIX_ARGUMENT))
         guard->crossed_line_after_body = true;
     if (!trivia) {
+        guard->completed_call = guard->callable_word = false;
         if (before_guard_operand(guard->branch.prefix)) guard->branch.can_be_alternative = false;
         guard->branch.prefix = GUARD_EXPRESSION;
         guard->type = GUARD_NO_TYPE;
@@ -2167,6 +2183,7 @@ static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
         }
     }
     guard->dollars = 0;
+    return GUARD_MORE;
 }
 
 static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
@@ -2181,6 +2198,7 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     guard->type = GUARD_NO_TYPE;
     guard->dollars = 0;
     guard->follows_explicit_else = true;
+    guard->completed_call = guard->callable_word = false;
     return true;
 }
 

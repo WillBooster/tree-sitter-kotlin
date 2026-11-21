@@ -10,6 +10,8 @@ typedef enum {
     GUARD_GROUP_UNRESOLVED
 } GuardGroupStatus;
 
+typedef enum { GUARD_ALTERNATIVE_UNKNOWN, GUARD_ALTERNATIVE_ORDINARY, GUARD_ALTERNATIVE_SHARED } GuardAlternative;
+
 typedef struct {
     int32_t codepoint;
     uint32_t after_group;
@@ -31,8 +33,8 @@ typedef struct {
     GuardGroupStatus status;
     GuardProbePoint *pending_alternatives;
     size_t pending_capacity;
-    uint8_t *ordinary_alternatives;
-    size_t ordinary_capacity;
+    uint8_t *alternatives;
+    size_t alternatives_capacity;
 } GuardCache;
 
 typedef struct {
@@ -49,7 +51,7 @@ typedef struct {
 static void guard_cache_free(GuardCache *cache) {
     ts_free(cache->characters);
     ts_free(cache->pending_alternatives);
-    ts_free(cache->ordinary_alternatives);
+    ts_free(cache->alternatives);
 }
 
 static bool guard_lookahead_eof(const TSLexer *lexer) {
@@ -168,11 +170,12 @@ static bool guard_replay_needs_source(const GuardLookahead *input) {
     return status == GUARD_GROUP_MISMATCHED || status == GUARD_GROUP_YIELDED;
 }
 
-static bool known_ordinary_alternative(const GuardLookahead *input) {
+static GuardAlternative known_guard_alternative(const GuardLookahead *input) {
     const GuardCache *cache = input->cache;
-    if (!cache || cache->ordinary_capacity == 0) return false;
+    if (!cache || cache->alternatives_capacity == 0) return GUARD_ALTERNATIVE_UNKNOWN;
     const uint32_t offset = input->replay ? input->offset : guard_source_offset(input->source);
-    return offset / 8 < cache->ordinary_capacity && (cache->ordinary_alternatives[offset / 8] >> (offset % 8)) & 1;
+    if (offset / 4 >= cache->alternatives_capacity) return GUARD_ALTERNATIVE_UNKNOWN;
+    return (GuardAlternative)((cache->alternatives[offset / 4] >> (2 * (offset % 4))) & 3);
 }
 
 static bool remember_guard_alternative(GuardLookahead *input) {
@@ -195,23 +198,26 @@ static void guard_alternative_retains_type_arrows(GuardLookahead *input) {
     input->cache->pending_alternatives[input->pending_count - 1].retains_type_arrows = true;
 }
 
-static void commit_ordinary_alternatives(GuardLookahead *input, bool saw_type_arrow) {
+static void commit_guard_alternatives(GuardLookahead *input, bool saw_type_arrow, GuardAlternative outcome) {
     if (input->pending_count == 0) return;
     GuardCache *cache = input->cache;
-    const size_t needed = cache->pending_alternatives[input->pending_count - 1].offset / 8 + 1;
-    if (needed > cache->ordinary_capacity) {
-        const size_t capacity = cache->ordinary_capacity * 2 > needed ? cache->ordinary_capacity * 2 : needed;
-        uint8_t *bits = ts_realloc(cache->ordinary_alternatives, capacity);
+    const size_t needed = cache->pending_alternatives[input->pending_count - 1].offset / 4 + 1;
+    if (needed > cache->alternatives_capacity) {
+        const size_t capacity = cache->alternatives_capacity * 2 > needed ? cache->alternatives_capacity * 2 : needed;
+        uint8_t *bits = ts_realloc(cache->alternatives, capacity);
         if (!bits) return;
-        memset(bits + cache->ordinary_capacity, 0, capacity - cache->ordinary_capacity);
-        cache->ordinary_alternatives = bits;
-        cache->ordinary_capacity = capacity;
+        memset(bits + cache->alternatives_capacity, 0, capacity - cache->alternatives_capacity);
+        cache->alternatives = bits;
+        cache->alternatives_capacity = capacity;
     }
     for (size_t index = 0; index < input->pending_count; index++) {
         const GuardProbePoint *point = &cache->pending_alternatives[index];
         if (saw_type_arrow && !point->retains_type_arrows) continue;
         const uint32_t offset = point->offset;
-        cache->ordinary_alternatives[offset / 8] |= (uint8_t)(1u << (offset % 8));
+        const unsigned shift = 2 * (offset % 4);
+        uint8_t *byte = &cache->alternatives[offset / 4];
+        if (((*byte >> shift) & 3) == GUARD_ALTERNATIVE_UNKNOWN)
+            *byte |= (uint8_t)((unsigned)outcome << shift);
     }
 }
 
