@@ -35,7 +35,7 @@ module.exports = grammar({
     [$._mutable_positional_entry, $._immutable_positional_entry],
     [$._mutable_named_entry, $._immutable_named_entry],
     [$._named_destructuring_entry, $.type_modifiers, $.annotated_expression],
-    [$.if_expression, $.parenthesized_expression],
+    [$.if_expression],
     [$.class_body, $.enum_class_body],
 
     [$.binary_expression, $.call_expression],
@@ -136,6 +136,7 @@ module.exports = grammar({
     sym('_open_entries'),
     sym('_open_members'),
     sym('_close_braces'),
+    sym('_trailing_lambda_position'),
     sym('_top_level_statement_end'),
     // empty: it ends a context list of types among modifiers, except directly in a statement list (see `modifiers`)
     sym('_context_end'),
@@ -159,6 +160,13 @@ module.exports = grammar({
     sym('_getter_separator'),
     sym('_setter_separator'),
     sym('_accessor_parameters_position'),
+    sym('_semicolon_before_else'),
+    sym('_shared_semicolon_before_else'),
+    sym('_empty_body_semicolon_before_else'),
+    sym('_if_else_boundary'),
+    sym('_if_else_continuation'),
+    sym('_when_after_if_boundary'),
+    sym('_shared_when_after_if_boundary'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -489,7 +497,7 @@ module.exports = grammar({
           'in',
           $.expression,
           ')',
-          choice(field('body', $._control_structure_body), ';')
+          choice(field('body', $._control_structure_body), emptyBodySemicolon())
         )
       ),
 
@@ -501,7 +509,7 @@ module.exports = grammar({
           '(',
           field('condition', $.expression),
           ')',
-          choice(field('body', $._control_structure_body), ';')
+          choice(field('body', $._control_structure_body), emptyBodySemicolon())
         )
       ),
 
@@ -693,10 +701,13 @@ module.exports = grammar({
     parenthesized_type: ($) => seq('(', $.type, ')'),
 
     assignment: ($) =>
-      seq(
-        field('left', $.expression),
-        field('operator', choice('=', '+=', '-=', '*=', '/=', '%=')),
-        field('right', $.expression)
+      prec.right(
+        1,
+        seq(
+          field('left', $.expression),
+          field('operator', choice('=', '+=', '-=', '*=', '/=', '%=')),
+          field('right', $.expression)
+        )
       ),
 
     expression: ($) =>
@@ -820,8 +831,16 @@ module.exports = grammar({
         PREC.CALL,
         seq(
           $.expression,
-          optional($.type_arguments),
-          choice($.value_arguments, seq(optional($.value_arguments), $.annotated_lambda))
+          choice(
+            seq(
+              optional($.type_arguments),
+              choice(
+                $.value_arguments,
+                seq(optional(seq($.value_arguments, optional(sym('_trailing_lambda_position')))), $.annotated_lambda)
+              )
+            ),
+            seq($.type_arguments, sym('_trailing_lambda_position'), $.annotated_lambda)
+          )
         )
       ),
 
@@ -875,25 +894,23 @@ module.exports = grammar({
         )
       ),
 
-    if_expression: ($) =>
-      prec.right(
-        seq(
-          'if',
-          '(',
-          field('condition', $.expression),
-          ')',
-          choice(
-            field('consequence', $._control_structure_body),
-            ';',
-            seq(
-              optional(field('consequence', $._control_structure_body)),
-              optional(';'),
-              'else',
-              choice(field('alternative', $._control_structure_body), ';')
-            )
-          )
-        )
-      ),
+    if_expression: ($) => {
+      const head = seq('if', '(', field('condition', $.expression), ')');
+      const body = field('consequence', $._control_structure_body);
+      const alternative = choice(field('alternative', $._control_structure_body), emptyBodySemicolon());
+      const explicitEnd = seq(optional(body), choice(semicolonBeforeElse(), sym('_if_else_boundary')));
+      return choice(
+        seq(head, body),
+        prec.right(1, seq(head, choice(';', seq(optional(body), 'else', alternative)))),
+        prec.right(1, seq(head, explicitEnd, $._explicit_if_else, alternative)),
+        seq(head, body, alias(sym('_shared_semicolon_before_else'), ';'), $._explicit_if_else, alternative),
+        seq(head, explicitEnd, sym('_shared_when_after_if_boundary'), 'else', alternative),
+        prec.dynamic(-1, seq(head, explicitEnd))
+      );
+    },
+
+    // The scanner emits a separator after the literal. Either this if or the when entry consumes it.
+    _explicit_if_else: () => seq(choice(sym('_semi'), sym('_if_else_continuation')), 'else'),
 
     // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
     // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
@@ -915,9 +932,8 @@ module.exports = grammar({
         sym('_close_braces')
       ),
 
-    // The scanner puts no separator before an `else` other than `else ->`, since it cannot tell whether an `if` at the
-    // end of a statement body takes it. As in Kotlin, such an `if` takes it, `if_expression` being right-associative, and
-    // otherwise the `else` starts the next entry, so a statement body needs no separator before an entry that starts so.
+    // Without an explicit semicolon, the scanner inserts a separator only before `else ->`. An unseparated
+    // `else` attaches to the nearest `if` when it can, or starts the next entry.
     _unseparated_when_entry: ($) => whenEntry($, whenEntryHead($), field('body', $.statement)),
 
     // Unlike `repeat`, this right recursion lets a separator follow every statement body that `else` may follow, so the
@@ -1192,6 +1208,14 @@ function valueArguments($, open) {
   return seq(open, optionalCommaSep1($.value_argument), ')');
 }
 
+function emptyBodySemicolon() {
+  return choice(';', alias(sym('_empty_body_semicolon_before_else'), ';'));
+}
+
+function semicolonBeforeElse() {
+  return alias(sym('_semicolon_before_else'), ';');
+}
+
 /**
  * @param {GrammarSymbols} $
  * @param {RuleOrLiteral} head
@@ -1212,5 +1236,11 @@ function whenEntryHead($) {
  * @param {GrammarSymbols} $
  */
 function whenEntryBody($) {
-  return choice(seq(field('body', $.block), optional(sym('_semi'))), seq(field('body', $.statement), sym('_semi')));
+  const separator = choice(
+    sym('_semi'),
+    sym('_when_after_if_boundary'),
+    sym('_shared_when_after_if_boundary'),
+    seq(sym('_shared_semicolon_before_else'), sym('_if_else_continuation'))
+  );
+  return choice(seq(field('body', $.block), optional(separator)), seq(field('body', $.statement), separator));
 }
