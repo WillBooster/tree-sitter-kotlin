@@ -2027,6 +2027,7 @@ static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const c
 
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c) {
     GuardLookahead *input = (GuardLookahead *)lexer;
+    if (c == '@' && guard->branch.prefix == GUARD_AFTER_HEAD) return GUARD_ABSENT;
     const bool initial_group = c == '(' && guard->branch.prefix == GUARD_START;
     const bool after_operand_line = guard->after_operand_line;
     guard->after_operand_line = false;
@@ -2170,8 +2171,9 @@ static GuardType guard_type_after_punctuation(GuardType type, int32_t c);
 static void scan_guard_punctuation(TSLexer *lexer, GuardScan *guard, int32_t c) {
     guard_branch_symbol(&guard->branch, c, lexer->lookahead);
     if (guard->reading_alternative) {
+        const bool begins_annotation = c == '@' && guard->alternative.prefix == GUARD_AFTER_HEAD;
         guard_branch_symbol(&guard->alternative, c, lexer->lookahead);
-        finish_guard_alternative_prefix(lexer, guard, false);
+        finish_guard_alternative_prefix(lexer, guard, begins_annotation);
     }
     guard->when_head = guard->when_head && c == '(';
     guard->type = guard_type_after_punctuation(guard->type, c);
