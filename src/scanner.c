@@ -1015,7 +1015,7 @@ static bool scan_import_end(TSLexer *lexer);
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separator);
 static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols);
-static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, int before_else);
+static int token_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bool accessors, int before_else);
 
 static bool scan_else_arrow(TSLexer *lexer);
 
@@ -1232,7 +1232,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     if ((valid_symbols[SEMI] || can_separate_accessors || before_else != SEMI) && lexer->lookahead == ';') {
         advance(lexer);
         lexer->mark_end(lexer);
-        int token = token_after_semicolon(lexer, valid_symbols, can_separate_accessors, before_else);
+        int token = token_after_semicolon(scanner, lexer, valid_symbols, can_separate_accessors, before_else);
         scanner->after_else_semicolon = token == SEMICOLON_BEFORE_ELSE ? IF_BEFORE_ELSE
                                       : token == EMPTY_BODY_SEMICOLON_BEFORE_ELSE ? COMPLETED_BODY_BEFORE_ELSE : NO_EXPLICIT_ELSE;
         lexer->result_symbol = (TSSymbol)token;
@@ -2318,8 +2318,8 @@ static int accessor_separator_token(TSLexer *lexer, const bool *valid_symbols, b
     return token;
 }
 
-// code-gauge-allow functionCognitiveComplexity 29 -- classifies the same lookahead for if branches and accessors without rescanning.
-static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, int before_else) {
+// code-gauge-allow functionCognitiveComplexity 30 -- classifies the same lookahead for if branches and accessors without rescanning.
+static int token_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bool accessors, int before_else) {
     // After a property semicolon, a newline before the next token ends the property. A newline inside a
     // block comment does not count, and an annotation on the same line may itself continue onto later lines.
     bool initial = accessors && valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
@@ -2337,7 +2337,12 @@ static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool
         }
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
-        if (before_else != SEMI && streq(word, "else")) return before_else;
+        if (before_else != SEMI && streq(word, "else")) {
+            // Attach a when separator to the entry before shifting it into a nonempty if expression.
+            if (before_else == SEMICOLON_BEFORE_ELSE && valid_symbols[SEMI] && may_start_when_fallback(scanner, lexer))
+                return SEMI;
+            return before_else;
+        }
         if (!accessors) return SEMI;
         before_else = SEMI;
         if (streq(word, "get") || streq(word, "set"))

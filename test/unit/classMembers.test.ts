@@ -66,6 +66,28 @@ test('ends a when body at its semicolon before fallback trivia', () => {
   }
 });
 
+test.each([
+  ['f()', 'else -> g()'],
+  ['{ f() }', 'else -> g()'],
+  ['f()', 'else if (p) -> g()'],
+  ['{ f() }', 'else if (p) -> g()'],
+])('keeps the when entry separator out of the body with %s and %s', (body, fallback) => {
+  const source = `fun f(p: Boolean, n: Int) {
+    when (n) { 1 -> if (p) ${body}; /* next entry */ ${fallback} }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    const value = first?.childForFieldName('body');
+    expect(value?.text).toBe(`if (p) ${body}`);
+    expect(value?.endIndex).toBe(source.indexOf(';'));
+    expect(next?.text).toBe(fallback);
+  } finally {
+    tree.delete();
+  }
+});
+
 test('preserves guarded when entries across nested templates and conditional bodies', () => {
   let template = '"x"';
   for (let depth = 0; depth < 32; depth++) template = '"${' + template + '}"';
