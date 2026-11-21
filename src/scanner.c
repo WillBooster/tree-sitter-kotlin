@@ -1862,17 +1862,22 @@ static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
 static bool scan_guard_word(TSLexer *lexer, unsigned *ifs);
+static bool scan_guard_else_after_semicolon(TSLexer *lexer, unsigned *ifs);
 static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars);
 
-// A guarded entry needs a top-level arrow. Skip balanced literals and delimiters so a nested lambda's arrow
-// cannot keep the fallback branch alive. An else with no if inside the guard closes the candidate.
-// code-gauge-allow functionCognitiveComplexity 19 -- one pass over possible guard tokens until an arrow or entry boundary.
+// A guarded entry needs a top-level arrow. Balanced constructs keep their own separators and arrows.
+// code-gauge-allow functionCognitiveComplexity 24 -- one pass across top-level guard tokens and their lexical boundaries.
 static bool scan_when_guard_arrow(TSLexer *lexer) {
     unsigned ifs = 0;
     unsigned dollars = 0;
     while (!at_eof(lexer)) {
         int32_t c = lexer->lookahead;
-        if (c == ';' || c == ')' || c == ']' || c == '}') return false;
+        if (c == ')' || c == ']' || c == '}') return false;
+        if (c == ';') {
+            if (!scan_guard_else_after_semicolon(lexer, &ifs)) return false;
+            dollars = 0;
+            continue;
+        }
         if (c == '/') {
             scan_whitespace_and_comments(lexer, true, false);
             dollars = 0;
@@ -1900,6 +1905,17 @@ static bool scan_guard_word(TSLexer *lexer, unsigned *ifs) {
         if (*ifs == 0) return false;
         (*ifs)--;
     }
+    return true;
+}
+
+static bool scan_guard_else_after_semicolon(TSLexer *lexer, unsigned *ifs) {
+    if (*ifs == 0) return false;
+    advance(lexer);
+    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+    char word[MAX_WORD_SIZE] = {0};
+    read_following_word(lexer, word);
+    if (!streq(word, "else")) return false;
+    (*ifs)--;
     return true;
 }
 

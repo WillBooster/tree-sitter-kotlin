@@ -2652,7 +2652,7 @@ fun completedBodies(n: Int, p: Boolean) {
 
 fun conditionalGuard(n: Int, p: Boolean) {
     when (n) {
-        1 -> if (p) f(); else if if (p) n > 0 else n < 0 -> g()
+        1 -> if (p) f(); else if if (p) n > 0; else n < 0 -> g()
         else -> h()
     }
 }
