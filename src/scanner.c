@@ -1206,7 +1206,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     : !error_recovery && valid_symbols[SEMICOLON_BEFORE_ELSE] ? SEMICOLON_BEFORE_ELSE : SEMI;
     bool after_else_semicolon = !error_recovery && scanner->after_else_semicolon &&
                                (valid_symbols[SEMI] || valid_symbols[IF_ELSE_CONTINUATION] || valid_symbols[IF_ELSE_BOUNDARY]);
-    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || before_else != SEMI || after_else_semicolon) {
+    if (after_else_semicolon) return scan_else_after_semicolon(scanner, lexer, valid_symbols);
+    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || before_else != SEMI) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (is_space(lexer->lookahead)) {
@@ -1222,7 +1223,6 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         }
     }
 
-    if (after_else_semicolon && lexer->lookahead == 'e') return scan_else_after_semicolon(scanner, lexer, valid_symbols);
     if ((valid_symbols[SEMI] || can_separate_accessors || before_else != SEMI) && lexer->lookahead == ';') {
         advance(lexer);
         lexer->mark_end(lexer);
@@ -1861,25 +1861,81 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
+static bool scan_guard_word(TSLexer *lexer, unsigned *ifs);
+static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars);
+
+// A guarded entry needs a top-level arrow. Skip balanced literals and delimiters so a nested lambda's arrow
+// cannot keep the fallback branch alive. An else with no if inside the guard closes the candidate.
+// code-gauge-allow functionCognitiveComplexity 19 -- one pass over possible guard tokens until an arrow or entry boundary.
+static bool scan_when_guard_arrow(TSLexer *lexer) {
+    unsigned ifs = 0;
+    unsigned dollars = 0;
+    while (!at_eof(lexer)) {
+        int32_t c = lexer->lookahead;
+        if (c == ';' || c == ')' || c == ']' || c == '}') return false;
+        if (c == '/') {
+            scan_whitespace_and_comments(lexer, true, false);
+            dollars = 0;
+            continue;
+        }
+        if (c != '$' && is_identifier_part(c)) {
+            if (!scan_guard_word(lexer, &ifs)) return false;
+            dollars = 0;
+            continue;
+        }
+        advance(lexer);
+        if (c == '-' && lexer->lookahead == '>') return true;
+        if (!scan_guard_delimiter(lexer, c, dollars)) return false;
+        dollars = c == '$' ? dollars + 1 : 0;
+    }
+    return false;
+}
+
+static bool scan_guard_word(TSLexer *lexer, unsigned *ifs) {
+    char word[MAX_WORD_SIZE] = {0};
+    read_following_word(lexer, word);
+    if (streq(word, "if")) {
+        (*ifs)++;
+    } else if (streq(word, "else")) {
+        if (*ifs == 0) return false;
+        (*ifs)--;
+    }
+    return true;
+}
+
+static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars) {
+    switch (c) {
+        case '(': return scan_to_closing_bracket(lexer, '(', ')', 0, false);
+        case '[': return scan_to_closing_bracket(lexer, '[', ']', 0, false);
+        case '{': return scan_to_closing_bracket(lexer, '{', '}', 0, false);
+        case '"': case '\'': case '`': return scan_string_rest(lexer, c, dollars > 1 ? dollars : 1, 0, false, false);
+        default: return true;
+    }
+}
+
 static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer) {
     if (!in_entries(scanner) && scanner->depth <= MAX_FRAMES) return false;
     if (!scan_whitespace_and_comments(lexer, true, false)) return false;
-    if (lexer->lookahead == '-') return scan_else_arrow(lexer);
+    if (lexer->lookahead == '-') {
+        advance(lexer);
+        return lexer->lookahead == '>';
+    }
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
-    return streq(word, "if");
+    return streq(word, "if") && scan_when_guard_arrow(lexer);
 }
 
 static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
     lexer->mark_end(lexer);
-    char word[MAX_WORD_SIZE] = {0};
-    read_following_word(lexer, word);
-    if (!streq(word, "else")) return false;
     if (scanner->after_else_semicolon == COMPLETED_BODY_BEFORE_ELSE && valid_symbols[IF_ELSE_BOUNDARY]) {
         lexer->result_symbol = IF_ELSE_BOUNDARY;
         scanner->after_else_semicolon = IF_BEFORE_ELSE;
         return true;
     }
+    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+    char word[MAX_WORD_SIZE] = {0};
+    read_following_word(lexer, word);
+    if (!streq(word, "else")) return false;
     bool continue_if = valid_symbols[IF_ELSE_CONTINUATION] && (!valid_symbols[SEMI] || !may_start_when_fallback(scanner, lexer));
     lexer->result_symbol = continue_if ? IF_ELSE_CONTINUATION : SEMI;
     scanner->after_else_semicolon = NO_EXPLICIT_ELSE;

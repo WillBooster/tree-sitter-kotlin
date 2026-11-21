@@ -2650,6 +2650,13 @@ fun completedBodies(n: Int, p: Boolean) {
     if (p) while (p); else println(n)
 }
 
+fun conditionalGuard(n: Int, p: Boolean) {
+    when (n) {
+        1 -> if (p) f(); else if if (p) n > 0 else n < 0 -> g()
+        else -> h()
+    }
+}
+
 --------------------------------------------------------------------------------
 
 (source_file
@@ -2696,8 +2703,8 @@ fun completedBodies(n: Int, p: Boolean) {
                                   (value_argument
                                     (identifier))
                                   (value_argument
-                                    (identifier))))))))))))))
-          (block_comment))
+                                    (identifier)))))))))))))))
+        (block_comment)
         (when_entry
           (block_comment)
           (identifier)))))
@@ -2785,8 +2792,8 @@ fun completedBodies(n: Int, p: Boolean) {
             (if_expression
               (identifier)
               (if_expression
-                (identifier)))
-            (block_comment))
+                (identifier))))
+          (block_comment)
           (when_entry
             (block_comment)
             (call_expression
@@ -2880,4 +2887,43 @@ fun completedBodies(n: Int, p: Boolean) {
             (identifier)
             (value_arguments
               (value_argument
-                (identifier)))))))))
+                (identifier))))))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))))
+          (when_entry
+            (if_expression
+              (identifier)
+              (binary_expression
+                (identifier)
+                (number_literal))
+              (binary_expression
+                (identifier)
+                (number_literal)))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))))))

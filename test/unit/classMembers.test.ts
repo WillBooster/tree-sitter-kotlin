@@ -47,6 +47,25 @@ test('preserves literal semicolon spans inside property initializers', () => {
   }
 });
 
+test('ends a when body at its semicolon before fallback trivia', () => {
+  const body = 'if (a) while (a);';
+  const source = `class C { fun f(a: Boolean, n: Int) {
+    when (n) {
+      1 -> ${body} /* after body */
+      else -> Unit
+    }
+  } }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, fallback] = tree.rootNode.descendantsOfType('when_entry');
+    expect(first?.childForFieldName('body')?.text).toBe(body);
+    expect(fallback?.startIndex).toBe(source.indexOf('else'));
+  } finally {
+    tree.delete();
+  }
+});
+
 test('requires a separator after properties even when nested bodies contain adjacent functions', () => {
   for (const source of [
     'class C { fun first() {} val x = 1 val y = 2 }',

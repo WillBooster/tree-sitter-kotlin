@@ -111,22 +111,35 @@ test('parses comment openers in annotation strings in linear time', { timeout: 6
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
-test('parses unfinished nested if chains with explicit semicolons in linear time', { timeout: 60_000 }, () => {
-  const small = unfinishedIfChain(250);
-  const large = unfinishedIfChain(2500);
-  const repetitions = 10;
-  parseCpuTime(large, repetitions);
-  let smallFastest = Infinity;
-  let largeFastest = Infinity;
-  for (let run = 0; run < 3; run++) {
-    smallFastest = Math.min(smallFastest, parseCpuTime(small, repetitions));
-    largeFastest = Math.min(largeFastest, parseCpuTime(large, repetitions));
+test.each(['in a function', 'in a when entry', 'past the scanner frame limit'] as const)(
+  'parses unfinished nested if chains with explicit semicolons in linear time %s',
+  { timeout: 60_000 },
+  (context) => {
+    const small = unfinishedIfChain(250, context);
+    const large = unfinishedIfChain(2500, context);
+    const repetitions = 8;
+    parseCpuTime(large, repetitions);
+    let smallFastest = Infinity;
+    let largeFastest = Infinity;
+    for (let run = 0; run < 3; run++) {
+      smallFastest = Math.min(smallFastest, parseCpuTime(small, repetitions));
+      largeFastest = Math.min(largeFastest, parseCpuTime(large, repetitions));
+    }
+    expect(largeFastest / smallFastest).toBeLessThan(20);
   }
-  expect(largeFastest / smallFastest).toBeLessThan(20);
-});
+);
 
-function unfinishedIfChain(depth: number): string {
-  return `fun f(a: Boolean) { ${'if (a) '.repeat(depth)}f()${'; else g()'.repeat(depth / 2)}`;
+function unfinishedIfChain(
+  depth: number,
+  context: 'in a function' | 'in a when entry' | 'past the scanner frame limit'
+): string {
+  const body = `${'if (a) '.repeat(depth)}f()`;
+  const alternatives = '; else if (a) g() else h()'.repeat(depth / 2);
+  if (context === 'in a when entry')
+    return `fun f(a: Boolean) { when (0) { 0 -> ${body}${alternatives}\nelse -> Unit }`;
+  if (context === 'past the scanner frame limit')
+    return `fun f(a: Boolean) { ${'if (a) {'.repeat(256)}${body}${alternatives}${'}'.repeat(256)}`;
+  return `fun f(a: Boolean) { ${body}${'; else g()'.repeat(depth / 2)}`;
 }
 
 function parseCpuTime(source: string, repetitions = 1): number {
