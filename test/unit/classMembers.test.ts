@@ -142,22 +142,34 @@ test.each([
   ['1_000', '2, 3'],
   ['42L', '2, 3'],
   ['n', '2'],
+  ['x to y', '2'],
+  ['x to y', 'is String'],
+  ['x until y', '"other"'],
+  ['c!!', '2, 3'],
+  ['x++', '2'],
+  ['y--', 'in 2..3'],
 ])('keeps an ordinary else-if body %s before another when entry (%s)', (alternative, condition) => {
   const body = `if (p) println(1); else if (q) ${alternative}`;
-  const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Int) {
-    when (n) {
-      1 -> ${body}
-      ${condition} -> Unit
-      else -> Unit
+  for (const depth of [0, 256]) {
+    const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Any, c: String?) {
+      var x = 1
+      var y = 2
+      ${'if (p) { '.repeat(depth)}
+      when (n) {
+        1 -> ${body}
+        ${condition} -> Unit
+        else -> Unit
+      }
+      ${'}'.repeat(depth)}
+    }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe(body);
+      expect(next?.text).toBe(`${condition} -> Unit`);
+    } finally {
+      tree.delete();
     }
-  }`)!;
-  try {
-    expect(tree.rootNode.hasError).toBe(false);
-    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
-    expect(first?.childForFieldName('body')?.text).toBe(body);
-    expect(next?.text).toBe(`${condition} -> Unit`);
-  } finally {
-    tree.delete();
   }
 });
 

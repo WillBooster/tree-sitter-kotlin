@@ -1912,6 +1912,7 @@ typedef struct {
     bool crossed_line_after_body;
     bool control_head;
     bool completed_operand;
+    bool completed_body_operand;
     bool after_operand_line;
     bool saw_type_arrow;
     bool follows_explicit_else;
@@ -2045,7 +2046,8 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
 }
 
 static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, bool initial_group) {
-    const bool postfix = guard->completed_operand && (c == '!' || c == '+' || c == '-') && lexer->lookahead == c;
+    const bool previous_operand = guard->completed_operand || guard->completed_body_operand;
+    const bool postfix = previous_operand && (c == '!' || c == '+' || c == '-') && lexer->lookahead == c;
     if (postfix) advance(lexer);
     if (is_digit(c)) scan_guard_number_tail(lexer);
     const bool type_arguments = c == '<' && guard->type != GUARD_NO_TYPE;
@@ -2054,7 +2056,9 @@ static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, boo
     const bool type_operand = type_arguments || nullable_type;
     scan_guard_punctuation(lexer, guard, c);
     if (type_operand) guard->type = GUARD_TYPE;
-    guard->completed_operand = postfix || type_operand || completed_guard_operand(c, initial_group, guard->control_head);
+    const bool complete = type_operand || completed_guard_operand(c, initial_group, guard->control_head);
+    guard->completed_operand = complete || (postfix && guard->completed_operand);
+    guard->completed_body_operand = complete || (postfix && guard->completed_body_operand);
     guard->control_head = false;
 }
 
@@ -2090,12 +2094,13 @@ static bool scan_guard_word_token(GuardScan *guard, const char *word) {
     const bool operator = guard_word_requires_operand(word);
     guard->dollars = 0;
     guard->when_head = streq(word, "when");
-    const bool previous_operand = guard->completed_operand;
     guard->control_head = starts_guard_control_head(word);
     const GuardWord kind = guard_branch_word(&guard->branch, word, operator);
     const bool value_keyword = streq(word, "true") || streq(word, "false") || streq(word, "null") || streq(word, "this");
-    guard->completed_operand = kind == GUARD_WORD_BODY && !previous_operand && !operator &&
-                               (value_keyword || (!guard_word_starts_body(word) && !continues_guard_after_line(word)));
+    const bool operand = !operator &&
+                         (value_keyword || (!guard_word_starts_body(word) && !continues_guard_after_line(word)));
+    guard->completed_operand = kind == GUARD_WORD_BODY && !guard->completed_operand && operand;
+    guard->completed_body_operand = !guard->completed_body_operand && operand;
     if (kind != GUARD_WORD_BODY) return kind == GUARD_WORD_INFIX;
     if (streq(word, "else")) guard->ifs--;
     else if (streq(word, "if")) guard->ifs++;
@@ -2224,13 +2229,12 @@ static bool starts_guard_control_head(const char *word) {
 static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
     bool saw_newline = false;
     bool trivia = scan_trivia(lexer, true, false, &saw_newline);
-    if (saw_newline && guard->branch.can_be_alternative &&
-        (guard->completed_operand || guard->branch.prefix == GUARD_INFIX_ARGUMENT)) {
-        guard->crossed_line_after_body = true;
+    if (saw_newline && guard->branch.can_be_alternative) {
+        guard->crossed_line_after_body |= guard->completed_body_operand;
         guard->after_operand_line = guard->completed_operand;
     }
     if (!trivia) {
-        guard->completed_operand = guard->after_operand_line = guard->control_head = false;
+        guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
         if (before_guard_operand(guard->branch.prefix)) guard->branch.can_be_alternative = false;
         guard->branch.prefix = GUARD_EXPRESSION;
         guard->type = GUARD_NO_TYPE;
@@ -2256,7 +2260,7 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     guard->type = GUARD_NO_TYPE;
     guard->dollars = 0;
     guard->follows_explicit_else = true;
-    guard->completed_operand = guard->after_operand_line = guard->control_head = false;
+    guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
     return true;
 }
 
