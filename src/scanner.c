@@ -47,6 +47,7 @@ enum TokenType {
     IMPORT_CONTINUE,
     RETURN_VALUE_POSITION,
     UNTERMINATED_BLOCK_COMMENT,
+    INITIAL_ACCESSOR_SEPARATOR,
     GETTER_SEPARATOR,
     SETTER_SEPARATOR,
     ACCESSOR_PARAMETERS_POSITION,
@@ -255,18 +256,20 @@ static bool skip_whitespace_and_comments(TSLexer *lexer, bool across_lines) {
 
 static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, bool skip_chars);
 
-static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting, bool skip_chars);
+static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting,
+                             bool skip_chars, bool stop_at_separator);
 
 // Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
 // Returns false at the end of the input or when templates nest too deeply.
-// code-gauge-allow functionCognitiveComplexity 16 -- one loop over the bracket, comment, and literal cases it skips
-static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting, bool skip_chars) {
+// code-gauge-allow functionCognitiveComplexity 20 -- one loop over the bracket, comment, and literal cases it skips
+static bool scan_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting, bool skip_chars,
+                         bool stop_at_separator) {
     unsigned depth = 1;
     // The dollars right before a string's quote: two or more prefix a multi-dollar string.
     unsigned dollars = 0;
     while (depth > 0) {
         int32_t c = lexer->lookahead;
-        if (at_eof(lexer)) {
+        if (at_eof(lexer) || (stop_at_separator && (c == ';' || (c == '}' && close != '}')))) {
             return false;
         }
         if (c == '/') {
@@ -280,7 +283,7 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
         } else if (c == close) {
             depth--;
         } else if ((c == '"' || c == '\'' || c == '`') &&
-                   !scan_string_rest(lexer, c, dollars > 1 ? dollars : 1, nesting, skip_chars)) {
+                   !scan_string_rest(lexer, c, dollars > 1 ? dollars : 1, nesting, skip_chars, stop_at_separator)) {
             return false;
         }
         dollars = c == '$' ? dollars + 1 : 0;
@@ -288,15 +291,20 @@ static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close,
     return true;
 }
 
+static bool scan_to_closing_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting, bool skip_chars) {
+    return scan_bracket(lexer, open, close, nesting, skip_chars, false);
+}
+
 // Skips the rest of a string or character literal or a backticked name after its opening quote, including the
 // expressions of string templates. Returns false where `skip_to_closing_bracket` does.
 static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, bool skip_chars) {
-    return scan_string_rest(lexer, quote, 1, nesting, skip_chars);
+    return scan_string_rest(lexer, quote, 1, nesting, skip_chars, false);
 }
 
 // Like `scan_literal_rest`, for a string whose interpolations start with `dollars` dollars.
-// code-gauge-allow functionCognitiveComplexity 23 -- one loop over a literal's quotes, escapes, and interpolations
-static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting, bool skip_chars) {
+// code-gauge-allow functionCognitiveComplexity 27 -- one loop over a literal's quotes, escapes, and interpolations
+static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting,
+                             bool skip_chars, bool stop_at_separator) {
     bool raw = false;
     if (quote == '"' && lexer->lookahead == '"') {
         lexer->advance(lexer, skip_chars);
@@ -311,6 +319,7 @@ static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, un
     unsigned run = 0;
     while (!at_eof(lexer) && (raw ? quotes < 3 || lexer->lookahead == '"' : lexer->lookahead != quote)) {
         int32_t c = lexer->lookahead;
+        if (stop_at_separator && !raw && (c == '\n' || c == '\r')) return false;
         quotes = c == '"' ? quotes + 1 : 0;
         run = c == '$' ? run + 1 : 0;
         lexer->advance(lexer, skip_chars);
@@ -319,7 +328,7 @@ static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, un
             lexer->advance(lexer, skip_chars);
         } else if (run >= dollars && quote == '"' && lexer->lookahead == '{') {
             lexer->advance(lexer, skip_chars);
-            if (nesting == MAX_TEMPLATE_NESTING || !scan_to_closing_bracket(lexer, '{', '}', nesting + 1, skip_chars)) {
+            if (nesting == MAX_TEMPLATE_NESTING || !scan_bracket(lexer, '{', '}', nesting + 1, skip_chars, stop_at_separator)) {
                 return false;
             }
         }
@@ -342,7 +351,7 @@ static bool skip_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting) {
 // a getter, starting with the parameter's name or annotation for a setter) followed by a body or a type. The grammar
 // accepts accessors after any property, including a local one, which Kotlin does not, so this is what tells a call
 // such as `get("a") { … }` or an assignment such as `set = 1` on the next line from an accessor.
-static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
+static bool scan_accessor_shape(TSLexer *lexer, bool setter, bool stop_at_separator) {
     if (!skip_whitespace_and_comments(lexer, false)) {
         return false;
     }
@@ -357,11 +366,15 @@ static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
         return false;
     }
     // A parenthesis in a literal (e.g. in an annotation's argument) or in a backticked name is not one of the list.
-    if (!skip_to_closing_bracket(lexer, '(', ')', 0)) {
+    if (!scan_bracket(lexer, '(', ')', 0, true, stop_at_separator)) {
         return false;
     }
     skip_whitespace_and_comments(lexer, true);
     return lexer->lookahead == '=' || lexer->lookahead == '{' || lexer->lookahead == ':';
+}
+
+static bool scan_accessor_rest(TSLexer *lexer, bool setter) {
+    return scan_accessor_shape(lexer, setter, false);
 }
 
 static bool scan_catch_parameter_type_end(TSLexer *lexer) {
@@ -977,6 +990,7 @@ static bool scan_full_destructuring_start(TSLexer *lexer);
 static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
+static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separator);
 static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols);
 
 static bool scan_else_arrow(TSLexer *lexer);
@@ -992,6 +1006,7 @@ static bool scan_named_function(TSLexer *lexer, bool skip_chars);
 static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars);
 
 static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars);
+static bool scan_type_arguments(TSLexer *lexer, bool skip_chars, bool stop_at_separator);
 
 static const char EXPRESSION_START_KEYWORDS[][MAX_WORD_SIZE] = {
     "import", "break", "continue", "false", "fun",  "if",   "null", "object",
@@ -1166,7 +1181,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     // A line break before a comment that the next token shares a line with separates as if right before the token.
     bool saw_newline = newline_before_comment;
     bool saw_space = false;
-    bool can_separate_accessors = (valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
+    bool can_separate_accessors = (valid_symbols[INITIAL_ACCESSOR_SEPARATOR] ||
+                                   valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
                                   !error_recovery && !in_statements(scanner);
     if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors) {
         // Both tokens are empty and end where the previous token does.
@@ -1820,22 +1836,38 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
-static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+// code-gauge-allow functionCognitiveComplexity 25 -- each exit distinguishes a Kotlin separator or accessor prefix.
+static int accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+    // After a property semicolon, a newline before the next token ends the property. A newline inside a
+    // block comment does not count, and an annotation on the same line may itself continue onto later lines.
+    bool initial = valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
+                   skip_whitespace_and_comments(lexer, false) &&
+                   lexer->lookahead != '\n' && lexer->lookahead != '\r';
+    if (!initial && !valid_symbols[GETTER_SEPARATOR] && !valid_symbols[SETTER_SEPARATOR]) return -1;
     while (skip_whitespace_and_comments(lexer, true)) {
         if (lexer->lookahead == '@') {
-            if (!scan_member_annotation(lexer, true)) return false;
+            // Outside comments and literals, a semicolon ends an unfinished accessor annotation.
+            if (!scan_annotation(lexer, true, true)) return -1;
             continue;
         }
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
         if (streq(word, "get") || streq(word, "set")) {
+            if (initial) return INITIAL_ACCESSOR_SEPARATOR;
             bool setter = streq(word, "set");
-            lexer->result_symbol = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
-            return valid_symbols[lexer->result_symbol] && scan_accessor_rest(lexer, setter);
+            int token = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
+            return valid_symbols[token] && scan_accessor_shape(lexer, setter, true) ? token : -1;
         }
-        if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return false;
+        if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return -1;
     }
-    return false;
+    return -1;
+}
+
+static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+    int token = accessor_after_separator(lexer, valid_symbols);
+    if (token < 0) return false;
+    lexer->result_symbol = (TSSymbol)token;
+    return true;
 }
 
 static int classify_following_word(TSLexer *lexer, const char *word, bool companion);
@@ -2052,16 +2084,21 @@ static bool scan_type_constraint_start(TSLexer *lexer) {
 }
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
+    return scan_annotation(lexer, skip_chars, false);
+}
+
+// code-gauge-allow functionCognitiveComplexity 29 -- keeps qualified annotation names and argument delimiters in one scan.
+static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separator) {
     lexer->advance(lexer, skip_chars);
     for (;;) {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         if (lexer->lookahead == '[') {
             lexer->advance(lexer, skip_chars);
-            return scan_to_closing_bracket(lexer, '[', ']', 0, skip_chars);
+            return scan_bracket(lexer, '[', ']', 0, skip_chars, stop_at_separator);
         }
         if (lexer->lookahead == '`') {
             lexer->advance(lexer, skip_chars);
-            if (!scan_literal_rest(lexer, '`', 0, skip_chars)) return false;
+            if (!scan_string_rest(lexer, '`', 1, 0, skip_chars, stop_at_separator)) return false;
         } else {
             if (!is_identifier_start(lexer->lookahead)) return false;
             do {
@@ -2070,7 +2107,7 @@ static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
         }
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         if (lexer->lookahead == '<') {
-            if (!scan_function_type_arguments(lexer, skip_chars) ||
+            if (!scan_type_arguments(lexer, skip_chars, stop_at_separator) ||
                 !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         }
         if (lexer->lookahead != '.' && lexer->lookahead != ':') break;
@@ -2078,7 +2115,7 @@ static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
     }
     if (lexer->lookahead == '(') {
         lexer->advance(lexer, skip_chars);
-        return scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars);
+        return scan_bracket(lexer, '(', ')', 0, skip_chars, stop_at_separator);
     }
     return true;
 }
@@ -2097,11 +2134,17 @@ static bool scan_parenthesized_receiver(TSLexer *lexer, bool skip_chars) {
 }
 
 static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars) {
+    return scan_type_arguments(lexer, skip_chars, false);
+}
+
+// code-gauge-allow functionCognitiveComplexity 20 -- tracks nested type arguments and their token boundaries together.
+static bool scan_type_arguments(TSLexer *lexer, bool skip_chars, bool stop_at_separator) {
     unsigned depth = 1;
     lexer->advance(lexer, skip_chars);
     while (depth) {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars) || lexer->eof(lexer)) return false;
         int32_t c = lexer->lookahead;
+        if (stop_at_separator && (c == ';' || c == '}' || c == '=')) return false;
         lexer->advance(lexer, skip_chars);
         if (c == '<') {
             depth++;
@@ -2110,8 +2153,8 @@ static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars) {
         } else if (c == '-' && lexer->lookahead == '>') {
             lexer->advance(lexer, skip_chars);
         } else if (c == '(') {
-            if (!scan_to_closing_bracket(lexer, '(', ')', 0, skip_chars)) return false;
-        } else if ((c == '"' || c == '\'' || c == '`') && !scan_literal_rest(lexer, c, 0, skip_chars)) {
+            if (!scan_bracket(lexer, '(', ')', 0, skip_chars, stop_at_separator)) return false;
+        } else if ((c == '"' || c == '\'' || c == '`') && !scan_string_rest(lexer, c, 1, 0, skip_chars, stop_at_separator)) {
             return false;
         }
     }

@@ -67,6 +67,22 @@ test('preserves adjacent contextual members', () => {
   }
 });
 
+test('keeps first accessors attached across long comments and annotation arguments', () => {
+  const description = 'A property description; '.repeat(250);
+  const source = `class Properties {
+    var fieldValue = 0; /* ${description} */ get() = field
+    var otherValue = 0; @Deprecated("${description}") set(value) { field = value }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    const members = classMembers(tree.rootNode);
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(members.map((member) => member.lastNamedChild?.type)).toEqual(['getter', 'setter']);
+  } finally {
+    tree.delete();
+  }
+});
+
 test('keeps contextual infix calls inside member expressions', () => {
   for (const expression of ['1 init {}', '1 companion object {}']) {
     const source = `class C { val x = ${expression}; fun f() = ${expression} }`;

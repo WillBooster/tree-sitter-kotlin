@@ -1646,3 +1646,128 @@ var second = 0
     (annotated_lambda
       (lambda_literal
         (number_literal)))))
+
+================================================================================
+Explicit semicolons before the first property accessor
+================================================================================
+
+var age: Int = 0; set(value) { field = value }
+val answer: Int; get() = 42
+class Counter {
+    var count = 1
+        ; /* after initializer */ get() = field; set(value) { field = value }
+    var configurable = 0; private set
+}
+
+val separate = 1;
+get() { 2 }
+
+var other = 0; // property end
+set(other) { 3 }
+
+var annotated = 0; @Accessor(
+    1
+)
+    get() = field
+
+fun body() { val local = 4; get() }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (number_literal)
+    (setter
+      (identifier)
+      (function_body
+        (block
+          (assignment
+            (identifier)
+            (identifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier)
+      (user_type
+        (identifier)))
+    (getter
+      (function_body
+        (number_literal))))
+  (class_declaration
+    (identifier)
+    (class_body
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (block_comment)
+        (getter
+          (function_body
+            (identifier)))
+        (setter
+          (identifier)
+          (function_body
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (property_declaration
+        (variable_declaration
+          (identifier))
+        (number_literal)
+        (setter
+          (modifiers
+            (visibility_modifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal))
+  (call_expression
+    (identifier)
+    (value_arguments)
+    (annotated_lambda
+      (lambda_literal
+        (number_literal))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal))
+  (line_comment)
+  (call_expression
+    (identifier)
+    (value_arguments
+      (value_argument
+        (identifier)))
+    (annotated_lambda
+      (lambda_literal
+        (number_literal))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (getter
+      (modifiers
+        (annotation
+          (constructor_invocation
+            (user_type
+              (identifier))
+            (value_arguments
+              (value_argument
+                (number_literal))))))
+      (function_body
+        (identifier))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (number_literal))
+        (call_expression
+          (identifier)
+          (value_arguments))))))
