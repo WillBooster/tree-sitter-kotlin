@@ -252,6 +252,11 @@ test.each([
   [3, '(items[0])!!', '!is String?'],
   [2, '{ println(n) }', '::marker'],
   [3, 'n', '::marker'],
+  [3, '{ println(n) }', '@Mark ::marker'],
+  [3, 'String::length', '@Mark ::marker'],
+  [2, 'n', '$$"text"'],
+  [2, 'n', '$$"""text"""'],
+  [3, '\n      @Mark (n)', '$$"text"'],
   [3, 'items[0]!!', '!in 0..3'],
 ])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
   const source = `fun f(a: Boolean, c: Boolean, n: Any, items: List<Int?>) {

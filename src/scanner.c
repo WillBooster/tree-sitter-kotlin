@@ -1944,7 +1944,7 @@ static bool has_guard_label_suffix(const char *word);
 static GuardResult scan_guard_label(TSLexer *lexer, GuardScan *guard);
 static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if);
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard);
-static bool starts_guard_operand_after_line(int32_t c, int32_t next);
+static bool continues_guard_symbol_after_line(int32_t c, int32_t next);
 static bool starts_guard_number(int32_t c, int32_t next);
 static void scan_guard_number_tail(TSLexer *lexer);
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head);
@@ -2075,7 +2075,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     const size_t group_start = input->cursor;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') return scan_guard_arrow(lexer, guard);
-    if (after_operand_line && starts_guard_operand_after_line(c, lexer->lookahead))
+    if (after_operand_line && !continues_guard_symbol_after_line(c, lexer->lookahead))
         return guard_result(guard->shared_arrow);
     GuardGroupStatus group = initial_group ? guard_replay_group(input, group_start, guard->brace_depth) : GUARD_GROUP_UNKNOWN;
     if (group == GUARD_GROUP_UNKNOWN) group = scan_guard_delimiter(lexer, c, guard);
@@ -2119,9 +2119,17 @@ static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard) {
     return GUARD_MORE;
 }
 
-static bool starts_guard_operand_after_line(int32_t c, int32_t next) {
-    return starts_guard_number(c, next) || c == '"' || c == '\'' || c == '`' || c == '(' || (c == ':' && next == ':') ||
-           ((c == '+' || c == '-' || c == '!') && next != '=');
+// After a completed body, only punctuation that can extend it may cross the newline.
+static bool continues_guard_symbol_after_line(int32_t c, int32_t next) {
+    switch (c) {
+        case '.': return !is_digit(next);
+        case ':': return next != ':';
+        case '+': case '-': case '!': return next == '=';
+        case ',': case '[': case '{':
+        case '?': case '=': case '<': case '>': case '|': case '&': case '*': case '%':
+            return true;
+        default: return false;
+    }
 }
 
 static bool starts_guard_number(int32_t c, int32_t next) {
