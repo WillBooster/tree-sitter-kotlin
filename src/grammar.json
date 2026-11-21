@@ -675,7 +675,7 @@
                                 "members": [
                                   {
                                     "type": "SYMBOL",
-                                    "name": "_accessor_separator"
+                                    "name": "_setter_separator"
                                   },
                                   {
                                     "type": "BLANK"
@@ -713,7 +713,7 @@
                                 "members": [
                                   {
                                     "type": "SYMBOL",
-                                    "name": "_accessor_separator"
+                                    "name": "_getter_separator"
                                   },
                                   {
                                     "type": "BLANK"
@@ -8832,7 +8832,11 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_accessor_separator"
+      "name": "_getter_separator"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_setter_separator"
     }
   ],
   "inline": [

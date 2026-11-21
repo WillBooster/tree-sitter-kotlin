@@ -1526,3 +1526,36 @@ class Counter {
               (assignment (identifier) (identifier)))))
         (getter
           (function_body (identifier)))))))
+
+================================================================================
+Same-name calls after property accessors remain separate statements
+================================================================================
+
+val first: Int
+    get() = 1; get() { 2 }
+
+var second = 0
+    set(value) { field = value }; set(2) { 3 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (property_declaration
+    (variable_declaration (identifier) (user_type (identifier)))
+    (getter
+      (function_body (number_literal))))
+  (call_expression
+    (identifier)
+    (value_arguments)
+    (annotated_lambda (lambda_literal (number_literal))))
+  (property_declaration
+    (variable_declaration (identifier))
+    (number_literal)
+    (setter
+      (identifier)
+      (function_body
+        (block (assignment (identifier) (identifier))))))
+  (call_expression
+    (identifier)
+    (value_arguments (value_argument (number_literal)))
+    (annotated_lambda (lambda_literal (number_literal)))))

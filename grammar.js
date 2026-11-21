@@ -155,7 +155,8 @@ module.exports = grammar({
     sym('_return_value_position'),
     // valid nowhere, so that an unterminated block comment, which runs to the end of the input, is an error
     sym('_unterminated_block_comment'),
-    sym('_accessor_separator'),
+    sym('_getter_separator'),
+    sym('_setter_separator'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -284,8 +285,8 @@ module.exports = grammar({
           optional(';'),
           optional(
             choice(
-              seq($.getter, optional(seq(optional(sym('_accessor_separator')), $.setter))),
-              seq($.setter, optional(seq(optional(sym('_accessor_separator')), $.getter)))
+              seq($.getter, optional(seq(optional(sym('_setter_separator')), $.setter))),
+              seq($.setter, optional(seq(optional(sym('_getter_separator')), $.getter)))
             )
           )
         )
