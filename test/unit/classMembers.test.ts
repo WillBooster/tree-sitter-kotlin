@@ -66,6 +66,30 @@ test('ends a when body at its semicolon before fallback trivia', () => {
   }
 });
 
+test('preserves guarded when entries across nested templates and conditional bodies', () => {
+  let template = '"x"';
+  for (let depth = 0; depth < 32; depth++) template = '"${' + template + '}"';
+  for (const guard of [
+    `(${template}).isNotEmpty()`,
+    'if (p) { n > 0 }; /* before else */ else { n < 0 }',
+    '(p) xor (n == 0)',
+  ]) {
+    const tree = parser.parse(`fun f(p: Boolean, n: Int) {
+      when (n) {
+        1 -> if (p) println(n); else if ${guard} -> println(-n)
+        else -> Unit
+      }
+    }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [, guarded] = tree.rootNode.descendantsOfType('when_entry');
+      expect(guarded?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
 test('requires a separator after properties even when nested bodies contain adjacent functions', () => {
   for (const source of [
     'class C { fun first() {} val x = 1 val y = 2 }',

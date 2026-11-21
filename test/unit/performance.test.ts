@@ -111,12 +111,18 @@ test('parses comment openers in annotation strings in linear time', { timeout: 6
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
-test.each(['in a function', 'in a when entry', 'past the scanner frame limit'] as const)(
+test.each([
+  ['in a function', 250],
+  ['in a when entry', 250],
+  ['past the scanner frame limit', 250],
+  ['with function casts', 150],
+  ['with nested when bodies', 40],
+] as const)(
   'parses unfinished nested if chains with explicit semicolons in linear time %s',
   { timeout: 60_000 },
-  (context) => {
-    const small = unfinishedIfChain(250, context);
-    const large = unfinishedIfChain(2500, context);
+  (context, depth) => {
+    const small = unfinishedIfChain(depth, context);
+    const large = unfinishedIfChain(depth * 10, context);
     const repetitions = 8;
     parseCpuTime(large, repetitions);
     let smallFastest = Infinity;
@@ -131,10 +137,24 @@ test.each(['in a function', 'in a when entry', 'past the scanner frame limit'] a
 
 function unfinishedIfChain(
   depth: number,
-  context: 'in a function' | 'in a when entry' | 'past the scanner frame limit'
+  context:
+    | 'in a function'
+    | 'in a when entry'
+    | 'past the scanner frame limit'
+    | 'with function casts'
+    | 'with nested when bodies'
 ): string {
   const body = `${'if (a) '.repeat(depth)}f()`;
   const alternatives = '; else if (a) g() else h()'.repeat(depth / 2);
+  if (context === 'with function casts') {
+    const casts = '; else if (a) fn as (Int) -> Int else fn'.repeat(depth / 2);
+    return `fun f(a: Boolean, fn: (Int) -> Int) { when (0) { 0 -> ${body}${casts}\nelse -> Unit }`;
+  }
+  if (context === 'with nested when bodies') {
+    const prefix = 'when (0) { 0 -> if (a) f(); else if (a) '.repeat(depth);
+    const suffix = '\nelse -> Unit }'.repeat(depth);
+    return `fun f(a: Boolean) { ${prefix}f()${suffix}`;
+  }
   if (context === 'in a when entry')
     return `fun f(a: Boolean) { when (0) { 0 -> ${body}${alternatives}\nelse -> Unit }`;
   if (context === 'past the scanner frame limit')

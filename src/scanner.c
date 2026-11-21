@@ -1727,21 +1727,24 @@ comment:
 typedef struct {
     TSLexer lexer;
     TSLexer *source;
+    unsigned *budget;
 } Prediction;
 
 static void advance_prediction(TSLexer *lexer, bool skip) {
     (void)skip;
     Prediction *prediction = (Prediction *)lexer;
+    if (prediction->budget && *prediction->budget == 0) return;
+    if (prediction->budget) (*prediction->budget)--;
     // Skipping past the end of the token being scanned would move its start there.
     prediction->source->advance(prediction->source, false);
-    lexer->lookahead = prediction->source->lookahead;
+    lexer->lookahead = prediction->budget && *prediction->budget == 0 ? 0 : prediction->source->lookahead;
 }
 
 static void mark_prediction_end(TSLexer *lexer) { (void)lexer; }
 
 static bool prediction_eof(const TSLexer *lexer) {
     const Prediction *prediction = (const Prediction *)lexer;
-    return prediction->source->eof(prediction->source);
+    return (prediction->budget && *prediction->budget == 0) || prediction->source->eof(prediction->source);
 }
 
 // Tells whether the next scan, with the same valid symbols since a comment is an extra, scans a token when it takes a
@@ -1861,61 +1864,114 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
-static bool scan_guard_word(TSLexer *lexer, unsigned *ifs);
-static bool scan_guard_else_after_semicolon(TSLexer *lexer, unsigned *ifs);
-static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars);
+typedef enum {
+    GUARD_START,
+    GUARD_AFTER_HEAD,
+    GUARD_INFIX_ARGUMENT,
+    GUARD_EXPRESSION
+} GuardPrefix;
 
-// A guarded entry needs a top-level arrow. Balanced constructs keep their own separators and arrows.
-// code-gauge-allow functionCognitiveComplexity 24 -- one pass across top-level guard tokens and their lexical boundaries.
+typedef struct {
+    GuardPrefix prefix;
+    unsigned ifs;
+    unsigned dollars;
+} GuardScan;
+
+static bool scan_guard_word(TSLexer *lexer, GuardScan *guard);
+static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard);
+static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard);
+static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, unsigned dollars);
+static bool guard_word_starts_body(const char *word);
+static bool guard_word_requires_operand(const char *word);
+
+#define GUARD_SCAN_BUDGET 4096
+
+static bool scan_guard_tokens(TSLexer *lexer);
+
+// A lexical prediction may rule out a guard, but an exhausted budget or template limit leaves the decision to the parser.
 static bool scan_when_guard_arrow(TSLexer *lexer) {
-    unsigned ifs = 0;
-    unsigned dollars = 0;
+    unsigned budget = GUARD_SCAN_BUDGET;
+    Prediction prediction = {
+        .lexer = {.lookahead = lexer->lookahead, .advance = advance_prediction, .eof = prediction_eof},
+        .source = lexer,
+        .budget = &budget,
+    };
+    bool possible = scan_guard_tokens(&prediction.lexer);
+    return possible || budget == 0;
+}
+
+// Balanced constructs keep their own separators and arrows. After the first parenthesized value, a guard must
+// continue that value as an expression, while an else-if starts a distinct body after the parenthesized condition.
+// code-gauge-allow functionCognitiveComplexity 29 -- one pass across prefix syntax, nested conditional tokens, and lexical boundaries.
+static bool scan_guard_tokens(TSLexer *lexer) {
+    GuardScan guard = {.prefix = GUARD_START};
     while (!at_eof(lexer)) {
         int32_t c = lexer->lookahead;
-        if (c == ')' || c == ']' || c == '}') return false;
-        if (c == ';') {
-            if (!scan_guard_else_after_semicolon(lexer, &ifs)) return false;
-            dollars = 0;
+        if (is_space(c) || c == '/') {
+            scan_guard_trivia(lexer, &guard);
             continue;
         }
-        if (c == '/') {
-            scan_whitespace_and_comments(lexer, true, false);
-            dollars = 0;
+        if (c == ')' || c == ']' || c == '}') return false;
+        if (c == ';') {
+            if (!scan_guard_else_after_semicolon(lexer, &guard)) return false;
             continue;
         }
         if (c != '$' && is_identifier_part(c)) {
-            if (!scan_guard_word(lexer, &ifs)) return false;
-            dollars = 0;
+            if (!scan_guard_word(lexer, &guard)) return false;
+            guard.dollars = 0;
             continue;
         }
         advance(lexer);
-        if (c == '-' && lexer->lookahead == '>') return true;
-        if (!scan_guard_delimiter(lexer, c, dollars)) return false;
-        dollars = c == '$' ? dollars + 1 : 0;
+        if (c == '-' && lexer->lookahead == '>') return guard.prefix != GUARD_INFIX_ARGUMENT;
+        if (!scan_guard_delimiter(lexer, c, guard.dollars)) return !at_eof(lexer);
+        guard.prefix = guard.prefix == GUARD_START && c == '(' ? GUARD_AFTER_HEAD : GUARD_EXPRESSION;
+        guard.dollars = c == '$' ? guard.dollars + 1 : 0;
     }
     return false;
 }
 
-static bool scan_guard_word(TSLexer *lexer, unsigned *ifs) {
+static bool scan_guard_word(TSLexer *lexer, GuardScan *guard) {
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
-    if (streq(word, "if")) {
-        (*ifs)++;
-    } else if (streq(word, "else")) {
-        if (*ifs == 0) return false;
-        (*ifs)--;
+    if (streq(word, "else")) {
+        if (guard->ifs == 0) return false;
+        guard->ifs--;
+    } else if (guard->prefix == GUARD_AFTER_HEAD) {
+        if (guard_word_starts_body(word)) return false;
+        guard->prefix = guard_word_requires_operand(word) ? GUARD_EXPRESSION : GUARD_INFIX_ARGUMENT;
+        return true;
+    } else if (guard->prefix == GUARD_INFIX_ARGUMENT && guard_word_requires_operand(word)) {
+        return false;
+    } else if (streq(word, "if")) {
+        guard->ifs++;
     }
+    guard->prefix = GUARD_EXPRESSION;
     return true;
 }
 
-static bool scan_guard_else_after_semicolon(TSLexer *lexer, unsigned *ifs) {
-    if (*ifs == 0) return false;
+static bool guard_word_starts_body(const char *word) {
+    return find_word(word, EXPRESSION_START_KEYWORDS, NULL) || find_word(word, FOLLOWING_STATEMENT_KEYWORDS, NULL);
+}
+
+static bool guard_word_requires_operand(const char *word) {
+    return streq(word, "as") || streq(word, "is") || streq(word, "in");
+}
+
+static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
+    if (!scan_whitespace_and_comments(lexer, true, false)) guard->prefix = GUARD_EXPRESSION;
+    guard->dollars = 0;
+}
+
+static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
+    if (guard->ifs == 0) return false;
     advance(lexer);
     if (!scan_whitespace_and_comments(lexer, true, false)) return false;
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
     if (!streq(word, "else")) return false;
-    (*ifs)--;
+    guard->ifs--;
+    guard->prefix = GUARD_EXPRESSION;
+    guard->dollars = 0;
     return true;
 }
 
