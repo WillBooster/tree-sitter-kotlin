@@ -1883,6 +1883,7 @@ typedef struct {
     GuardType type;
     bool shared_arrow;
     bool can_be_alternative;
+    bool in_entries;
     bool when_head;
     unsigned brace_depth;
     unsigned ifs;
@@ -1906,8 +1907,8 @@ static bool guard_word_requires_operand(const char *word);
 
 // Balanced constructs keep their own separators and arrows. After the first parenthesized value, a guard must
 // continue that value as an expression, while an else-if starts a distinct body after the parenthesized condition.
-static bool scan_when_guard_arrow(TSLexer *lexer, unsigned brace_depth) {
-    GuardScan guard = {.prefix = GUARD_START, .brace_depth = brace_depth};
+static bool scan_when_guard_arrow(TSLexer *lexer, unsigned brace_depth, bool in_entries) {
+    GuardScan guard = {.prefix = GUARD_START, .brace_depth = brace_depth, .in_entries = in_entries};
     while (!at_eof(lexer)) {
         GuardResult result = scan_guard_token(lexer, &guard);
         if (result != GUARD_MORE) return result == GUARD_POSSIBLE;
@@ -1977,7 +1978,7 @@ static void scan_guard_type_word(GuardScan *guard, const char *word, bool operat
         guard->type = GUARD_TYPE;
     } else if (operator || guard_word_starts_body(word) || guard->type == GUARD_TYPE_PARAMETERS) {
         guard->type = GUARD_NO_TYPE;
-    } else if (guard->type == GUARD_TYPE && streq(word, "context")) {
+    } else if ((guard->type == GUARD_TYPE || guard->type == GUARD_ANNOTATION_OR_PARAMETERS) && streq(word, "context")) {
         guard->type = GUARD_CONTEXT_TYPE;
     } else if (guard->type == GUARD_ANNOTATION_OR_PARAMETERS) {
         guard->type = GUARD_TYPE;
@@ -2075,7 +2076,7 @@ typedef struct {
     unsigned repeated_quotes;
     bool literal;
     bool raw;
-    bool in_when;
+    bool can_have_entries;
     bool when_head;
     unsigned brace_depth;
 } GuardFrame;
@@ -2092,6 +2093,8 @@ static bool step_guard_literal(TSLexer *lexer, GuardHead *head);
 static bool push_guard_frame(GuardHead *head, GuardFrame frame);
 
 static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars, unsigned brace_depth);
+
+static bool group_may_have_entries(int32_t opener, const GuardScan *guard);
 
 // code-gauge-allow functionNcss 34 -- the delimiter family and its explicit lexical stack share one scan.
 static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
@@ -2111,7 +2114,7 @@ static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *gua
         ? push_guard_quote(lexer, &head, c, guard->dollars, guard->brace_depth)
         : push_guard_frame(&head, (GuardFrame){
             .end = end,
-            .in_when = c == '{' && guard->when_head,
+            .can_have_entries = group_may_have_entries(c, guard),
             .brace_depth = guard->brace_depth + (c == '{'),
         });
     while (head.count > 0 && valid && !at_eof(lexer)) {
@@ -2120,6 +2123,12 @@ static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *gua
     bool closed = valid && head.count == 0;
     if (head.frames != head.initial) ts_free(head.frames);
     return closed;
+}
+
+static bool group_may_have_entries(int32_t opener, const GuardScan *guard) {
+    if (opener == '{') return guard->when_head || guard->brace_depth + 1 > MAX_FRAMES;
+    if (opener == '<' || (opener == '(' && guard->prefix == GUARD_START)) return false;
+    return guard->in_entries || guard->brace_depth > MAX_FRAMES;
 }
 
 static bool starts_nested_guard_probe(TSLexer *lexer);
@@ -2157,16 +2166,18 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
 static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c) {
     GuardFrame *group = &head->frames[head->count - 1];
     const unsigned brace_depth = group->brace_depth;
-    const bool can_have_entries = group->end == '}' && (group->in_when || brace_depth > MAX_FRAMES);
+    const bool can_have_entries = group->can_have_entries;
     const bool when_head = group->when_head;
     unsigned dollars = group->repeated_dollars;
     group->repeated_dollars = c == '$' ? dollars + 1 : 0;
     group->when_head = when_head && c == '(';
     switch (c) {
         case ';': return group->end != '>' && (!can_have_entries || !starts_nested_guard_probe(lexer));
-        case '(': return push_guard_frame(head, (GuardFrame){.end = ')', .brace_depth = brace_depth});
-        case '[': return push_guard_frame(head, (GuardFrame){.end = ']', .brace_depth = brace_depth});
-        case '{': return push_guard_frame(head, (GuardFrame){.end = '}', .in_when = when_head, .brace_depth = brace_depth + 1});
+        case '(': return push_guard_frame(head, (GuardFrame){.end = ')', .can_have_entries = can_have_entries, .brace_depth = brace_depth});
+        case '[': return push_guard_frame(head, (GuardFrame){.end = ']', .can_have_entries = can_have_entries, .brace_depth = brace_depth});
+        case '{': return push_guard_frame(head, (GuardFrame){
+            .end = '}', .can_have_entries = when_head || brace_depth + 1 > MAX_FRAMES, .brace_depth = brace_depth + 1,
+        });
         case '<': return group->end != '>' || push_guard_frame(head, (GuardFrame){.end = '>', .brace_depth = brace_depth});
         case '"': case '\'': case '`': return push_guard_quote(lexer, head, c, dollars, brace_depth);
         case ')': case ']': case '}': return false;
@@ -2229,9 +2240,10 @@ static bool push_guard_frame(GuardHead *head, GuardFrame frame) {
 }
 
 static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer) {
-    if (!in_entries(scanner) && scanner->depth <= MAX_FRAMES) return false;
+    const bool entries = in_entries(scanner);
+    if (!entries && scanner->depth <= MAX_FRAMES) return false;
     ElseFollower follower = scan_else_follower(lexer);
-    return follower == ELSE_ENTRY || (follower == ELSE_GUARD && scan_when_guard_arrow(lexer, scanner->depth));
+    return follower == ELSE_ENTRY || (follower == ELSE_GUARD && scan_when_guard_arrow(lexer, scanner->depth, entries));
 }
 
 static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {

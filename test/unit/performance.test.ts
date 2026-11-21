@@ -124,6 +124,7 @@ const ifChainCases = [
   ['with nested alternatives past the scanner frame limit', 40],
   ['with nested when bodies', 40],
   ['with nested when conditions', 40],
+  ['with nested parenthesized alternatives', 40],
   ['with deeply interpolated conditions', 40],
   ['with deeply interpolated bodies', 40],
   ['with long comments in conditions', 20],
@@ -166,6 +167,11 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
     const suffixes = '} else f()\n'.repeat(depth);
     return `fun f(a: Boolean) { ${scopes}${prefixes}f()${suffixes}${'}'.repeat(256)}`;
   }
+  if (context === 'with nested parenthesized alternatives') {
+    const prefix = 'if (a) f(); else if (a) ('.repeat(depth);
+    const suffix = ') else f()'.repeat(depth);
+    return `fun f(a: Boolean) { when (0) { 0 -> ${prefix}f()${suffix}\nelse -> Unit }`;
+  }
   if (context === 'with nested when conditions') {
     const prefix = 'when (0) { 0 -> if (a) f(); else if (when (0) { 0 -> '.repeat(depth);
     const suffix = '}) f()\nelse -> Unit }'.repeat(depth);
@@ -183,7 +189,7 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
 function castBody(context: (typeof ifChainCases)[number][0]): string | undefined {
   if (context === 'with function casts') return 'fn as (Int) -> Int else fn';
   if (context === 'with casts of call results') return '(fn(0)) as? (Int) -> Int';
-  if (context === 'with type prefixes on casts') return 'fn(0) as @Ann context(String) (Int) -> Int else h()';
+  if (context === 'with type prefixes on casts') return 'fn(0) as @Ann(1) context(String) (Int) -> Int else h()';
   if (context === 'with generic receivers and conditional alternatives')
     return 'fn(0) as Map<Int, List<Int>>.() -> Int else if (a) g() else h()';
 }
