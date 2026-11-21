@@ -307,6 +307,20 @@ test.each([
   }
 });
 
+test('recovers from a non-identifier Unicode character inside a when guard', () => {
+  const tree = parser.parse(`fun f(p: Boolean) = when (0) {
+    0 -> if (p) Unit; else if (p ☃) -> Unit
+    else -> Unit
+}`)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(true);
+    const entries = tree.rootNode.descendantsOfType('when_entry');
+    expect(entries.map((entry) => entry.text)).toEqual(['0 -> if (p) Unit;', 'else if (p ☃) -> Unit', 'else -> Unit']);
+  } finally {
+    tree.delete();
+  }
+});
+
 test('a guarded when entry owns the literal even when initial lookahead is ambiguous', () => {
   const inner = `when (n) {
     0 -> if (p) true; else if (p) false else true

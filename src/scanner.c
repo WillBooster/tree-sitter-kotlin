@@ -184,8 +184,8 @@ static bool is_letter(int32_t c) {
                               : in_ranges(c, LETTER_RANGES, sizeof(LETTER_RANGES) / sizeof(LETTER_RANGES[0]));
 }
 
-// Tells a character that continues a name in a string template (`[\p{L}_\p{Nd}]`).
-static bool is_template_name_part(int32_t c) {
+// Matches the name continuation range in the generated lexer.
+static bool is_name_part(int32_t c) {
     return (uint32_t)c < 0x80 ? is_digit(c) || is_ascii_alpha(c) || c == '_'
                               : in_ranges(c, NAME_PART_RANGES, sizeof(NAME_PART_RANGES) / sizeof(NAME_PART_RANGES[0]));
 }
@@ -470,14 +470,14 @@ static bool is_template_keyword(const char *word);
 // Scans a hard keyword other than `this` right after the `$` of a template, as a whole identifier.
 static bool scan_template_keyword(TSLexer *lexer) {
     char word[MAX_WORD_SIZE] = {0};
-    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_template_name_part(lexer->lookahead); i++) {
+    for (uint8_t i = 0; i < MAX_WORD_SIZE - 1 && is_name_part(lexer->lookahead); i++) {
         if (lexer->lookahead > 0x7f) {
             return false;
         }
         word[i] = (char)lexer->lookahead;
         advance(lexer);
     }
-    if (is_template_name_part(lexer->lookahead) || !is_template_keyword(word)) {
+    if (is_name_part(lexer->lookahead) || !is_template_keyword(word)) {
         return false;
     }
     lexer->mark_end(lexer);
@@ -1033,7 +1033,7 @@ static bool scan_else_arrow(TSLexer *lexer);
 static bool scan_annotated_condition_start(TSLexer *lexer);
 static bool scan_prefixed_trailing_lambda(TSLexer *lexer);
 static bool lambda_follows_label(TSLexer *lexer, bool skip_chars);
-static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
+static bool read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
 
 static bool scan_bounded_annotated_condition_start(TSLexer *lexer);
 
@@ -2457,9 +2457,8 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         group->repeated_dollars = 0;
         return true;
     }
-    if (is_identifier_part(c) && c != '$') {
-        char word[MAX_WORD_SIZE] = {0};
-        read_following_word(lexer, word);
+    char word[MAX_WORD_SIZE] = {0};
+    if (read_following_word(lexer, word)) {
         group->when_head = streq(word, "when");
         group->repeated_dollars = 0;
         return true;
@@ -2695,14 +2694,15 @@ static bool skip_member_annotations(TSLexer *lexer, bool skip_chars) {
     return true;
 }
 
-static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]) {
+static bool read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]) {
     unsigned length = 0;
-    while (is_template_name_part(lexer->lookahead)) {
+    while (is_name_part(lexer->lookahead)) {
         char c = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
         if (length < MAX_WORD_SIZE - 1) word[length++] = c;
         else word[MAX_WORD_SIZE - 2] = '?';
         advance(lexer);
     }
+    return length != 0;
 }
 
 static int classify_following_word(TSLexer *lexer, const char *word, bool companion) {
@@ -2872,7 +2872,7 @@ static bool scan_type_constraint_start(TSLexer *lexer) {
             return false;
         }
     } else if (is_identifier_start(lexer->lookahead)) {
-        while (is_template_name_part(lexer->lookahead)) {
+        while (is_name_part(lexer->lookahead)) {
             skip(lexer);
         }
     } else {
@@ -2935,7 +2935,7 @@ static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars) {
     if (!is_identifier_start(lexer->lookahead)) return false;
     do {
         lexer->advance(lexer, skip_chars);
-    } while (is_template_name_part(lexer->lookahead));
+    } while (is_name_part(lexer->lookahead));
     return true;
 }
 
