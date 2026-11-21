@@ -73,6 +73,8 @@ test('preserves guarded when entries across nested templates and conditional bod
     `(${template}).isNotEmpty()`,
     'if (p) { n > 0 }; /* before else */ else { n < 0 }',
     '(p) xor (n == 0)',
+    'p as (Boolean)',
+    'p is (Int) -> Int',
   ]) {
     const tree = parser.parse(`fun f(p: Boolean, n: Int) {
       when (n) {

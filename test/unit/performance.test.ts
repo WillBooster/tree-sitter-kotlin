@@ -116,6 +116,7 @@ test.each([
   ['in a when entry', 250],
   ['past the scanner frame limit', 250],
   ['with function casts', 150],
+  ['with casts of call results', 150],
   ['with nested when bodies', 40],
 ] as const)(
   'parses unfinished nested if chains with explicit semicolons in linear time %s',
@@ -142,13 +143,15 @@ function unfinishedIfChain(
     | 'in a when entry'
     | 'past the scanner frame limit'
     | 'with function casts'
+    | 'with casts of call results'
     | 'with nested when bodies'
 ): string {
   const body = `${'if (a) '.repeat(depth)}f()`;
   const alternatives = '; else if (a) g() else h()'.repeat(depth / 2);
-  if (context === 'with function casts') {
-    const casts = '; else if (a) fn as (Int) -> Int else fn'.repeat(depth / 2);
-    return `fun f(a: Boolean, fn: (Int) -> Int) { when (0) { 0 -> ${body}${casts}\nelse -> Unit }`;
+  if (context === 'with function casts' || context === 'with casts of call results') {
+    const cast = context === 'with function casts' ? 'fn as (Int) -> Int' : 'fn(0) as? (Int) -> Int';
+    const casts = `; else if (a) ${cast} else fn`.repeat(depth / 2);
+    return `fun f(a: Boolean, fn: (Int) -> Any) { when (0) { 0 -> ${body}${casts}\nelse -> Unit }`;
   }
   if (context === 'with nested when bodies') {
     const prefix = 'when (0) { 0 -> if (a) f(); else if (a) '.repeat(depth);
