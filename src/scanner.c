@@ -1727,24 +1727,21 @@ comment:
 typedef struct {
     TSLexer lexer;
     TSLexer *source;
-    unsigned *budget;
 } Prediction;
 
 static void advance_prediction(TSLexer *lexer, bool skip) {
     (void)skip;
     Prediction *prediction = (Prediction *)lexer;
-    if (prediction->budget && *prediction->budget == 0) return;
-    if (prediction->budget) (*prediction->budget)--;
     // Skipping past the end of the token being scanned would move its start there.
     prediction->source->advance(prediction->source, false);
-    lexer->lookahead = prediction->budget && *prediction->budget == 0 ? 0 : prediction->source->lookahead;
+    lexer->lookahead = prediction->source->lookahead;
 }
 
 static void mark_prediction_end(TSLexer *lexer) { (void)lexer; }
 
 static bool prediction_eof(const TSLexer *lexer) {
     const Prediction *prediction = (const Prediction *)lexer;
-    return (prediction->budget && *prediction->budget == 0) || prediction->source->eof(prediction->source);
+    return prediction->source->eof(prediction->source);
 }
 
 // Tells whether the next scan, with the same valid symbols since a comment is an extra, scans a token when it takes a
@@ -1881,6 +1878,7 @@ typedef struct {
     GuardPrefix prefix;
     GuardType type;
     bool shared_arrow;
+    bool can_be_alternative;
     unsigned ifs;
     unsigned dollars;
 } GuardScan;
@@ -1891,32 +1889,16 @@ typedef enum { ELSE_BODY, ELSE_ENTRY, ELSE_GUARD } ElseFollower;
 
 static ElseFollower scan_else_follower(TSLexer *lexer);
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
-static void scan_guard_punctuation(GuardScan *guard, int32_t c);
+static void scan_guard_punctuation(GuardScan *guard, int32_t c, int32_t next);
 static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard);
 static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard);
 static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard);
 static bool guard_word_starts_body(const char *word);
 static bool guard_word_requires_operand(const char *word);
 
-#define GUARD_SCAN_BUDGET 4096
-
-static bool scan_guard_tokens(TSLexer *lexer);
-
-// A lexical prediction may rule out a guard, but an exhausted budget or template limit leaves the decision to the parser.
-static bool scan_when_guard_arrow(TSLexer *lexer) {
-    unsigned budget = GUARD_SCAN_BUDGET;
-    Prediction prediction = {
-        .lexer = {.lookahead = lexer->lookahead, .advance = advance_prediction, .eof = prediction_eof},
-        .source = lexer,
-        .budget = &budget,
-    };
-    bool possible = scan_guard_tokens(&prediction.lexer);
-    return possible || budget == 0;
-}
-
 // Balanced constructs keep their own separators and arrows. After the first parenthesized value, a guard must
 // continue that value as an expression, while an else-if starts a distinct body after the parenthesized condition.
-static bool scan_guard_tokens(TSLexer *lexer) {
+static bool scan_when_guard_arrow(TSLexer *lexer) {
     GuardScan guard = {.prefix = GUARD_START};
     while (!at_eof(lexer)) {
         GuardResult result = scan_guard_token(lexer, &guard);
@@ -1929,7 +1911,7 @@ static GuardResult guard_result(bool possible) {
     return possible ? GUARD_POSSIBLE : GUARD_ABSENT;
 }
 
-// code-gauge-allow functionCognitiveComplexity 21 -- lexical boundaries and their possible arrow roles share one token step.
+// code-gauge-allow functionCognitiveComplexity 22 -- lexical boundaries and their possible arrow roles share one token step.
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     int32_t c = lexer->lookahead;
     if (is_space(c) || c == '/') {
@@ -1950,15 +1932,15 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         if (guard->type != GUARD_TYPE_PARAMETERS) return guard_result(guard->prefix != GUARD_INFIX_ARGUMENT);
-        // In a cast or type test, the first arrow may belong to the type. Keep it as a candidate until the
-        // surrounding else shows whether the text after it can be the body of a when entry.
+        // After an ordinary else-if head, a cast claims its function-type arrow. In a guard-only
+        // expression the same arrow can also end a cast to a parenthesized type.
         advance(lexer);
-        guard->shared_arrow = true;
+        guard->shared_arrow = guard->shared_arrow || !guard->can_be_alternative;
         guard->type = GUARD_TYPE;
         return GUARD_MORE;
     }
     if (!scan_guard_delimiter(lexer, c, guard)) return guard_result(guard->shared_arrow || !at_eof(lexer));
-    scan_guard_punctuation(guard, c);
+    scan_guard_punctuation(guard, c, lexer->lookahead);
     return GUARD_MORE;
 }
 
@@ -1974,6 +1956,7 @@ static bool scan_guard_word_token(GuardScan *guard, const char *word) {
         return false;
     } else if (streq(word, "if")) guard->ifs++;
 
+    if (guard->prefix == GUARD_AFTER_HEAD && operator) guard->can_be_alternative = false;
     if (streq(word, "as") || streq(word, "is")) guard->type = GUARD_TYPE;
     else if (guard->type == GUARD_TYPE_PARAMETERS || operator || guard_word_starts_body(word)) guard->type = GUARD_NO_TYPE;
     guard->prefix = GUARD_EXPRESSION;
@@ -1991,10 +1974,17 @@ static ElseFollower scan_else_follower(TSLexer *lexer) {
     return streq(word, "if") ? ELSE_GUARD : ELSE_BODY;
 }
 
-static void scan_guard_punctuation(GuardScan *guard, int32_t c) {
+static bool guard_only_punctuation(int32_t c, int32_t next) {
+    return c == '.' || c == '?' || c == '=' || c == '<' || c == '>' || c == '|' || c == '&' || c == '*' ||
+           c == '%' || (c == '!' && next == '=');
+}
+
+static void scan_guard_punctuation(GuardScan *guard, int32_t c, int32_t next) {
+    if (guard->prefix == GUARD_START && c == '(') guard->can_be_alternative = true;
+    else if (guard->prefix == GUARD_AFTER_HEAD && guard_only_punctuation(c, next)) guard->can_be_alternative = false;
     if (c == '(' && guard->type == GUARD_TYPE) guard->type = GUARD_TYPE_PARAMETERS;
     else if (c == '.' && guard->type == GUARD_TYPE_PARAMETERS) guard->type = GUARD_TYPE;
-    else if (c != '?' && c != '.' && c != '`') guard->type = GUARD_NO_TYPE;
+    else if (c != '?' && c != '.' && c != '`' && c != '<') guard->type = GUARD_NO_TYPE;
     guard->prefix = guard->prefix == GUARD_START && c == '(' ? GUARD_AFTER_HEAD : GUARD_EXPRESSION;
     guard->dollars = c == '$' ? guard->dollars + 1 : 0;
 }
@@ -2026,20 +2016,6 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     return true;
 }
 
-static bool scan_guard_head(TSLexer *lexer);
-
-static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
-    if (c == '(' && guard->prefix == GUARD_START) return scan_guard_head(lexer);
-    switch (c) {
-        case '(': return scan_to_closing_bracket(lexer, '(', ')', 0, false);
-        case '[': return scan_to_closing_bracket(lexer, '[', ']', 0, false);
-        case '{': return scan_to_closing_bracket(lexer, '{', '}', 0, false);
-        case '"': case '\'': case '`':
-            return scan_string_rest(lexer, c, guard->dollars > 1 ? guard->dollars : 1, 0, false, false);
-        default: return true;
-    }
-}
-
 typedef struct {
     int32_t end;
     unsigned dollars;
@@ -2047,66 +2023,93 @@ typedef struct {
     unsigned repeated_quotes;
     bool literal;
     bool raw;
+    bool in_when;
+    bool when_head;
 } GuardFrame;
 
 typedef struct {
     GuardFrame *frames;
+    GuardFrame initial[16];
     size_t count;
     size_t capacity;
 } GuardHead;
 
-static bool scan_balanced_guard_head(TSLexer *lexer);
 static bool step_guard_group(TSLexer *lexer, GuardHead *head);
 static bool step_guard_literal(TSLexer *lexer, GuardHead *head);
 static bool push_guard_frame(GuardHead *head, GuardFrame frame);
 
-static bool scan_guard_head(TSLexer *lexer) {
-    Prediction *prediction = (Prediction *)lexer;
-    unsigned *budget = prediction->budget;
-    // Every ordinary else-if must cross its condition before the continuation can be identified. Skip that
-    // balanced condition as one probe item so a long comment or nested interpolation does not open a second parse.
-    prediction->budget = NULL;
-    bool closed = scan_balanced_guard_head(lexer);
-    prediction->budget = budget;
-    return closed;
-}
+static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars);
 
-static bool scan_balanced_guard_head(TSLexer *lexer) {
-    GuardHead head = {0};
-    if (!push_guard_frame(&head, (GuardFrame){.end = ')'})) return false;
-    bool valid = true;
+// code-gauge-allow functionNcss 34 -- the delimiter family and its explicit lexical stack share one scan.
+static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
+    int32_t end = 0;
+    switch (c) {
+        case '(': end = ')'; break;
+        case '[': end = ']'; break;
+        case '{': end = '}'; break;
+        case '<': if (guard->type != GUARD_NO_TYPE) end = '>'; break;
+        case '"': case '\'': case '`': end = c; break;
+        default: break;
+    }
+    if (!end) return true;
+    GuardHead head = {.capacity = 16};
+    head.frames = head.initial;
+    bool valid = end == c
+        ? push_guard_quote(lexer, &head, c, guard->dollars)
+        : push_guard_frame(&head, (GuardFrame){.end = end});
     while (head.count > 0 && valid && !at_eof(lexer)) {
         valid = head.frames[head.count - 1].literal ? step_guard_literal(lexer, &head) : step_guard_group(lexer, &head);
     }
     bool closed = valid && head.count == 0;
-    ts_free(head.frames);
+    if (head.frames != head.initial) ts_free(head.frames);
     return closed;
 }
 
-static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars);
 static bool starts_nested_guard_probe(TSLexer *lexer);
+static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c);
 
-// code-gauge-allow functionNcss 32 -- the bracket, comment, and quote transitions advance the same frame.
 static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
     GuardFrame *group = &head->frames[head->count - 1];
     int32_t c = lexer->lookahead;
-    if (c == '/') {
-        scan_whitespace_and_comments(lexer, true, false);
+    if (is_space(c) || c == '/') {
+        if (!scan_whitespace_and_comments(lexer, true, false)) group->when_head = false;
+        group->repeated_dollars = 0;
+        return true;
+    }
+    if (is_identifier_part(c) && c != '$') {
+        char word[MAX_WORD_SIZE] = {0};
+        read_following_word(lexer, word);
+        group->when_head = streq(word, "when");
         group->repeated_dollars = 0;
         return true;
     }
     advance(lexer);
+    if (c == '-' && lexer->lookahead == '>') {
+        advance(lexer);
+        group->when_head = false;
+        group->repeated_dollars = 0;
+        return true;
+    }
     if (c == group->end) {
         head->count--;
         return true;
     }
+    return step_guard_group_punctuation(lexer, head, c);
+}
+
+static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c) {
+    GuardFrame *group = &head->frames[head->count - 1];
+    const bool in_when = group->in_when;
+    const bool when_head = group->when_head;
     unsigned dollars = group->repeated_dollars;
     group->repeated_dollars = c == '$' ? dollars + 1 : 0;
+    group->when_head = when_head && c == '(';
     switch (c) {
-        case ';': return !starts_nested_guard_probe(lexer);
-        case '(': return push_guard_frame(head, (GuardFrame){.end = ')'});
-        case '[': return push_guard_frame(head, (GuardFrame){.end = ']'});
-        case '{': return push_guard_frame(head, (GuardFrame){.end = '}'});
+        case ';': return group->end != '>' && (!in_when || !starts_nested_guard_probe(lexer));
+        case '(': return push_guard_frame(head, (GuardFrame){.end = ')', .in_when = in_when});
+        case '[': return push_guard_frame(head, (GuardFrame){.end = ']', .in_when = in_when});
+        case '{': return push_guard_frame(head, (GuardFrame){.end = '}', .in_when = in_when || when_head});
+        case '<': return group->end != '>' || push_guard_frame(head, (GuardFrame){.end = '>'});
         case '"': case '\'': case '`': return push_guard_quote(lexer, head, c, dollars);
         case ')': case ']': case '}': return false;
         default: return true;
@@ -2153,8 +2156,11 @@ static bool push_guard_frame(GuardHead *head, GuardFrame frame) {
     if (head->count == head->capacity) {
         size_t capacity = head->capacity ? head->capacity * 2 : 16;
         if (capacity > SIZE_MAX / sizeof(GuardFrame) || capacity < head->capacity) return false;
-        GuardFrame *frames = ts_realloc(head->frames, capacity * sizeof(GuardFrame));
+        GuardFrame *frames = head->frames == head->initial
+            ? ts_malloc(capacity * sizeof(GuardFrame))
+            : ts_realloc(head->frames, capacity * sizeof(GuardFrame));
         if (!frames) return false;
+        if (head->frames == head->initial) memcpy(frames, head->initial, head->count * sizeof(GuardFrame));
         head->frames = frames;
         head->capacity = capacity;
     }

@@ -117,9 +117,12 @@ const ifChainCases = [
   ['past the scanner frame limit', 250],
   ['with function casts', 150],
   ['with casts of call results', 150],
+  ['with generic receivers and conditional alternatives', 150],
+  ['with nested if branches in conditions', 150],
   ['with nested when bodies', 40],
   ['with nested when conditions', 40],
   ['with deeply interpolated conditions', 40],
+  ['with deeply interpolated bodies', 40],
   ['with long comments in conditions', 20],
 ] as const;
 
@@ -144,9 +147,9 @@ test.each(ifChainCases)(
 function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number][0]): string {
   const body = `${'if (a) '.repeat(depth)}f()`;
   const alternatives = '; else if (a) g() else h()'.repeat(depth / 2);
-  if (context === 'with function casts' || context === 'with casts of call results') {
-    const cast = context === 'with function casts' ? 'fn as (Int) -> Int' : 'fn(0) as? (Int) -> Int';
-    const casts = `; else if (a) ${cast} else fn`.repeat(depth / 2);
+  const cast = castBody(context);
+  if (cast) {
+    const casts = `; else if (a) ${cast}`.repeat(depth / 2);
     return `fun f(a: Boolean, fn: (Int) -> Any) { when (0) { 0 -> ${body}${casts}\nelse -> Unit }`;
   }
   if (context === 'with nested when bodies') {
@@ -159,19 +162,30 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
     const suffix = '}) f()\nelse -> Unit }'.repeat(depth);
     return `fun f(a: Boolean) { ${prefix}f()${suffix}`;
   }
-  if (context === 'with deeply interpolated conditions' || context === 'with long comments in conditions') {
-    const condition =
-      context === 'with deeply interpolated conditions'
-        ? `(${nestedTemplate(32)}).isNotEmpty()`
-        : `/* ${'a '.repeat(2250)}*/ a`;
-    const longAlternatives = `; else if (${condition}) g() else h()`.repeat(depth / 2);
-    return `fun f(a: Boolean) { when (0) { 0 -> ${body}${longAlternatives}\nelse -> Unit }`;
-  }
+  const branch = alternativeWithNestedTokens(context);
+  if (branch) return `fun f(a: Boolean) { when (0) { 0 -> ${body}${branch.repeat(depth / 2)}\nelse -> Unit }`;
   if (context === 'in a when entry')
     return `fun f(a: Boolean) { when (0) { 0 -> ${body}${alternatives}\nelse -> Unit }`;
   if (context === 'past the scanner frame limit')
     return `fun f(a: Boolean) { ${'if (a) {'.repeat(256)}${body}${alternatives}${'}'.repeat(256)}`;
   return `fun f(a: Boolean) { ${body}${'; else g()'.repeat(depth / 2)}`;
+}
+
+function castBody(context: (typeof ifChainCases)[number][0]): string | undefined {
+  if (context === 'with function casts') return 'fn as (Int) -> Int else fn';
+  if (context === 'with casts of call results') return '(fn(0)) as? (Int) -> Int';
+  if (context === 'with generic receivers and conditional alternatives')
+    return 'fn(0) as Map<Int, List<Int>>.() -> Int else if (a) g() else h()';
+}
+
+function alternativeWithNestedTokens(context: (typeof ifChainCases)[number][0]): string | undefined {
+  if (context === 'with nested if branches in conditions')
+    return '; else if (if (a) true; /* branch */ else if (a) false else true) g() else h()';
+  if (context === 'with deeply interpolated conditions')
+    return `; else if ((${nestedTemplate(32)}).isNotEmpty()) g() else h()`;
+  if (context === 'with deeply interpolated bodies') return `; else if (a) g(${nestedTemplate(32)}) else h()`;
+  if (context === 'with long comments in conditions')
+    return `; else if (/* ${'a '.repeat(2250)}*/ a) /* ${'a '.repeat(2250)}*/ g() else h()`;
 }
 
 function nestedTemplate(depth: number): string {
