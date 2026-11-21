@@ -152,6 +152,9 @@ const ifChainCases = [
   ['with unary plus on conditional bodies', 40],
   ['with unary minus on conditional bodies', 40],
   ['with negation on conditional bodies', 40],
+  ['with casts and unary-minus bodies', 40],
+  ['with casts and unary-plus bodies', 40],
+  ['with a cast in the innermost unary body', 40],
   ['with deeply nested conditional heads past the scanner frame limit', 40],
   ['with statement blocks inside when entries', 150],
   ['with type prefixes on casts', 150],
@@ -206,6 +209,17 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
           : '!';
     const branch = ('if (a) true; else if (a) ' + operator).repeat(depth);
     return `fun f(a: Boolean) { when (0) { 0 -> ${branch}true${' else false'.repeat(depth)}\nelse -> Unit }`;
+  }
+  if (
+    context === 'with casts and unary-minus bodies' ||
+    context === 'with casts and unary-plus bodies' ||
+    context === 'with a cast in the innermost unary body'
+  ) {
+    const cast = 'fn as (Int) -> Int';
+    const inner = context === 'with a cast in the innermost unary body';
+    const sign = context === 'with casts and unary-plus bodies' ? '+' : '-';
+    const chain = `if (a) ${inner ? '1' : cast}; else if (a) ${sign}`.repeat(depth);
+    return `fun f(a: Boolean, fn: Any) { when (0) { 0 -> ${chain}${inner ? cast : '1'}${' else 0'.repeat(depth)}\nelse -> Unit }`;
   }
   if (context === 'with unterminated nested conditional heads')
     return `fun f(a: Boolean) { when (0) { 0 -> ${'if (a) true; else if ('.repeat(depth)}true`;
