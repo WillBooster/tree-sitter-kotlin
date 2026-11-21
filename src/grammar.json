@@ -643,133 +643,106 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "CHOICE",
+                "type": "SEQ",
                 "members": [
                   {
-                    "type": "SEQ",
+                    "type": "CHOICE",
                     "members": [
                       {
-                        "type": "CHOICE",
+                        "type": "SYMBOL",
+                        "name": "_initial_accessor_separator"
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SEQ",
                         "members": [
                           {
                             "type": "SYMBOL",
-                            "name": "_getter_separator"
+                            "name": "getter"
                           },
                           {
-                            "type": "BLANK"
+                            "type": "CHOICE",
+                            "members": [
+                              {
+                                "type": "SYMBOL",
+                                "name": "setter"
+                              },
+                              {
+                                "type": "BLANK"
+                              }
+                            ]
                           }
                         ]
                       },
                       {
-                        "type": "CHOICE",
+                        "type": "SEQ",
                         "members": [
                           {
-                            "type": "SEQ",
+                            "type": "SYMBOL",
+                            "name": "setter"
+                          },
+                          {
+                            "type": "CHOICE",
                             "members": [
                               {
                                 "type": "SYMBOL",
                                 "name": "getter"
                               },
                               {
-                                "type": "CHOICE",
-                                "members": [
-                                  {
-                                    "type": "SYMBOL",
-                                    "name": "setter"
-                                  },
-                                  {
-                                    "type": "BLANK"
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "SEQ",
-                            "members": [
-                              {
-                                "type": "ALIAS",
-                                "content": {
-                                  "type": "SYMBOL",
-                                  "name": "_expression_getter"
-                                },
-                                "named": true,
-                                "value": "getter"
-                              },
-                              {
-                                "type": "SYMBOL",
-                                "name": "_setter_separator"
-                              },
-                              {
-                                "type": "SYMBOL",
-                                "name": "setter"
+                                "type": "BLANK"
                               }
                             ]
                           }
                         ]
-                      }
-                    ]
-                  },
-                  {
-                    "type": "SEQ",
-                    "members": [
+                      },
                       {
-                        "type": "CHOICE",
+                        "type": "SEQ",
                         "members": [
+                          {
+                            "type": "ALIAS",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "_expression_getter"
+                            },
+                            "named": true,
+                            "value": "getter"
+                          },
                           {
                             "type": "SYMBOL",
                             "name": "_setter_separator"
                           },
                           {
-                            "type": "BLANK"
+                            "type": "SYMBOL",
+                            "name": "setter"
                           }
                         ]
                       },
                       {
-                        "type": "CHOICE",
+                        "type": "SEQ",
                         "members": [
                           {
-                            "type": "SEQ",
-                            "members": [
-                              {
-                                "type": "SYMBOL",
-                                "name": "setter"
-                              },
-                              {
-                                "type": "CHOICE",
-                                "members": [
-                                  {
-                                    "type": "SYMBOL",
-                                    "name": "getter"
-                                  },
-                                  {
-                                    "type": "BLANK"
-                                  }
-                                ]
-                              }
-                            ]
+                            "type": "ALIAS",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "_expression_setter"
+                            },
+                            "named": true,
+                            "value": "setter"
                           },
                           {
-                            "type": "SEQ",
-                            "members": [
-                              {
-                                "type": "ALIAS",
-                                "content": {
-                                  "type": "SYMBOL",
-                                  "name": "_expression_setter"
-                                },
-                                "named": true,
-                                "value": "setter"
-                              },
-                              {
-                                "type": "SYMBOL",
-                                "name": "_getter_separator"
-                              },
-                              {
-                                "type": "SYMBOL",
-                                "name": "getter"
-                              }
-                            ]
+                            "type": "SYMBOL",
+                            "name": "_getter_separator"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "getter"
                           }
                         ]
                       }
@@ -8985,6 +8958,10 @@
     {
       "type": "SYMBOL",
       "name": "_unterminated_block_comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_initial_accessor_separator"
     },
     {
       "type": "SYMBOL",

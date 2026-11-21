@@ -1659,6 +1659,17 @@ class Counter {
     var configurable = 0; private set
 }
 
+val separate = 1;
+get() { 2 }
+
+var other = 0; // property end
+set(other) { 3 }
+
+var annotated = 0; @Accessor(
+    1
+)
+    get() = field
+
 fun body() { val local = 4; get() }
 
 --------------------------------------------------------------------------------
@@ -1710,6 +1721,44 @@ fun body() { val local = 4; get() }
         (setter
           (modifiers
             (visibility_modifier))))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal))
+  (call_expression
+    (identifier)
+    (value_arguments)
+    (annotated_lambda
+      (lambda_literal
+        (number_literal))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal))
+  (line_comment)
+  (call_expression
+    (identifier)
+    (value_arguments
+      (value_argument
+        (identifier)))
+    (annotated_lambda
+      (lambda_literal
+        (number_literal))))
+  (property_declaration
+    (variable_declaration
+      (identifier))
+    (number_literal)
+    (getter
+      (modifiers
+        (annotation
+          (constructor_invocation
+            (user_type
+              (identifier))
+            (value_arguments
+              (value_argument
+                (number_literal))))))
+      (function_body
+        (identifier))))
   (function_declaration
     (identifier)
     (function_value_parameters)

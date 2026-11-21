@@ -47,6 +47,7 @@ enum TokenType {
     IMPORT_CONTINUE,
     RETURN_VALUE_POSITION,
     UNTERMINATED_BLOCK_COMMENT,
+    INITIAL_ACCESSOR_SEPARATOR,
     GETTER_SEPARATOR,
     SETTER_SEPARATOR,
     ACCESSOR_PARAMETERS_POSITION,
@@ -1166,7 +1167,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     // A line break before a comment that the next token shares a line with separates as if right before the token.
     bool saw_newline = newline_before_comment;
     bool saw_space = false;
-    bool can_separate_accessors = (valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
+    bool can_separate_accessors = (valid_symbols[INITIAL_ACCESSOR_SEPARATOR] ||
+                                   valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
                                   !error_recovery && !in_statements(scanner);
     if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors) {
         // Both tokens are empty and end where the previous token does.
@@ -1820,22 +1822,74 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
-static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+typedef struct {
+    TSLexer lexer;
+    TSLexer *source;
+    unsigned remaining;
+} AccessorLookahead;
+
+// A failed probe may be retried at each following property, so it must not read the rest of the file.
+#define MAX_ACCESSOR_LOOKAHEAD 4096
+
+static bool accessor_lookahead_eof(const TSLexer *lexer) {
+    const AccessorLookahead *probe = (const AccessorLookahead *)lexer;
+    return probe->remaining == 0 || probe->source->eof(probe->source);
+}
+
+static void accessor_lookahead_advance(TSLexer *lexer, bool skip_chars) {
+    AccessorLookahead *probe = (AccessorLookahead *)lexer;
+    if (probe->remaining == 0) return;
+    probe->source->advance(probe->source, skip_chars);
+    probe->remaining--;
+    lexer->lookahead = probe->remaining == 0 ? 0 : probe->source->lookahead;
+}
+
+// code-gauge-allow functionCognitiveComplexity 25 -- each exit distinguishes a Kotlin separator or accessor prefix.
+static int accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+    // After a property semicolon, a newline before the next token ends the property. A newline inside a
+    // block comment does not count, and an annotation on the same line may itself continue onto later lines.
+    bool initial = valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
+                   skip_whitespace_and_comments(lexer, false) &&
+                   lexer->lookahead != '\n' && lexer->lookahead != '\r';
+    if (!initial && !valid_symbols[GETTER_SEPARATOR] && !valid_symbols[SETTER_SEPARATOR]) return -1;
     while (skip_whitespace_and_comments(lexer, true)) {
         if (lexer->lookahead == '@') {
-            if (!scan_member_annotation(lexer, true)) return false;
+            if (!scan_member_annotation(lexer, true)) return -1;
             continue;
         }
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
         if (streq(word, "get") || streq(word, "set")) {
+            if (initial) return INITIAL_ACCESSOR_SEPARATOR;
             bool setter = streq(word, "set");
-            lexer->result_symbol = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
-            return valid_symbols[lexer->result_symbol] && scan_accessor_rest(lexer, setter);
+            int token = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
+            return valid_symbols[token] && scan_accessor_rest(lexer, setter) ? token : -1;
         }
-        if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return false;
+        if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return -1;
     }
-    return false;
+    return -1;
+}
+
+static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+    if (!valid_symbols[INITIAL_ACCESSOR_SEPARATOR]) {
+        int token = accessor_after_separator(lexer, valid_symbols);
+        if (token < 0) return false;
+        lexer->result_symbol = (TSSymbol)token;
+        return true;
+    }
+    AccessorLookahead probe = {
+        .lexer = {
+            .lookahead = lexer->lookahead,
+            .advance = accessor_lookahead_advance,
+            .eof = accessor_lookahead_eof,
+        },
+        .source = lexer,
+        .remaining = MAX_ACCESSOR_LOOKAHEAD,
+    };
+    int token = accessor_after_separator(&probe.lexer, valid_symbols);
+    if (probe.remaining == 0 || token < 0) return false;
+    lexer->result_symbol = (TSSymbol)token;
+    return true;
 }
 
 static int classify_following_word(TSLexer *lexer, const char *word, bool companion);
