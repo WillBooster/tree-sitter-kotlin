@@ -157,6 +157,9 @@ const ifChainCases = [
   ['before a later entry after !', 25],
   ['before a later entry after +', 25],
   ['before a later entry after -', 25],
+  ['past the scanner frame limit before a name entry', 30],
+  ['past the scanner frame limit before a signed entry', 30],
+  ['past the scanner frame limit before a range test', 30],
   ['with casts and unary-minus bodies', 40],
   ['with casts and unary-plus bodies', 40],
   ['with a cast in the innermost unary body', 40],
@@ -200,6 +203,11 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
   if (context.startsWith('before a later entry')) {
     const chain = ('if (a) 1; else if (a) ' + context.at(-1)).repeat(depth);
     return `fun f(a: Boolean) { when (0) { 0 -> ${chain}f()\n2 -> Unit\nelse -> Unit }`;
+  }
+  if (context.startsWith('past the scanner frame limit before')) {
+    const condition = context.endsWith('name entry') ? 'n' : context.endsWith('signed entry') ? '-2' : 'in 2..3';
+    const chain = 'if (a) 1; else if (a) !'.repeat(depth);
+    return `fun f(a: Boolean, n: Int) { ${'if (a) { '.repeat(256)}when (n) { 1 -> ${chain}f()\n${condition} -> Unit\nelse -> Unit }${'}'.repeat(256)}`;
   }
   const body = `${'if (a) '.repeat(depth)}f()`;
   const alternatives = '; else if (a) g() else h()'.repeat(depth / 2);
