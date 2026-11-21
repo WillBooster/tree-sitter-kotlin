@@ -111,6 +111,24 @@ test('parses comment openers in annotation strings in linear time', { timeout: 6
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
+test('parses unfinished nested if chains with explicit semicolons in linear time', { timeout: 60_000 }, () => {
+  const small = unfinishedIfChain(250);
+  const large = unfinishedIfChain(2500);
+  const repetitions = 10;
+  parseCpuTime(large, repetitions);
+  let smallFastest = Infinity;
+  let largeFastest = Infinity;
+  for (let run = 0; run < 3; run++) {
+    smallFastest = Math.min(smallFastest, parseCpuTime(small, repetitions));
+    largeFastest = Math.min(largeFastest, parseCpuTime(large, repetitions));
+  }
+  expect(largeFastest / smallFastest).toBeLessThan(20);
+});
+
+function unfinishedIfChain(depth: number): string {
+  return `fun f(a: Boolean) { ${'if (a) '.repeat(depth)}f()${'; else g()'.repeat(depth / 2)}`;
+}
+
 function parseCpuTime(source: string, repetitions = 1): number {
   const trees = [];
   const start = process.threadCpuUsage();

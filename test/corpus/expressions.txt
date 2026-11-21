@@ -2635,6 +2635,21 @@ fun empty(n: Int, b: Boolean) {
     if (b); else println(n)
 }
 
+fun completedBodies(n: Int, p: Boolean) {
+    when (n) {
+        1 -> if (p) while (p); else -> Unit
+    }
+    when (n) {
+        1 -> if (p) for (i in 0..1); else if (p)(n) -> Unit
+        else -> Unit
+    }
+    when (n) {
+        1 -> if (p) if (p) println(n) else; else if (n) - 1 > 0 -> Unit
+        else -> Unit
+    }
+    if (p) while (p); else println(n)
+}
+
 --------------------------------------------------------------------------------
 
 (source_file
@@ -2781,6 +2796,86 @@ fun empty(n: Int, b: Boolean) {
                   (identifier))))))
         (if_expression
           (identifier)
+          (call_expression
+            (identifier)
+            (value_arguments
+              (value_argument
+                (identifier))))))))
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (while_statement
+                (identifier))))
+          (when_entry
+            (identifier)))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (for_statement
+                (variable_declaration
+                  (identifier))
+                (range_expression
+                  (number_literal)
+                  (number_literal)))))
+          (when_entry
+            (call_expression
+              (parenthesized_expression
+                (identifier))
+              (value_arguments
+                (value_argument
+                  (identifier))))
+            (identifier))
+          (when_entry
+            (identifier)))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (if_expression
+                (identifier)
+                (call_expression
+                  (identifier)
+                  (value_arguments
+                    (value_argument
+                      (identifier)))))))
+          (when_entry
+            (binary_expression
+              (binary_expression
+                (parenthesized_expression
+                  (identifier))
+                (number_literal))
+              (number_literal))
+            (identifier))
+          (when_entry
+            (identifier)))
+        (if_expression
+          (identifier)
+          (while_statement
+            (identifier))
           (call_expression
             (identifier)
             (value_arguments

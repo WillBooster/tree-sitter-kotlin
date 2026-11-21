@@ -52,6 +52,9 @@ enum TokenType {
     SETTER_SEPARATOR,
     ACCESSOR_PARAMETERS_POSITION,
     SEMICOLON_BEFORE_ELSE,
+    EMPTY_BODY_SEMICOLON_BEFORE_ELSE,
+    IF_ELSE_BOUNDARY,
+    IF_ELSE_CONTINUATION,
 };
 
 #define MAX_WORD_SIZE 16
@@ -573,6 +576,12 @@ static inline int word_cmp(const char *a, const char *b) {
 #define FULL_SERIALIZATION_TAG 0xffu
 #define FULL_SERIALIZATION_HEADER_SIZE (1 + 2 * sizeof(uint32_t) + 2)
 
+enum BeforeElse {
+    NO_EXPLICIT_ELSE,
+    IF_BEFORE_ELSE,
+    COMPLETED_BODY_BEFORE_ELSE,
+};
+
 typedef struct {
     // How many braces that hold statements (blocks, lambdas, and `when` bodies) or members (class bodies) enclose the
     // position.
@@ -664,7 +673,7 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
 
 static unsigned serialize_compact_scanner(const Scanner *scanner, char *buffer) {
     uint8_t flags = (uint8_t)((scanner->after_short_template ? 1u : 0u) | (scanner->newline_before_comment ? 2u : 0u) |
-                             (scanner->after_else_semicolon ? 4u : 0u));
+                             (scanner->after_else_semicolon << 2));
     unsigned bytes = frame_bytes(scanner->depth);
     buffer[0] = (char)scanner->depth;
     buffer[1] = (char)flags;
@@ -728,7 +737,7 @@ static bool deserialize_compact_scanner(Scanner *scanner, const char *buffer, un
     scanner->surplus_dollars = 0;
     scanner->after_short_template = flags & 1u;
     scanner->newline_before_comment = (flags >> 1) & 1u;
-    scanner->after_else_semicolon = (flags >> 2) & 1u;
+    scanner->after_else_semicolon = (flags >> 2) & 3u;
     if (new_bytes > 0) {
         memcpy(scanner->frames, buffer + 2, new_bytes);
         memcpy(scanner->separated_members, buffer + 2 + new_bytes, new_bytes);
@@ -760,7 +769,7 @@ static bool deserialize_full_scanner(Scanner *scanner, const char *buffer, unsig
     scanner->after_short_template = (uint8_t)buffer[size++];
     uint8_t flags = (uint8_t)buffer[size++];
     scanner->newline_before_comment = flags & 1u;
-    scanner->after_else_semicolon = (flags >> 1) & 1u;
+    scanner->after_else_semicolon = (flags >> 1) & 3u;
     if (new_bytes > 0) {
         memcpy(scanner->frames, buffer + size, new_bytes);
         size += new_bytes;
@@ -999,8 +1008,8 @@ static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separator);
-static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer);
-static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, bool before_else);
+static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols);
+static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, int before_else);
 
 static bool scan_else_arrow(TSLexer *lexer);
 
@@ -1193,9 +1202,11 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     bool can_separate_accessors = (valid_symbols[INITIAL_ACCESSOR_SEPARATOR] ||
                                    valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
                                   !error_recovery && !in_statements(scanner);
-    bool can_tag_semicolon = valid_symbols[SEMICOLON_BEFORE_ELSE] && !error_recovery;
-    bool after_else_semicolon = scanner->after_else_semicolon && !error_recovery;
-    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || can_tag_semicolon) {
+    int before_else = !error_recovery && valid_symbols[EMPTY_BODY_SEMICOLON_BEFORE_ELSE] ? EMPTY_BODY_SEMICOLON_BEFORE_ELSE
+                    : !error_recovery && valid_symbols[SEMICOLON_BEFORE_ELSE] ? SEMICOLON_BEFORE_ELSE : SEMI;
+    bool after_else_semicolon = !error_recovery && scanner->after_else_semicolon &&
+                               (valid_symbols[SEMI] || valid_symbols[IF_ELSE_CONTINUATION] || valid_symbols[IF_ELSE_BOUNDARY]);
+    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || before_else != SEMI || after_else_semicolon) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (is_space(lexer->lookahead)) {
@@ -1211,12 +1222,13 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         }
     }
 
-    if (after_else_semicolon && valid_symbols[SEMI] && lexer->lookahead == 'e') return scan_else_after_semicolon(scanner, lexer);
-    if ((valid_symbols[SEMI] || can_separate_accessors || can_tag_semicolon) && lexer->lookahead == ';') {
+    if (after_else_semicolon && lexer->lookahead == 'e') return scan_else_after_semicolon(scanner, lexer, valid_symbols);
+    if ((valid_symbols[SEMI] || can_separate_accessors || before_else != SEMI) && lexer->lookahead == ';') {
         advance(lexer);
         lexer->mark_end(lexer);
-        int token = token_after_semicolon(lexer, valid_symbols, can_separate_accessors, can_tag_semicolon);
-        scanner->after_else_semicolon = token == SEMICOLON_BEFORE_ELSE;
+        int token = token_after_semicolon(lexer, valid_symbols, can_separate_accessors, before_else);
+        scanner->after_else_semicolon = token == SEMICOLON_BEFORE_ELSE ? IF_BEFORE_ELSE
+                                      : token == EMPTY_BODY_SEMICOLON_BEFORE_ELSE ? COMPLETED_BODY_BEFORE_ELSE : NO_EXPLICIT_ELSE;
         lexer->result_symbol = (TSSymbol)token;
         return valid_symbols[token];
     }
@@ -1276,7 +1288,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                     return false;
                 // A `when` entry may start on the line where the previous one ends (`1 -> a 2 -> b`, `1 -> a else -> b`).
                 case 'e':
-                    return in_entries(scanner) && scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
+                    return scan_word(lexer, "else") && !is_identifier_part(lexer->lookahead) &&
                            scan_else_arrow(lexer);
                 // A number such as `.5`, unlike a member access
                 case '.':
@@ -1849,14 +1861,29 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
-static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer) {
+static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer) {
+    if (!in_entries(scanner) && scanner->depth <= MAX_FRAMES) return false;
+    if (!scan_whitespace_and_comments(lexer, true, false)) return false;
+    if (lexer->lookahead == '-') return scan_else_arrow(lexer);
+    char word[MAX_WORD_SIZE] = {0};
+    read_following_word(lexer, word);
+    return streq(word, "if");
+}
+
+static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
     lexer->mark_end(lexer);
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
     if (!streq(word, "else")) return false;
-    lexer->result_symbol = SEMI;
-    scanner->after_else_semicolon = 0;
-    return true;
+    if (scanner->after_else_semicolon == COMPLETED_BODY_BEFORE_ELSE && valid_symbols[IF_ELSE_BOUNDARY]) {
+        lexer->result_symbol = IF_ELSE_BOUNDARY;
+        scanner->after_else_semicolon = IF_BEFORE_ELSE;
+        return true;
+    }
+    bool continue_if = valid_symbols[IF_ELSE_CONTINUATION] && (!valid_symbols[SEMI] || !may_start_when_fallback(scanner, lexer));
+    lexer->result_symbol = continue_if ? IF_ELSE_CONTINUATION : SEMI;
+    scanner->after_else_semicolon = NO_EXPLICIT_ELSE;
+    return valid_symbols[lexer->result_symbol];
 }
 
 static int accessor_separator_token(TSLexer *lexer, const bool *valid_symbols, bool initial, bool setter) {
@@ -1867,27 +1894,27 @@ static int accessor_separator_token(TSLexer *lexer, const bool *valid_symbols, b
 }
 
 // code-gauge-allow functionCognitiveComplexity 29 -- classifies the same lookahead for if branches and accessors without rescanning.
-static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, bool before_else) {
+static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, int before_else) {
     // After a property semicolon, a newline before the next token ends the property. A newline inside a
     // block comment does not count, and an annotation on the same line may itself continue onto later lines.
     bool initial = accessors && valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
                    scan_whitespace_and_comments(lexer, false, false) &&
                    lexer->lookahead != '\n' && lexer->lookahead != '\r';
     accessors = initial || (accessors && (valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]));
-    if (!accessors && !before_else) return SEMI;
+    if (!accessors && before_else == SEMI) return SEMI;
     while (scan_whitespace_and_comments(lexer, true, false)) {
         if (lexer->lookahead == '@') {
             if (!accessors) return SEMI;
-            before_else = false;
+            before_else = SEMI;
             // Outside comments and literals, a semicolon ends an unfinished accessor annotation.
             if (!scan_annotation(lexer, true, true)) return SEMI;
             continue;
         }
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
-        if (before_else && streq(word, "else")) return SEMICOLON_BEFORE_ELSE;
+        if (before_else != SEMI && streq(word, "else")) return before_else;
         if (!accessors) return SEMI;
-        before_else = false;
+        before_else = SEMI;
         if (streq(word, "get") || streq(word, "set"))
             return accessor_separator_token(lexer, valid_symbols, initial, streq(word, "set"));
         if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return SEMI;

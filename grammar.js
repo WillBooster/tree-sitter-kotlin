@@ -36,7 +36,7 @@ module.exports = grammar({
     [$._mutable_named_entry, $._immutable_named_entry],
     [$._named_destructuring_entry, $.type_modifiers, $.annotated_expression],
     [$.if_expression, $.parenthesized_expression],
-    [$.if_expression, $._if_else_after_semicolon],
+    [$.if_expression],
     [$.class_body, $.enum_class_body],
 
     [$.binary_expression, $.call_expression],
@@ -161,6 +161,9 @@ module.exports = grammar({
     sym('_setter_separator'),
     sym('_accessor_parameters_position'),
     sym('_semicolon_before_else'),
+    sym('_empty_body_semicolon_before_else'),
+    sym('_if_else_boundary'),
+    sym('_if_else_continuation'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -491,7 +494,7 @@ module.exports = grammar({
           'in',
           $.expression,
           ')',
-          choice(field('body', $._control_structure_body), ';')
+          choice(field('body', $._control_structure_body), emptyBodySemicolon())
         )
       ),
 
@@ -503,7 +506,7 @@ module.exports = grammar({
           '(',
           field('condition', $.expression),
           ')',
-          choice(field('body', $._control_structure_body), ';')
+          choice(field('body', $._control_structure_body), emptyBodySemicolon())
         )
       ),
 
@@ -880,17 +883,17 @@ module.exports = grammar({
     if_expression: ($) => {
       const head = seq('if', '(', field('condition', $.expression), ')');
       const body = field('consequence', $._control_structure_body);
-      const alternative = choice(field('alternative', $._control_structure_body), ';');
-      const elseBranch = seq(optional(body), choice('else', $._if_else_after_semicolon), alternative);
+      const alternative = choice(field('alternative', $._control_structure_body), emptyBodySemicolon());
+      const explicitEnd = seq(optional(body), choice(semicolonBeforeElse(), sym('_if_else_boundary')));
       return choice(
-        prec.right(seq(head, choice(body, ';', elseBranch))),
-        // Shift the literal semicolon in the nearest if before choosing its else or the next when entry.
-        prec.dynamic(-1, seq(head, optional(body), semicolonBeforeElse()))
+        prec.right(seq(head, choice(body, ';', seq(optional(body), 'else', alternative)))),
+        prec.right(seq(head, explicitEnd, $._explicit_if_else, alternative)),
+        prec.dynamic(-1, seq(head, explicitEnd))
       );
     },
 
     // The scanner emits a separator after the literal. Either this if or the when entry consumes it.
-    _if_else_after_semicolon: () => seq(semicolonBeforeElse(), sym('_semi'), 'else'),
+    _explicit_if_else: () => seq(choice(sym('_semi'), sym('_if_else_continuation')), 'else'),
 
     // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
     // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
@@ -1186,6 +1189,10 @@ function optionalCommaSep1(rule) {
  */
 function valueArguments($, open) {
   return seq(open, optionalCommaSep1($.value_argument), ')');
+}
+
+function emptyBodySemicolon() {
+  return choice(';', alias(sym('_empty_body_semicolon_before_else'), ';'));
 }
 
 function semicolonBeforeElse() {
