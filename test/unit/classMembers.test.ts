@@ -29,6 +29,387 @@ test('separates same-line class members, including nested members', () => {
   }
 });
 
+test('preserves literal semicolon spans inside property initializers', () => {
+  const source = `class C {
+    val x: Int = if (true) 1; else 2
+    var y: Int = if (true) 1; /* note */ else 2; get() = field; set(value) { field = value }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const semicolons = tree.rootNode
+      .descendantsOfType('if_expression')
+      .map((node) => node?.children.find((child) => child?.type === ';'));
+    expect(semicolons.map((node) => node?.text)).toEqual([';', ';']);
+    expect(semicolons.map((node) => node?.startIndex)).toEqual([source.indexOf(';'), source.indexOf('; /* note */')]);
+  } finally {
+    tree.delete();
+  }
+});
+
+test.each([
+  'class C { fun f() = if (a) 1; else 2 }',
+  'interface C { fun f() = if (a) 1; /* note */ else 2 }',
+  'object C { fun f() = g(if (a) 1; else 2) }',
+  'class C { companion object { fun f() = if (a) 1; else 2 } }',
+  'class C { fun f(x: Int = if (a) 1; else 2) {} }',
+  'class C { constructor(x: Int = if (a) 1; else 2) {} }',
+])('finishes a pending else before checking member boundaries in %s', (source) => {
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [conditional] = tree.rootNode.descendantsOfType('if_expression');
+    expect(conditional?.childForFieldName('alternative')?.text).toBe('2');
+    const semicolon = conditional?.children.find((child) => child.type === ';');
+    expect(semicolon?.startIndex).toBe(source.indexOf(';'));
+  } finally {
+    tree.delete();
+  }
+});
+
+test('ends a when body at its semicolon before fallback trivia', () => {
+  const body = 'if (a) while (a);';
+  const source = `class C { fun f(a: Boolean, n: Int) {
+    when (n) {
+      1 -> ${body} /* after body */
+      else -> Unit
+    }
+  } }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, fallback] = tree.rootNode.descendantsOfType('when_entry');
+    expect(first?.childForFieldName('body')?.text).toBe(body);
+    expect(fallback?.startIndex).toBe(source.indexOf('else'));
+  } finally {
+    tree.delete();
+  }
+});
+
+test.each(['if (p);', 'if (p) while (p);', 'if (p) for (x in xs);', 'if (p) if (q) println(1) else;'])(
+  'keeps the empty body semicolon in %s with either else owner',
+  (body) => {
+    const head = `fun f(p: Boolean, q: Boolean, n: Int, xs: List<Int>) {
+    when (n) { 1 -> ${body} /* boundary */`;
+    const guard = '(when (n) { 0 -> if (p) true; else if (p) false else true\nelse -> false })';
+    const tree = parser.parse(`${head} else if ${guard} -> Unit\nelse -> Unit } }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, fallback] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe(body);
+      expect(fallback?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+    const alternative = 'else if (q) println(2)';
+    const conditional = parser.parse(`${head} ${alternative}\n2 -> Unit\nelse -> Unit } }`)!;
+    try {
+      expect(conditional.rootNode.hasError).toBe(false);
+      const [first, next] = conditional.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toContain(alternative);
+      expect(next?.text).toBe('2 -> Unit');
+    } finally {
+      conditional.delete();
+    }
+  }
+);
+
+test.each([
+  ['f()', 'else -> g()'],
+  ['{ f() }', 'else -> g()'],
+  ['f()', 'else if (p) -> g()'],
+  ['{ f() }', 'else if (p) -> g()'],
+])('keeps the when entry separator out of the body with %s and %s', (body, fallback) => {
+  const source = `fun f(p: Boolean, n: Int) {
+    when (n) { 1 -> if (p) ${body}; /* next entry */ ${fallback} }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    const value = first?.childForFieldName('body');
+    expect(value?.text).toBe(`if (p) ${body}`);
+    expect(value?.endIndex).toBe(source.indexOf(';'));
+    expect(next?.text).toBe(fallback);
+  } finally {
+    tree.delete();
+  }
+});
+
+test('keeps an ordinary else-if when its nested condition yields to another probe', () => {
+  const tree = parser.parse(`fun f(p: Boolean, n: Int) {
+    when (n) {
+        1 -> if (p) true; else if (when (n) {
+            0 -> if (p) true; else if (p) false else true
+            else -> false
+        }) true else false
+        else -> Unit
+    }
+}`)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [entry] = tree.rootNode.descendantsOfType('when_entry');
+    expect(entry?.childForFieldName('body')?.childForFieldName('alternative')?.type).toBe('if_expression');
+  } finally {
+    tree.delete();
+  }
+});
+
+test.each([
+  ['println(2)', '2'],
+  ['42', '2'],
+  ['0x2a', 'n'],
+  ['1_000', '2, 3'],
+  ['42L', '2, 3'],
+  ['.5', '2'],
+  ['.25f', '2, 3'],
+  ['.1e-2', 'is String'],
+  ['n', '2'],
+  ['x to y', '2'],
+  ['x to y', 'is String'],
+  ['x until y', '"other"'],
+  ['c!!', '2, 3'],
+  ['x++', '2'],
+  ['again@ do {} while (p)', '2'],
+  ['again@ do { if (!p) break@again } while (p)', '2, 3'],
+  ['again@ while (p) continue@again', 'is String'],
+  ['y--', 'in 2..3'],
+  ['n as () -> Boolean', '2'],
+  ['n as (Boolean) -> Boolean', '2, 3'],
+  ['n as (Boolean) -> List<Boolean>?', 'is String'],
+  ['n as String.() -> () -> Boolean', '"other"'],
+  ['@Ann n', '2'],
+  ['@Ann(1) n', '2, 3'],
+  ['+@Ann n', '2'],
+  ['-@Ann(1) n', '2, 3'],
+  ['!@Ann p', 'is String'],
+  ['n as () -> @Ann Boolean', '2'],
+  ['n as () -> @Ann(1) Boolean', '2, 3'],
+  ['n as () -> @Ann (1) Boolean', '2'],
+  ['n as () -> @Ann() (Boolean) -> Boolean', 'is String'],
+  ['n as () -> @Ann (Boolean) -> Boolean', '"other"'],
+  ['@example.Ann("argument") c!!', 'is String'],
+])('keeps an ordinary else-if body %s before another when entry (%s)', (alternative, condition) => {
+  const body = `if (p) println(1); else if (q) ${alternative}`;
+  for (const depth of [0, 256]) {
+    const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Any, c: String?) {
+      var x = 1
+      var y = 2
+      ${'if (p) { '.repeat(depth)}
+      when (n) {
+        1 -> ${body}
+        ${condition} -> Unit
+        else -> Unit
+      }
+      ${'}'.repeat(depth)}
+    }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe(body);
+      expect(next?.text).toBe(`${condition} -> Unit`);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test.each([
+  'n ?: return@work false',
+  'n ?: return@work (false)',
+  'n ?: return@work q',
+  'n ?: return@work',
+  'n ?: return',
+  'n ?: continue@again',
+  'n ?: break',
+])('preserves ordinary alternatives ending in the jump %s', (body) => {
+  const source = `fun f(p: Boolean, q: Boolean, n: Int?) {
+    again@ while (p) {
+      run work@ {
+        when (n) {
+          1 -> if (p) println(n); else if (q) ${body}
+          2 -> Unit
+          else -> Unit
+        }
+      }
+    }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    expect(first?.childForFieldName('body')?.childForFieldName('alternative')?.text).toBe(`if (q) ${body}`);
+    expect(next?.text).toBe('2 -> Unit');
+  } finally {
+    tree.delete();
+  }
+});
+
+test.each([
+  [2, 'n', '3'],
+  [3, 'n', '3'],
+  [2, 'items[0]!!', '!is String'],
+  [3, '(items[0])!!', '!is String?'],
+  [2, '{ println(n) }', '::marker'],
+  [3, 'n', '::marker'],
+  [3, '{ println(n) }', '@Mark ::marker'],
+  [3, 'String::length', '@Mark ::marker'],
+  [2, 'n', '$$"text"'],
+  [2, 'n', '$$"""text"""'],
+  [3, '\n      @Mark (n)', '$$"text"'],
+  [3, '{ println(n) }', '{ println(2) }'],
+  [2, '{}', '{ println(2) }.hashCode()'],
+  [3, 'if (a) { println(n) } else { println(1) }', '{ println(2) }'],
+  [2, 'use()\n      { println(n) }', '3'],
+  [3, 'try { println(1) } catch (e: Exception) { println(2) }', '{ println(3) }'],
+  [3, 'try { println(1) } finally { println(2) }', '{ println(3) }'],
+  [3, 'when (n) { else -> println(1) }', '{ println(3) }'],
+  [3, 'object { val x: Int = 0 }', '{ println(3) }'],
+  [3, 'fun () { println(1) }', '{ println(3) }'],
+  [3, 'do { println(1) } while (a)', '{ println(3) }'],
+  [3, '(if (a) { println(1) } else { println(2) })', '{ println(3) }'],
+  [2, 'use()\n      /* argument */ { println(n) }', '3'],
+  [2, 'use<Unit>()\n      { println(n) }', '3'],
+  [2, 'use()\n      @Mark { println(n) }', '3'],
+  [2, 'use()\n      label@ { println(n); return@label }', '3'],
+  [3, 'use() // comment\n      @Mark(1) { println(n) }', '3'],
+  [3, 'use()\n      /* comment */ @Mark @Suppress("UNUSED_EXPRESSION") label@ { println(n) }', '3'],
+  [2, 'use()\n      外側@ { println(n); return@外側 }', '3'],
+  [3, 'use()\n      @Mark 外側@ { println(n); return@外側 }', '3'],
+  [2, 'use()\n      `outer label`@ { println(n); return@`outer label` }', '3'],
+  [3, 'use()\n      @Mark `outer label`@ { println(n); return@`outer label` }', '3'],
+  [3, '{ println(n) }', '@Mark `outer label`@ { println(n) }'],
+  [3, '{ println(n) }', '@Mark 外側@ { println(n) }'],
+  [2, 'use()', '@Mark ::marker'],
+  [3, 'items[0]!!', '!in 0..3'],
+])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
+  const source = `fun f(a: Boolean, c: Boolean, n: Any, items: List<Int?>) {
+    when (n) {
+      1 -> ${'if (a) '.repeat(depth)}println(n); else if (c) ${body}
+      ${condition} -> Unit
+      else -> Unit
+    }
+  }`;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [outer] = tree.rootNode.descendantsOfType('when_expression');
+    const [first, next] = outer?.namedChildren.filter((child) => child?.type === 'when_entry') ?? [];
+    let inner = first?.childForFieldName('body');
+    for (let index = 1; index < depth; index++) {
+      expect(inner?.childForFieldName('alternative')).toBeNull();
+      inner = inner?.childForFieldName('consequence');
+    }
+    expect(inner?.childForFieldName('alternative')?.text).toBe(`if (c) ${body}`);
+    expect(next?.text).toBe(`${condition} -> Unit`);
+  } finally {
+    tree.delete();
+  }
+});
+
+test('recovers from a non-identifier Unicode character inside a when guard', () => {
+  const tree = parser.parse(`fun f(p: Boolean) = when (0) {
+    0 -> if (p) Unit; else if (p ☃) -> Unit
+    else -> Unit
+}`)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(true);
+    const entries = tree.rootNode.descendantsOfType('when_entry');
+    expect(entries.map((entry) => entry.text)).toEqual(['0 -> if (p) Unit;', 'else if (p ☃) -> Unit', 'else -> Unit']);
+  } finally {
+    tree.delete();
+  }
+});
+
+test('a guarded when entry owns the literal even when initial lookahead is ambiguous', () => {
+  const inner = `when (n) {
+    0 -> if (p) true; else if (p) false else true
+    else -> false
+  }`;
+  const guards = [`(${inner})`, `("\${${inner}}").isNotEmpty()`, `($$"""$\${${inner}}""").isNotEmpty()`, 'p is (Int)'];
+  for (const guard of guards) {
+    const source = `fun f(p: Boolean, n: Int) {
+      when (n) {
+        1 -> if (p) true; /* next entry */ else if ${guard} -> Unit
+        else -> Unit
+      }
+    }`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe('if (p) true');
+      expect(first?.childForFieldName('body')?.endIndex).toBe(source.indexOf(';'));
+      expect(next?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test.each([0, 256])('keeps multiline infix guards at %i enclosing blocks', (depth) => {
+  const wrappers = 'if (p) { '.repeat(depth);
+  const guards = [
+    '(p) xor run { true } xor\n q',
+    '(p) xor { true } xor\n (q)',
+    '(n) xor 42L xor\n n',
+    '(n) xor 0x2a xor\n n',
+    '(n) xor 4.2F xor\n n',
+    '(p) xor f() `xor`\n q',
+    '(p) xor run { true } `xor`\n q',
+    '(p) xor foo as Comparable<Boolean> xor\n q',
+    '(n) xor f() as Map<Int, List<Int>>? `xor`\n n',
+  ];
+  for (const guard of guards) {
+    const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Int) { ${wrappers}
+      when (n) { 1 -> if (p) f(); else if ${guard} -> Unit
+        else -> Unit }
+      ${'}'.repeat(depth)}
+    }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, guarded] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe('if (p) f()');
+      expect(guarded?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
+test('preserves guarded when entries across nested templates and conditional bodies', () => {
+  let template = '"x"';
+  for (let depth = 0; depth < 32; depth++) template = '"${' + template + '}"';
+  for (const guard of [
+    `(${template}).isNotEmpty()`,
+    'if (p) { n > 0 }; /* before else */ else { n < 0 }',
+    '(p) xor (n == 0)',
+    'p as (Boolean)',
+    'p is (Int) -> Int',
+    '(p)!! as (Boolean)',
+    '(n) !is (Int)',
+    '(n) / 2 is (Int)',
+    '(n) - if (p) 1; else if (p) 2 else 3 in 0..5',
+    '(n) + if (p) 1; else if (p) 2 else 3 in 0..5',
+    '(n)++ is (Int)',
+    '(n)-- is (Int)',
+  ]) {
+    const tree = parser.parse(`fun f(p: Boolean, n: Int) {
+      when (n) {
+        1 -> if (p) println(n); else if ${guard} -> println(-n)
+        else -> Unit
+      }
+    }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [, guarded] = tree.rootNode.descendantsOfType('when_entry');
+      expect(guarded?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
 test('requires a separator after properties even when nested bodies contain adjacent functions', () => {
   for (const source of [
     'class C { fun first() {} val x = 1 val y = 2 }',
