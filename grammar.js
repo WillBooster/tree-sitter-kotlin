@@ -7,6 +7,9 @@ const { grammar, alias, choice, field, optional, prec, repeat, repeat1, seq, sym
 /** @typedef {import('@willbooster/web-tree-sitter/dsl').RuleOrLiteral} RuleOrLiteral */
 /** @typedef {import('@willbooster/web-tree-sitter/dsl').GrammarSymbols<'value_argument' | 'expression' | '_when_condition' | 'block' | 'statement'>} GrammarSymbols */
 
+const identifierName = /[\p{L}_][\p{L}_\p{Nd}]*/u;
+const quotedIdentifier = /`[^\r\n`]+`/;
+
 const PREC = {
   SPREAD: 1,
   LOGICAL_OR: 2,
@@ -1057,7 +1060,7 @@ module.exports = grammar({
     // length (without its `prec(2)`, `$this` lexes as a name again), while a longer name such as `$thisX` still wins.
     _template_name: ($) =>
       choice(
-        alias(token.immediate(prec(2, /[\p{L}_][\p{L}_\p{Nd}]*/u)), $.identifier),
+        alias(token.immediate(prec(2, identifierName)), $.identifier),
         alias(token.immediate(prec(2, 'this')), $.this_expression),
         // As in Kotlin, another hard keyword after `$` is an error: the scanner lexes it, and the grammar then expects
         // `_keyword_reference_end`, which is never scanned. The first alias keeps a name required in `interpolation`; the
@@ -1119,11 +1122,11 @@ module.exports = grammar({
 
     qualified_identifier: ($) => seq($.identifier, repeat(seq('.', $.identifier))),
 
-    label: () => token(/[a-zA-Z_][a-zA-Z_0-9]*@/),
+    label: () => token(seq(choice(identifierName, quotedIdentifier), '@')),
 
     _identifier: ($) => choice($.identifier, $._reserved_identifier, alias(sym('_infix_get_identifier'), $.identifier)),
 
-    identifier: () => token(choice(/[\p{L}_][\p{L}_\p{Nd}]*/u, /`[^\r\n`]+`/)),
+    identifier: () => token(choice(identifierName, quotedIdentifier)),
 
     _reserved_identifier: ($) =>
       alias(

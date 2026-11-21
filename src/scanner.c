@@ -1965,7 +1965,7 @@ static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at
 static bool scan_lambda_prefix(TSLexer *lexer, bool skip_chars, GuardScan *guard);
 static GuardResult scan_guard_prefixed_lambda(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if);
-static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard);
+static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars);
 static bool has_guard_label_suffix(const char *word);
 static GuardResult scan_guard_label(TSLexer *lexer, GuardScan *guard);
 static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if);
@@ -2063,7 +2063,7 @@ static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool contin
     if (lexer->lookahead == '@') {
         if (has_guard_label_suffix(word)) {
             advance(lexer);
-            if (!scan_prefixed_identifier(lexer, false, false, guard)) return GUARD_POSSIBLE;
+            if (!scan_prefixed_identifier(lexer, false)) return GUARD_POSSIBLE;
         } else if (!guard_word_requires_operand(word) && !guard_word_starts_body(word)) {
             return scan_guard_label(lexer, guard);
         }
@@ -2697,7 +2697,7 @@ static bool skip_member_annotations(TSLexer *lexer, bool skip_chars) {
 
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]) {
     unsigned length = 0;
-    while (is_identifier_part(lexer->lookahead)) {
+    while (is_template_name_part(lexer->lookahead)) {
         char c = lexer->lookahead > 0x7f ? '?' : (char)lexer->lookahead;
         if (length < MAX_WORD_SIZE - 1) word[length++] = c;
         else word[MAX_WORD_SIZE - 2] = '?';
@@ -2833,7 +2833,7 @@ static bool scan_lambda_prefix(TSLexer *lexer, bool skip_chars, GuardScan *guard
             !scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
     }
     if (lexer->lookahead == '{') return true;
-    return scan_prefixed_identifier(lexer, skip_chars, false, guard) && lambda_follows_label(lexer, skip_chars);
+    return scan_prefixed_identifier(lexer, skip_chars) && lambda_follows_label(lexer, skip_chars);
 }
 
 static bool lambda_follows_label(TSLexer *lexer, bool skip_chars) {
@@ -2849,10 +2849,7 @@ static bool scan_bounded_annotated_condition_start(TSLexer *lexer) {
         }
     }
     // A lambda may have a label after its annotations; any other name starts a condition.
-    if (is_identifier_start(lexer->lookahead)) {
-        while (is_identifier_part(lexer->lookahead)) {
-            skip(lexer);
-        }
+    if (scan_prefixed_identifier(lexer, true)) {
         if (lexer->lookahead != '@') {
             return !lexer->eof(lexer);
         }
@@ -2907,7 +2904,7 @@ static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at
     for (;;) {
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         if (lexer->lookahead == '[') return scan_annotation_part(lexer, '[', skip_chars, stop_at_separator, guard);
-        if (!scan_prefixed_identifier(lexer, skip_chars, stop_at_separator, guard)) return false;
+        if (!scan_prefixed_identifier(lexer, skip_chars)) return false;
         spaced_arguments = is_space(lexer->lookahead) || lexer->lookahead == '/';
         if (!scan_whitespace_and_comments(lexer, true, skip_chars)) return false;
         if (lexer->lookahead == '<') {
@@ -2924,12 +2921,21 @@ static bool scan_annotation_prefix(TSLexer *lexer, bool skip_chars, bool stop_at
     return scan_annotation_part(lexer, '(', skip_chars, stop_at_separator, guard);
 }
 
-static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars, bool stop_at_separator, const GuardScan *guard) {
-    if (lexer->lookahead == '`') return scan_annotation_part(lexer, '`', skip_chars, stop_at_separator, guard);
+static bool scan_prefixed_identifier(TSLexer *lexer, bool skip_chars) {
+    if (lexer->lookahead == '`') {
+        lexer->advance(lexer, skip_chars);
+        if (lexer->lookahead == '`') return false;
+        while (!at_eof(lexer) && lexer->lookahead != '\r' && lexer->lookahead != '\n') {
+            int32_t c = lexer->lookahead;
+            lexer->advance(lexer, skip_chars);
+            if (c == '`') return true;
+        }
+        return false;
+    }
     if (!is_identifier_start(lexer->lookahead)) return false;
     do {
         lexer->advance(lexer, skip_chars);
-    } while (is_identifier_part(lexer->lookahead));
+    } while (is_template_name_part(lexer->lookahead));
     return true;
 }
 
@@ -2943,7 +2949,6 @@ static bool scan_annotation_part(TSLexer *lexer, unsigned char opener, bool skip
     }
     if (opener == '<') return scan_type_arguments(lexer, skip_chars, stop_at_separator);
     lexer->advance(lexer, skip_chars);
-    if (opener == '`') return scan_string_rest(lexer, '`', 1, 0, skip_chars, stop_at_separator);
     return scan_bracket(lexer, opener, opener == '[' ? ']' : ')', 0, skip_chars, stop_at_separator);
 }
 

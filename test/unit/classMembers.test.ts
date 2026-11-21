@@ -274,6 +274,12 @@ test.each([
   [2, 'use()\n      label@ { println(n); return@label }', '3'],
   [3, 'use() // comment\n      @Mark(1) { println(n) }', '3'],
   [3, 'use()\n      /* comment */ @Mark @Suppress("UNUSED_EXPRESSION") label@ { println(n) }', '3'],
+  [2, 'use()\n      外側@ { println(n); return@外側 }', '3'],
+  [3, 'use()\n      @Mark 外側@ { println(n); return@外側 }', '3'],
+  [2, 'use()\n      `outer label`@ { println(n); return@`outer label` }', '3'],
+  [3, 'use()\n      @Mark `outer label`@ { println(n); return@`outer label` }', '3'],
+  [3, '{ println(n) }', '@Mark `outer label`@ { println(n) }'],
+  [3, '{ println(n) }', '@Mark 外側@ { println(n) }'],
   [2, 'use()', '@Mark ::marker'],
   [3, 'items[0]!!', '!in 0..3'],
 ])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
