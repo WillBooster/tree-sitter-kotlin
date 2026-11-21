@@ -66,6 +66,34 @@ test('ends a when body at its semicolon before fallback trivia', () => {
   }
 });
 
+test.each(['if (p);', 'if (p) while (p);', 'if (p) for (x in xs);', 'if (p) if (q) println(1) else;'])(
+  'keeps the empty body semicolon in %s with either else owner',
+  (body) => {
+    const head = `fun f(p: Boolean, q: Boolean, n: Int, xs: List<Int>) {
+    when (n) { 1 -> ${body} /* boundary */`;
+    const guard = '(when (n) { 0 -> if (p) true; else if (p) false else true\nelse -> false })';
+    const tree = parser.parse(`${head} else if ${guard} -> Unit\nelse -> Unit } }`)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, fallback] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe(body);
+      expect(fallback?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+    const alternative = 'else if (q) println(2)';
+    const conditional = parser.parse(`${head} ${alternative}\n2 -> Unit\nelse -> Unit } }`)!;
+    try {
+      expect(conditional.rootNode.hasError).toBe(false);
+      const [first, next] = conditional.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toContain(alternative);
+      expect(next?.text).toBe('2 -> Unit');
+    } finally {
+      conditional.delete();
+    }
+  }
+);
+
 test.each([
   ['f()', 'else -> g()'],
   ['{ f() }', 'else -> g()'],

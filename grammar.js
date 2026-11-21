@@ -165,6 +165,7 @@ module.exports = grammar({
     sym('_if_else_boundary'),
     sym('_if_else_continuation'),
     sym('_when_after_if_boundary'),
+    sym('_shared_when_after_if_boundary'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -894,6 +895,7 @@ module.exports = grammar({
         prec.right(1, seq(head, choice(';', seq(optional(body), 'else', alternative)))),
         prec.right(1, seq(head, explicitEnd, $._explicit_if_else, alternative)),
         seq(head, body, alias(sym('_shared_semicolon_before_else'), ';'), $._explicit_if_else, alternative),
+        seq(head, explicitEnd, sym('_shared_when_after_if_boundary'), 'else', alternative),
         prec.dynamic(-1, seq(head, explicitEnd))
       );
     },
@@ -1228,6 +1230,7 @@ function whenEntryBody($) {
   const separator = choice(
     sym('_semi'),
     sym('_when_after_if_boundary'),
+    sym('_shared_when_after_if_boundary'),
     seq(sym('_shared_semicolon_before_else'), sym('_if_else_continuation'))
   );
   return choice(seq(field('body', $.block), optional(separator)), seq(field('body', $.statement), separator));
