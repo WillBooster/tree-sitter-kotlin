@@ -2096,7 +2096,7 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head);
 static bool step_guard_literal(TSLexer *lexer, GuardHead *head);
 static bool push_guard_frame(GuardHead *head, GuardFrame frame);
 
-static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars, unsigned brace_depth);
+static bool push_guard_quote(TSLexer *lexer, GuardHead *head, GuardFrame frame);
 
 static bool group_may_have_entries(int32_t opener, const GuardScan *guard);
 
@@ -2115,7 +2115,10 @@ static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *gua
     GuardHead head = {.capacity = 16};
     head.frames = head.initial;
     bool valid = end == c
-        ? push_guard_quote(lexer, &head, c, guard->dollars, guard->brace_depth)
+        ? push_guard_quote(lexer, &head, (GuardFrame){
+            .end = c, .dollars = guard->dollars, .can_have_entries = group_may_have_entries(c, guard),
+            .brace_depth = guard->brace_depth,
+        })
         : push_guard_frame(&head, (GuardFrame){
             .end = end,
             .can_have_entries = group_may_have_entries(c, guard),
@@ -2183,7 +2186,9 @@ static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_
             .end = '}', .can_have_entries = when_head || brace_depth + 1 > MAX_FRAMES, .brace_depth = brace_depth + 1,
         });
         case '<': return group->end != '>' || push_guard_frame(head, (GuardFrame){.end = '>', .brace_depth = brace_depth});
-        case '"': case '\'': case '`': return push_guard_quote(lexer, head, c, dollars, brace_depth);
+        case '"': case '\'': case '`': return push_guard_quote(lexer, head, (GuardFrame){
+            .end = c, .dollars = dollars, .can_have_entries = can_have_entries, .brace_depth = brace_depth,
+        });
         case ')': case ']': case '}': return false;
         default: return true;
     }
@@ -2197,11 +2202,10 @@ static bool starts_nested_guard_probe(TSLexer *lexer) {
     return streq(word, "else") && scan_else_follower(lexer) == ELSE_GUARD;
 }
 
-static bool push_guard_quote(TSLexer *lexer, GuardHead *head, int32_t quote, unsigned dollars, unsigned brace_depth) {
-    GuardFrame literal = {
-        .end = quote, .dollars = dollars > 1 ? dollars : 1, .literal = true, .brace_depth = brace_depth,
-    };
-    if (quote == '"' && lexer->lookahead == '"') {
+static bool push_guard_quote(TSLexer *lexer, GuardHead *head, GuardFrame literal) {
+    literal.literal = true;
+    if (literal.dollars == 0) literal.dollars = 1;
+    if (literal.end == '"' && lexer->lookahead == '"') {
         advance(lexer);
         if (lexer->lookahead != '"') return true;
         advance(lexer);
@@ -2222,7 +2226,9 @@ static bool step_guard_literal(TSLexer *lexer, GuardHead *head) {
         advance(lexer);
     } else if (literal->end == '"' && literal->repeated_dollars >= literal->dollars && lexer->lookahead == '{') {
         advance(lexer);
-        return push_guard_frame(head, (GuardFrame){.end = '}', .brace_depth = literal->brace_depth + 1});
+        return push_guard_frame(head, (GuardFrame){
+            .end = '}', .can_have_entries = literal->can_have_entries, .brace_depth = literal->brace_depth,
+        });
     }
     return true;
 }

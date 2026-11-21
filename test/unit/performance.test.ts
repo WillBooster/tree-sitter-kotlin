@@ -111,6 +111,30 @@ test('parses comment openers in annotation strings in linear time', { timeout: 6
   expect(largeFastest).toBeLessThan(5_000_000);
 });
 
+test.each([
+  ['regular', '"${', '}"'],
+  ['raw', '"""${', '}"""'],
+  ['multi-dollar', '$$"$${', '}"'],
+  ['parenthesized', '"${(', ')}"'],
+])('shares probe boundaries through %s string expressions', { timeout: 60_000 }, (_form, open, close) => {
+  const source = (depth: number): string => {
+    const scopes = 'if (a) {'.repeat(256);
+    const prefix = `if (a) 1; else if (a) ${open}`.repeat(depth);
+    const suffix = `${close}.length else 0`.repeat(depth);
+    return `fun f(a: Boolean) { ${scopes}${prefix}1${suffix}${'}'.repeat(256)}`;
+  };
+  const small = source(40);
+  const large = source(400);
+  parseCpuTime(large);
+  let smallFastest = Infinity;
+  let largeFastest = Infinity;
+  for (let run = 0; run < 3; run++) {
+    smallFastest = Math.min(smallFastest, parseCpuTime(small, 8));
+    largeFastest = Math.min(largeFastest, parseCpuTime(large, 8));
+  }
+  expect(largeFastest / smallFastest).toBeLessThan(20);
+});
+
 const ifChainCases = [
   ['in a function', 250],
   ['in a when entry', 250],
