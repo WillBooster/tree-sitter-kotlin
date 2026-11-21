@@ -1491,11 +1491,11 @@ Explicit semicolons between property accessors
 ================================================================================
 
 var first = 0
-    get() = field; /* between */ set(value) { field = value };
+    get() = field; /* between */ set(value) { field = value };
 
 class Counter {
     var second = 0
-        private set(value) = println(value); get() = field
+        private set(value) = println(value); get() = field
 }
 
 --------------------------------------------------------------------------------

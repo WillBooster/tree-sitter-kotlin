@@ -212,7 +212,7 @@ static bool scan_block_comment_rest(TSLexer *lexer, bool skip_chars) {
 }
 
 static inline bool is_whitespace_char(int32_t c, bool across_lines) {
-    return across_lines ? is_space(c) : c == ' ' || c == '\t';
+    return across_lines ? is_space(c) : c == ' ' || c == '\t' || c == '\f';
 }
 
 static void scan_line_comment_rest(TSLexer *lexer, bool skip_chars) {
