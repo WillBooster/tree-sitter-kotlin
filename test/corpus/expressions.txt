@@ -2456,3 +2456,159 @@ fun guards(n: Int, values: List<Int>) {
           (assignment
             (identifier)
             (number_literal)))))))
+
+================================================================================
+Else binds to the closest if with or without a semicolon
+================================================================================
+
+fun main() {
+    val a = true
+    val b = false
+    if (a) if (b) f(); else { g() }
+    if (a) if (b) f() else { g() }
+    if (a) if (b) if (c) f(); else { g() }
+    if (a) if (b) f() else if (c) g(); else { h() }
+    if (a) if (b) f(); else if (c) g() else { h() }
+    if (a) while (b) if (c) f(); else { g() }
+    when (n) {
+        1 -> if (a) if (b) f(); else -/* comment */x
+        else -> Unit
+    }
+    if (a) if (b) f(); else g(); else h()
+    if (a) f(); h()
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters)
+    (function_body
+      (block
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (identifier))
+        (property_declaration
+          (variable_declaration
+            (identifier))
+          (identifier))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (value_arguments))
+            (block
+              (call_expression
+                (identifier)
+                (value_arguments)))))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (value_arguments))
+            (block
+              (call_expression
+                (identifier)
+                (value_arguments)))))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))
+              (block
+                (call_expression
+                  (identifier)
+                  (value_arguments))))))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (value_arguments))
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))
+              (block
+                (call_expression
+                  (identifier)
+                  (value_arguments))))))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (value_arguments))
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))
+              (block
+                (call_expression
+                  (identifier)
+                  (value_arguments))))))
+        (if_expression
+          (identifier)
+          (while_statement
+            (identifier)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))
+              (block
+                (call_expression
+                  (identifier)
+                  (value_arguments))))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (if_expression
+                (identifier)
+                (call_expression
+                  (identifier)
+                  (value_arguments))
+                (unary_expression
+                  (block_comment)
+                  (identifier)))))
+          (when_entry
+            (identifier)))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (value_arguments))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (call_expression
+            (identifier)
+            (value_arguments)))
+        (if_expression
+          (identifier)
+          (call_expression
+            (identifier)
+            (value_arguments)))
+        (call_expression
+          (identifier)
+          (value_arguments))))))

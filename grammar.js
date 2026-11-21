@@ -36,8 +36,7 @@ module.exports = grammar({
     [$._mutable_named_entry, $._immutable_named_entry],
     [$._named_destructuring_entry, $.type_modifiers, $.annotated_expression],
     [$.if_expression, $.parenthesized_expression],
-    // Keep the no-else reduction available when a semicolon could end a when entry.
-    [$.if_expression],
+    [$.if_expression, $._else_after_semicolon],
     [$.class_body, $.enum_class_body],
 
     [$.binary_expression, $.call_expression],
@@ -695,13 +694,10 @@ module.exports = grammar({
     parenthesized_type: ($) => seq('(', $.type, ')'),
 
     assignment: ($) =>
-      prec(
-        1,
-        seq(
-          field('left', $.expression),
-          field('operator', choice('=', '+=', '-=', '*=', '/=', '%=')),
-          field('right', $.expression)
-        )
+      seq(
+        field('left', $.expression),
+        field('operator', choice('=', '+=', '-=', '*=', '/=', '%=')),
+        field('right', $.expression)
       ),
 
     expression: ($) =>
@@ -885,7 +881,11 @@ module.exports = grammar({
       const body = field('consequence', $._control_structure_body);
       const alternative = choice(field('alternative', $._control_structure_body), ';');
       const elseBranch = seq(optional(body), choice('else', $._else_after_semicolon), alternative);
-      return choice(seq(head, body), prec.right(seq(head, choice(';', elseBranch))));
+      return choice(
+        prec.right(seq(head, choice(body, ';', elseBranch))),
+        // Shift the literal semicolon in the nearest if before choosing its else or the next when entry.
+        prec.dynamic(-1, seq(head, body, ';'))
+      );
     },
 
     _else_after_semicolon: () => prec.dynamic(1, seq(';', 'else')),
