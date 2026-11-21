@@ -261,6 +261,15 @@ test.each([
   [2, '{}', '{ println(2) }.hashCode()'],
   [3, 'if (a) { println(n) } else { println(1) }', '{ println(2) }'],
   [2, 'use()\n      { println(n) }', '3'],
+  [3, 'try { println(1) } catch (e: Exception) { println(2) }', '{ println(3) }'],
+  [3, 'try { println(1) } finally { println(2) }', '{ println(3) }'],
+  [3, 'when (n) { else -> println(1) }', '{ println(3) }'],
+  [3, 'object { val x: Int = 0 }', '{ println(3) }'],
+  [3, 'fun () { println(1) }', '{ println(3) }'],
+  [3, 'do { println(1) } while (a)', '{ println(3) }'],
+  [3, '(if (a) { println(1) } else { println(2) })', '{ println(3) }'],
+  [2, 'use()\n      /* argument */ { println(n) }', '3'],
+  [2, 'use<Unit>()\n      { println(n) }', '3'],
   [3, 'items[0]!!', '!in 0..3'],
 ])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
   const source = `fun f(a: Boolean, c: Boolean, n: Any, items: List<Int?>) {
@@ -273,7 +282,8 @@ test.each([
   const tree = parser.parse(source)!;
   try {
     expect(tree.rootNode.hasError).toBe(false);
-    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    const [outer] = tree.rootNode.descendantsOfType('when_expression');
+    const [first, next] = outer?.namedChildren.filter((child) => child?.type === 'when_entry') ?? [];
     let inner = first?.childForFieldName('body');
     for (let index = 1; index < depth; index++) {
       expect(inner?.childForFieldName('alternative')).toBeNull();

@@ -5,7 +5,7 @@ const { grammar, alias, choice, field, optional, prec, repeat, repeat1, seq, sym
   /** @type {typeof globalThis & import('@willbooster/web-tree-sitter/dsl').DSL} */ (globalThis);
 
 /** @typedef {import('@willbooster/web-tree-sitter/dsl').RuleOrLiteral} RuleOrLiteral */
-/** @typedef {import('@willbooster/web-tree-sitter/dsl').GrammarSymbols<'value_argument' | 'expression' | '_when_condition' | 'block' | '_control_block' | '_statements' | 'statement'>} GrammarSymbols */
+/** @typedef {import('@willbooster/web-tree-sitter/dsl').GrammarSymbols<'value_argument' | 'expression' | '_when_condition' | 'block' | 'statement'>} GrammarSymbols */
 
 const PREC = {
   SPREAD: 1,
@@ -136,7 +136,7 @@ module.exports = grammar({
     sym('_open_entries'),
     sym('_open_members'),
     sym('_close_braces'),
-    sym('_close_control_block'),
+    sym('_trailing_lambda_position'),
     sym('_top_level_statement_end'),
     // empty: it ends a context list of types among modifiers, except directly in a statement list (see `modifiers`)
     sym('_context_end'),
@@ -480,9 +480,7 @@ module.exports = grammar({
 
     _expression_body: ($) => seq('=', $.expression),
 
-    block: ($) => statementBlock($, sym('_close_braces')),
-
-    _control_block: ($) => statementBlock($, sym('_close_control_block')),
+    block: ($) => seq('{', sym('_open_statements'), optional($._statements), '}', sym('_close_braces')),
 
     for_statement: ($) =>
       prec.right(
@@ -833,8 +831,16 @@ module.exports = grammar({
         PREC.CALL,
         seq(
           $.expression,
-          optional($.type_arguments),
-          choice($.value_arguments, seq(optional($.value_arguments), $.annotated_lambda))
+          choice(
+            seq(
+              optional($.type_arguments),
+              choice(
+                $.value_arguments,
+                seq(optional(seq($.value_arguments, optional(sym('_trailing_lambda_position')))), $.annotated_lambda)
+              )
+            ),
+            seq($.type_arguments, sym('_trailing_lambda_position'), $.annotated_lambda)
+          )
         )
       ),
 
@@ -909,14 +915,7 @@ module.exports = grammar({
     // Unlike Kotlin's grammar, this excludes declarations, which the compiler rejects here anyway: allowing them
     // lets declarations nest in every expression context and exceeds tree-sitter's limit of 65535 parse states.
     _control_structure_body: ($) =>
-      choice(
-        alias($._control_block, $.block),
-        $.expression,
-        $.assignment,
-        $.for_statement,
-        $.while_statement,
-        $.do_while_statement
-      ),
+      choice($.block, $.expression, $.assignment, $.for_statement, $.while_statement, $.do_while_statement),
 
     parenthesized_expression: ($) => seq('(', $.expression, ')'),
 
@@ -1219,14 +1218,6 @@ function semicolonBeforeElse() {
 
 /**
  * @param {GrammarSymbols} $
- * @param {RuleOrLiteral} close
- */
-function statementBlock($, close) {
-  return seq('{', sym('_open_statements'), optional($._statements), '}', close);
-}
-
-/**
- * @param {GrammarSymbols} $
  * @param {RuleOrLiteral} head
  * @param {RuleOrLiteral} body
  */
@@ -1251,8 +1242,5 @@ function whenEntryBody($) {
     sym('_shared_when_after_if_boundary'),
     seq(sym('_shared_semicolon_before_else'), sym('_if_else_continuation'))
   );
-  return choice(
-    seq(field('body', alias($._control_block, $.block)), optional(separator)),
-    seq(field('body', $.statement), separator)
-  );
+  return choice(seq(field('body', $.block), optional(separator)), seq(field('body', $.statement), separator));
 }
