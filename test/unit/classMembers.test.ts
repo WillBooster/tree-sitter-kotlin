@@ -107,6 +107,51 @@ test('keeps an ordinary else-if when its nested condition yields to another prob
   }
 });
 
+test.each(['2', 'n', '2, 3'])('keeps an ordinary else-if before another when entry (%s)', (condition) => {
+  const body = 'if (p) println(1); else if (q) println(2)';
+  const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Int) {
+    when (n) {
+      1 -> ${body}
+      ${condition} -> Unit
+      else -> Unit
+    }
+  }`)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+    expect(first?.childForFieldName('body')?.text).toBe(body);
+    expect(next?.text).toBe(`${condition} -> Unit`);
+  } finally {
+    tree.delete();
+  }
+});
+
+test('a guarded when entry owns the literal even when initial lookahead is ambiguous', () => {
+  const inner = `when (n) {
+    0 -> if (p) true; else if (p) false else true
+    else -> false
+  }`;
+  const guards = [`(${inner})`, `("\${${inner}}").isNotEmpty()`, `($$"""$\${${inner}}""").isNotEmpty()`, 'p is (Int)'];
+  for (const guard of guards) {
+    const source = `fun f(p: Boolean, n: Int) {
+      when (n) {
+        1 -> if (p) true; /* next entry */ else if ${guard} -> Unit
+        else -> Unit
+      }
+    }`;
+    const tree = parser.parse(source)!;
+    try {
+      expect(tree.rootNode.hasError).toBe(false);
+      const [first, next] = tree.rootNode.descendantsOfType('when_entry');
+      expect(first?.childForFieldName('body')?.text).toBe('if (p) true');
+      expect(first?.childForFieldName('body')?.endIndex).toBe(source.indexOf(';'));
+      expect(next?.childForFieldName('guard')?.text).toBe(guard);
+    } finally {
+      tree.delete();
+    }
+  }
+});
+
 test('preserves guarded when entries across nested templates and conditional bodies', () => {
   let template = '"x"';
   for (let depth = 0; depth < 32; depth++) template = '"${' + template + '}"';

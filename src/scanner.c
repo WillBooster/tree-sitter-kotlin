@@ -54,9 +54,11 @@ enum TokenType {
     SETTER_SEPARATOR,
     ACCESSOR_PARAMETERS_POSITION,
     SEMICOLON_BEFORE_ELSE,
+    SHARED_SEMICOLON_BEFORE_ELSE,
     EMPTY_BODY_SEMICOLON_BEFORE_ELSE,
     IF_ELSE_BOUNDARY,
     IF_ELSE_CONTINUATION,
+    WHEN_AFTER_IF_BOUNDARY,
 };
 
 #define MAX_WORD_SIZE 16
@@ -582,6 +584,7 @@ enum BeforeElse {
     NO_EXPLICIT_ELSE,
     IF_BEFORE_ELSE,
     COMPLETED_BODY_BEFORE_ELSE,
+    SHARED_BEFORE_ELSE,
 };
 
 typedef struct {
@@ -1211,7 +1214,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     int before_else = !error_recovery && valid_symbols[EMPTY_BODY_SEMICOLON_BEFORE_ELSE] ? EMPTY_BODY_SEMICOLON_BEFORE_ELSE
                     : !error_recovery && valid_symbols[SEMICOLON_BEFORE_ELSE] ? SEMICOLON_BEFORE_ELSE : SEMI;
     bool after_else_semicolon = !error_recovery && scanner->after_else_semicolon &&
-                               (valid_symbols[SEMI] || valid_symbols[IF_ELSE_CONTINUATION] || valid_symbols[IF_ELSE_BOUNDARY]);
+                               (valid_symbols[SEMI] || valid_symbols[IF_ELSE_CONTINUATION] ||
+                                valid_symbols[IF_ELSE_BOUNDARY] || valid_symbols[WHEN_AFTER_IF_BOUNDARY]);
     if (after_else_semicolon) return scan_else_after_semicolon(scanner, lexer, valid_symbols);
     if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || before_else != SEMI) {
         // Both tokens are empty and end where the previous token does.
@@ -1233,7 +1237,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         advance(lexer);
         lexer->mark_end(lexer);
         int token = token_after_semicolon(scanner, lexer, valid_symbols, can_separate_accessors, before_else);
-        scanner->after_else_semicolon = token == SEMICOLON_BEFORE_ELSE ? IF_BEFORE_ELSE
+        scanner->after_else_semicolon = token == SHARED_SEMICOLON_BEFORE_ELSE ? SHARED_BEFORE_ELSE
+                                      : token == SEMICOLON_BEFORE_ELSE ? IF_BEFORE_ELSE
                                       : token == EMPTY_BODY_SEMICOLON_BEFORE_ELSE ? COMPLETED_BODY_BEFORE_ELSE : NO_EXPLICIT_ELSE;
         lexer->result_symbol = (TSSymbol)token;
         return valid_symbols[token];
@@ -1896,6 +1901,7 @@ typedef struct {
     GuardBranch alternative;
     GuardType type;
     bool shared_arrow;
+    bool crossed_line_after_body;
     bool saw_type_arrow;
     bool follows_explicit_else;
     bool reading_alternative;
@@ -1988,7 +1994,7 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     return scan_guard_symbol(lexer, guard, c);
 }
 
-// code-gauge-allow functionCognitiveComplexity 16 -- groups and function-type arrows share one punctuation step.
+// code-gauge-allow functionCognitiveComplexity 19 -- groups and function-type arrows share one punctuation step.
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c) {
     GuardLookahead *input = (GuardLookahead *)lexer;
     const bool initial_group = c == '(' && guard->branch.prefix == GUARD_START;
@@ -1996,8 +2002,10 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     const uint32_t group_start = input->offset;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
-        if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS)
-            return guard->branch.prefix == GUARD_INFIX_ARGUMENT ? GUARD_ABSENT : GUARD_ARROW;
+        if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS) {
+            if (guard->branch.prefix == GUARD_INFIX_ARGUMENT) return GUARD_ABSENT;
+            return guard->crossed_line_after_body ? GUARD_POSSIBLE : GUARD_ARROW;
+        }
         // After an ordinary else-if head, a cast claims its function-type arrow. In a guard-only
         // expression the same arrow can also end a cast to a parenthesized type.
         advance(lexer);
@@ -2135,7 +2143,13 @@ static bool guard_word_requires_operand(const char *word) {
 }
 
 static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
-    if (!scan_whitespace_and_comments(lexer, true, false)) {
+    bool trivia = scan_whitespace_and_comments(lexer, false, false);
+    if (trivia && (lexer->lookahead == '\n' || lexer->lookahead == '\r')) {
+        if (guard->branch.can_be_alternative && guard->branch.prefix == GUARD_EXPRESSION)
+            guard->crossed_line_after_body = true;
+        trivia = scan_whitespace_and_comments(lexer, true, false);
+    }
+    if (!trivia) {
         if (before_guard_operand(guard->branch.prefix)) guard->branch.can_be_alternative = false;
         guard->branch.prefix = GUARD_EXPRESSION;
         guard->type = GUARD_NO_TYPE;
@@ -2367,17 +2381,21 @@ static bool push_guard_frame(GuardHead *head, GuardFrame frame) {
     return true;
 }
 
-static bool may_start_when_fallback(Scanner *scanner, TSLexer *lexer, bool require_arrow) {
+static GuardResult when_fallback(Scanner *scanner, TSLexer *lexer) {
     const bool entries = in_entries(scanner);
-    if (!entries && scanner->depth <= MAX_FRAMES) return false;
+    if (!entries && scanner->depth <= MAX_FRAMES) return GUARD_ABSENT;
     ElseFollower follower = scan_else_follower(lexer);
-    if (follower != ELSE_GUARD) return follower == ELSE_ENTRY;
-    const GuardResult result = scan_when_guard_arrow(scanner, lexer, entries);
-    return result == GUARD_ARROW || (!require_arrow && result == GUARD_POSSIBLE);
+    if (follower != ELSE_GUARD) return follower == ELSE_ENTRY ? GUARD_ARROW : GUARD_ABSENT;
+    return scan_when_guard_arrow(scanner, lexer, entries);
 }
 
 static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
     lexer->mark_end(lexer);
+    if (scanner->after_else_semicolon == SHARED_BEFORE_ELSE && valid_symbols[IF_ELSE_CONTINUATION]) {
+        lexer->result_symbol = IF_ELSE_CONTINUATION;
+        scanner->after_else_semicolon = NO_EXPLICIT_ELSE;
+        return true;
+    }
     if (scanner->after_else_semicolon == COMPLETED_BODY_BEFORE_ELSE && valid_symbols[IF_ELSE_BOUNDARY]) {
         lexer->result_symbol = IF_ELSE_BOUNDARY;
         scanner->after_else_semicolon = IF_BEFORE_ELSE;
@@ -2387,7 +2405,12 @@ static bool scan_else_after_semicolon(Scanner *scanner, TSLexer *lexer, const bo
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
     if (!streq(word, "else")) return false;
-    bool continue_if = valid_symbols[IF_ELSE_CONTINUATION] && (!valid_symbols[SEMI] || !may_start_when_fallback(scanner, lexer, false));
+    if (valid_symbols[WHEN_AFTER_IF_BOUNDARY] && when_fallback(scanner, lexer) == GUARD_ARROW) {
+        lexer->result_symbol = WHEN_AFTER_IF_BOUNDARY;
+        scanner->after_else_semicolon = NO_EXPLICIT_ELSE;
+        return true;
+    }
+    bool continue_if = valid_symbols[IF_ELSE_CONTINUATION] && (!valid_symbols[SEMI] || when_fallback(scanner, lexer) == GUARD_ABSENT);
     lexer->result_symbol = continue_if ? IF_ELSE_CONTINUATION : SEMI;
     scanner->after_else_semicolon = NO_EXPLICIT_ELSE;
     return valid_symbols[lexer->result_symbol];
@@ -2398,6 +2421,14 @@ static int accessor_separator_token(TSLexer *lexer, const bool *valid_symbols, b
     int token = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
     if (!valid_symbols[token] || !scan_accessor_shape(lexer, setter, true)) return SEMI;
     return token;
+}
+
+static int completed_body_separator(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols) {
+    if (!valid_symbols[SEMI] && !valid_symbols[SHARED_SEMICOLON_BEFORE_ELSE]) return SEMICOLON_BEFORE_ELSE;
+    const GuardResult result = when_fallback(scanner, lexer);
+    if (result == GUARD_ARROW && valid_symbols[SEMI]) return SEMI;
+    if (result == GUARD_POSSIBLE && valid_symbols[SHARED_SEMICOLON_BEFORE_ELSE]) return SHARED_SEMICOLON_BEFORE_ELSE;
+    return SEMICOLON_BEFORE_ELSE;
 }
 
 // code-gauge-allow functionCognitiveComplexity 30 -- classifies the same lookahead for if branches and accessors without rescanning.
@@ -2420,10 +2451,7 @@ static int token_after_semicolon(Scanner *scanner, TSLexer *lexer, const bool *v
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
         if (before_else != SEMI && streq(word, "else")) {
-            // Attach a when separator to the entry before shifting it into a nonempty if expression.
-            if (before_else == SEMICOLON_BEFORE_ELSE && valid_symbols[SEMI] && may_start_when_fallback(scanner, lexer, true))
-                return SEMI;
-            return before_else;
+            return before_else == SEMICOLON_BEFORE_ELSE ? completed_body_separator(scanner, lexer, valid_symbols) : before_else;
         }
         if (!accessors) return SEMI;
         before_else = SEMI;

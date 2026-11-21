@@ -35,7 +35,6 @@ module.exports = grammar({
     [$._mutable_positional_entry, $._immutable_positional_entry],
     [$._mutable_named_entry, $._immutable_named_entry],
     [$._named_destructuring_entry, $.type_modifiers, $.annotated_expression],
-    [$.if_expression, $.parenthesized_expression],
     [$.if_expression],
     [$.class_body, $.enum_class_body],
 
@@ -161,9 +160,11 @@ module.exports = grammar({
     sym('_setter_separator'),
     sym('_accessor_parameters_position'),
     sym('_semicolon_before_else'),
+    sym('_shared_semicolon_before_else'),
     sym('_empty_body_semicolon_before_else'),
     sym('_if_else_boundary'),
     sym('_if_else_continuation'),
+    sym('_when_after_if_boundary'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -698,10 +699,13 @@ module.exports = grammar({
     parenthesized_type: ($) => seq('(', $.type, ')'),
 
     assignment: ($) =>
-      seq(
-        field('left', $.expression),
-        field('operator', choice('=', '+=', '-=', '*=', '/=', '%=')),
-        field('right', $.expression)
+      prec.right(
+        1,
+        seq(
+          field('left', $.expression),
+          field('operator', choice('=', '+=', '-=', '*=', '/=', '%=')),
+          field('right', $.expression)
+        )
       ),
 
     expression: ($) =>
@@ -886,8 +890,10 @@ module.exports = grammar({
       const alternative = choice(field('alternative', $._control_structure_body), emptyBodySemicolon());
       const explicitEnd = seq(optional(body), choice(semicolonBeforeElse(), sym('_if_else_boundary')));
       return choice(
-        prec.right(seq(head, choice(body, ';', seq(optional(body), 'else', alternative)))),
-        prec.right(seq(head, explicitEnd, $._explicit_if_else, alternative)),
+        seq(head, body),
+        prec.right(1, seq(head, choice(';', seq(optional(body), 'else', alternative)))),
+        prec.right(1, seq(head, explicitEnd, $._explicit_if_else, alternative)),
+        seq(head, body, alias(sym('_shared_semicolon_before_else'), ';'), $._explicit_if_else, alternative),
         prec.dynamic(-1, seq(head, explicitEnd))
       );
     },
@@ -1219,5 +1225,10 @@ function whenEntryHead($) {
  * @param {GrammarSymbols} $
  */
 function whenEntryBody($) {
-  return choice(seq(field('body', $.block), optional(sym('_semi'))), seq(field('body', $.statement), sym('_semi')));
+  const separator = choice(
+    sym('_semi'),
+    sym('_when_after_if_boundary'),
+    seq(sym('_shared_semicolon_before_else'), sym('_if_else_continuation'))
+  );
+  return choice(seq(field('body', $.block), optional(separator)), seq(field('body', $.statement), separator));
 }
