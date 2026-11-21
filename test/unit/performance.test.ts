@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Language, Parser } from '@willbooster/web-tree-sitter';
+import { Language, Parser, type Range } from '@willbooster/web-tree-sitter';
 import { expect, test } from 'vitest';
 
 import { generationInputMtime } from '../helpers/generationInputs.js';
@@ -9,7 +9,8 @@ import { generationInputMtime } from '../helpers/generationInputs.js';
 const Root = path.join(import.meta.dirname, '../..');
 // The Wasm build is the one the package ships.
 const WasmPath = path.join(Root, 'tree-sitter-kotlin.wasm');
-await Parser.init();
+const memory = new WebAssembly.Memory({ initial: 8, maximum: 32_768 });
+await Parser.init({ wasmMemory: memory });
 const parser = new Parser();
 parser.setLanguage(await Language.load(WasmPath));
 
@@ -27,6 +28,61 @@ test('uses a Wasm build built from the current parser', () => {
     'generation inputs or src/ changed after the Wasm build was built; run `bun run build/ci`'
   ).toBe(false);
 });
+
+test('uses bounded Wasm memory for a large ordinary alternative', () => {
+  const key = 'catalog-item-key'.padEnd(60, '-');
+  const keys = Array.from({ length: 4000 }, (_, index) => `"${key}${index}"`).join(',\n');
+  const source = `fun f(p: Boolean, n: Int, key: String) {
+    when (n) {
+      1 -> if (p) println(n); else if (key in setOf(${keys})) println(n)
+      2 -> Unit
+      else -> Unit
+    }
+  }`;
+  const before = memory.buffer.byteLength;
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(memory.buffer.byteLength - before).toBeLessThan(12 * 1024 * 1024);
+  } finally {
+    tree.delete();
+  }
+});
+
+test.each(['', 'tru'])('shares guard lookahead across an included-range boundary after %j', (partial) => {
+  const depth = 384;
+  const front = 'fun f(p: Boolean) { when (0) { 0 -> ' + 'if (p) true; else if ('.repeat(depth) + partial;
+  const back = 'true'.slice(partial.length) + ') true else false'.repeat(depth) + '; else -> false } }';
+  const hostText = '</code><!-- outside Kotlin -->鈴木<code>';
+  const contiguous = parser.parse(front + back)!;
+  const contiguousOperations = parser.lastParseOperations;
+  try {
+    expect(contiguous.rootNode.hasError).toBe(false);
+  } finally {
+    contiguous.delete();
+  }
+  const source = front + hostText + back;
+  const tree = parser.parse(source, {
+    includedRanges: [singleLineRange(0, front.length), singleLineRange(front.length + hostText.length, source.length)],
+  })!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const fallback = tree.rootNode.descendantsOfType('when_entry').at(-1);
+    expect(fallback?.startIndex).toBe(source.lastIndexOf('else ->'));
+    expect(parser.lastParseOperations).toBeLessThan(contiguousOperations * 1.5);
+  } finally {
+    tree.delete();
+  }
+});
+
+function singleLineRange(from: number, to: number): Range {
+  return {
+    startIndex: from,
+    endIndex: to,
+    startPosition: { row: 0, column: from },
+    endPosition: { row: 0, column: to },
+  };
+}
 
 // Consumers parse files being edited, so recovering from many errors must stay linear: ten times the lines take about
 // ten times as long, against a hundred times for quadratic recovery. The ratio catches a cost that grows faster than

@@ -2033,7 +2033,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     const bool after_operand_line = guard->after_operand_line;
     guard->after_operand_line = false;
     if (initial_group) guard_capture_start(input);
-    const uint32_t group_start = input->offset;
+    const size_t group_start = input->cursor;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') return scan_guard_arrow(lexer, guard);
     if (after_operand_line && starts_guard_operand_after_line(c, lexer->lookahead))
@@ -2283,7 +2283,7 @@ typedef struct {
     bool can_have_entries;
     bool when_head;
     unsigned brace_depth;
-    uint32_t start_offset;
+    size_t opener;
 } GuardFrame;
 
 typedef struct {
@@ -2344,7 +2344,7 @@ static GuardGroupStatus guard_group_status(TSLexer *lexer, const GuardHead *head
         for (size_t index = 1; index < head->count; index++) {
             const GuardFrame *frame = &head->frames[index];
             if (frame->end == ')' && (status != GUARD_GROUP_YIELDED || !frame->can_have_entries))
-                guard_capture_group(input, frame->start_offset, frame->brace_depth, status);
+                guard_capture_group(input, frame->opener, frame->brace_depth, status);
         }
     }
     return status;
@@ -2357,7 +2357,7 @@ static bool group_may_have_entries(int32_t opener, const GuardScan *guard) {
 }
 
 static bool starts_nested_guard_probe(TSLexer *lexer);
-static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, uint32_t offset);
+static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, size_t opener);
 
 static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
     GuardFrame *group = &head->frames[head->count - 1];
@@ -2375,7 +2375,7 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         return true;
     }
     GuardLookahead *input = (GuardLookahead *)lexer;
-    const uint32_t offset = input->offset;
+    const size_t opener = input->cursor;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
         advance(lexer);
@@ -2384,15 +2384,15 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         return true;
     }
     if (c == group->end) {
-        if (c == ')' && head->count > 1) guard_capture_group(input, group->start_offset, group->brace_depth, GUARD_GROUP_CLOSED);
+        if (c == ')' && head->count > 1) guard_capture_group(input, group->opener, group->brace_depth, GUARD_GROUP_CLOSED);
         head->count--;
         return true;
     }
-    return step_guard_group_punctuation(lexer, head, c, offset);
+    return step_guard_group_punctuation(lexer, head, c, opener);
 }
 
 // code-gauge-allow functionNcss 35 -- delimiter roles and nested probe yields update the current lexical frame.
-static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, uint32_t offset) {
+static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_t c, size_t opener) {
     GuardFrame *group = &head->frames[head->count - 1];
     const unsigned brace_depth = group->brace_depth;
     const bool can_have_entries = group->can_have_entries;
@@ -2407,7 +2407,7 @@ static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_
             head->failure = GUARD_GROUP_YIELDED;
             return false;
         case '(': return push_guard_frame(head, (GuardFrame){
-            .end = ')', .can_have_entries = can_have_entries, .brace_depth = brace_depth, .start_offset = offset,
+            .end = ')', .can_have_entries = can_have_entries, .brace_depth = brace_depth, .opener = opener,
         });
         case '[': return push_guard_frame(head, (GuardFrame){.end = ']', .can_have_entries = can_have_entries, .brace_depth = brace_depth});
         case '{': return push_guard_frame(head, (GuardFrame){
