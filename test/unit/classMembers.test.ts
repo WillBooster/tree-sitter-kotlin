@@ -195,6 +195,10 @@ test.each([0, 256])('keeps multiline infix guards at %i enclosing blocks', (dept
     '(n) xor 42L xor\n n',
     '(n) xor 0x2a xor\n n',
     '(n) xor 4.2F xor\n n',
+    '(p) xor f() `xor`\n q',
+    '(p) xor run { true } `xor`\n q',
+    '(p) xor foo as Comparable<Boolean> xor\n q',
+    '(n) xor f() as Map<Int, List<Int>>? `xor`\n n',
   ];
   for (const guard of guards) {
     const tree = parser.parse(`fun f(p: Boolean, q: Boolean, n: Int) { ${wrappers}

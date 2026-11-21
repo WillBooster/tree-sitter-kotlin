@@ -1934,12 +1934,14 @@ static ElseFollower scan_else_follower(TSLexer *lexer);
 static GuardResult scan_guard_input(GuardLookahead *input, unsigned brace_depth, bool in_entries);
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard);
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if);
+static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if);
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard);
 static bool starts_guard_operand_after_line(int32_t c, int32_t next);
 static void scan_guard_number_tail(TSLexer *lexer);
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head);
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c);
 static void scan_guard_punctuation(TSLexer *lexer, GuardScan *guard, int32_t c);
+static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, bool initial_group);
 static void scan_guard_type_word(GuardScan *guard, const char *word, bool operator);
 static bool before_guard_operand(GuardPrefix prefix);
 static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard);
@@ -2004,6 +2006,10 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
 static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool continues_if) {
     char word[MAX_WORD_SIZE] = {0};
     read_following_word(lexer, word);
+    return classify_guard_word(lexer, guard, word, continues_if);
+}
+
+static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if) {
     if (guard->after_operand_line && !continues_guard_after_line(word)) return guard_result(guard->shared_arrow);
     guard->after_operand_line = false;
     if (continues_if && streq(word, "if")) {
@@ -2018,7 +2024,6 @@ static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool contin
     return scan_guard_word_token(guard, word) ? GUARD_MORE : GUARD_ABSENT;
 }
 
-// code-gauge-allow functionCognitiveComplexity 16 -- separators and completed operands use the same lexical step.
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c) {
     GuardLookahead *input = (GuardLookahead *)lexer;
     const bool initial_group = c == '(' && guard->branch.prefix == GUARD_START;
@@ -2034,13 +2039,23 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     if (group == GUARD_GROUP_UNKNOWN) group = scan_guard_delimiter(lexer, c, guard);
     if (initial_group) guard_capture_end(input, group);
     if (group != GUARD_GROUP_CLOSED) return guard_result(guard->shared_arrow || group != GUARD_GROUP_UNTERMINATED);
+    if (c == '`') return classify_guard_word(lexer, guard, "", false);
+    finish_guard_symbol(lexer, guard, c, initial_group);
+    return GUARD_MORE;
+}
+
+static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, bool initial_group) {
     const bool postfix = guard->completed_operand && (c == '!' || c == '+' || c == '-') && lexer->lookahead == c;
     if (postfix) advance(lexer);
     if (is_digit(c)) scan_guard_number_tail(lexer);
+    const bool type_arguments = c == '<' && guard->type != GUARD_NO_TYPE;
+    const bool nullable_type = c == '?' && guard->type == GUARD_TYPE && guard->completed_operand &&
+                               lexer->lookahead != '.' && lexer->lookahead != ':';
+    const bool type_operand = type_arguments || nullable_type;
     scan_guard_punctuation(lexer, guard, c);
-    guard->completed_operand = postfix || completed_guard_operand(c, initial_group, guard->control_head);
+    if (type_operand) guard->type = GUARD_TYPE;
+    guard->completed_operand = postfix || type_operand || completed_guard_operand(c, initial_group, guard->control_head);
     guard->control_head = false;
-    return GUARD_MORE;
 }
 
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard) {
@@ -2067,7 +2082,7 @@ static void scan_guard_number_tail(TSLexer *lexer) {
 }
 
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head) {
-    return is_digit(c) || c == '"' || c == '\'' || c == '`' || c == '[' || c == '{' ||
+    return is_digit(c) || c == '"' || c == '\'' || c == '[' || c == '{' ||
            (c == '(' && !initial_group && !control_head);
 }
 
