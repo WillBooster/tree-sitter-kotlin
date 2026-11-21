@@ -78,6 +78,8 @@ test('preserves guarded when entries across nested templates and conditional bod
     '(p)!! as (Boolean)',
     '(n) !is (Int)',
     '(n) / 2 is (Int)',
+    '(n) - if (p) 1; else if (p) 2 else 3 in 0..5',
+    '(n) + if (p) 1; else if (p) 2 else 3 in 0..5',
     '(n)++ is (Int)',
     '(n)-- is (Int)',
   ]) {

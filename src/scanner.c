@@ -658,7 +658,7 @@ static void pop_frame(Scanner *scanner) {
 void *tree_sitter_kotlin_external_scanner_create(void) { return ts_calloc(1, sizeof(Scanner)); }
 
 void tree_sitter_kotlin_external_scanner_destroy(void *payload) {
-    ts_free(((Scanner *)payload)->guard_cache.characters);
+    guard_cache_free(&((Scanner *)payload)->guard_cache);
     ts_free(payload);
 }
 
@@ -1888,6 +1888,8 @@ typedef struct {
     GuardPrefix prefix;
     GuardType type;
     bool shared_arrow;
+    bool saw_arrow;
+    bool follows_explicit_else;
     bool can_be_alternative;
     bool in_entries;
     bool when_head;
@@ -1917,20 +1919,24 @@ static bool guard_word_requires_operand(const char *word);
 static bool scan_when_guard_arrow(Scanner *scanner, TSLexer *source, bool in_entries) {
     // The cache belongs to a full parse, including its competing GLR versions; the line-break predictor uses a proxy.
     GuardLookahead input = guard_lookahead(source->get_position ? &scanner->guard_cache : NULL, source);
+    if (known_ordinary_alternative(&input)) return false;
     TSLexer *lexer = &input.lexer;
     const unsigned brace_depth = scanner->depth;
     GuardScan guard = {.prefix = GUARD_START, .brace_depth = brace_depth, .in_entries = in_entries};
-    while (!at_eof(lexer)) {
-        GuardResult result = scan_guard_token(lexer, &guard);
-        if (result != GUARD_MORE) return result == GUARD_POSSIBLE;
-    }
-    return guard.shared_arrow;
+    GuardResult result = GUARD_MORE;
+    while (result == GUARD_MORE && !at_eof(lexer)) result = scan_guard_token(lexer, &guard);
+    const bool possible = result == GUARD_POSSIBLE || (result == GUARD_MORE && guard.shared_arrow);
+    // A nested explicit alternative has fewer pending ifs than this one. It can stop earlier, but reaching an
+    // unclaimed arrow would require one on the same lexical level of the already inspected suffix.
+    if (!possible && !guard.saw_arrow) commit_ordinary_alternatives(&input);
+    return possible;
 }
 
 static GuardResult guard_result(bool possible) {
     return possible ? GUARD_POSSIBLE : GUARD_ABSENT;
 }
 
+// code-gauge-allow functionCognitiveComplexity 18 -- trivia, boundaries, and conditional keywords update the same token state.
 static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     int32_t c = lexer->lookahead;
     if (is_space(c) || c == '/') {
@@ -1941,9 +1947,12 @@ static GuardResult scan_guard_token(TSLexer *lexer, GuardScan *guard) {
     if (c == ';') {
         return scan_guard_else_after_semicolon(lexer, guard) ? GUARD_MORE : guard_result(guard->shared_arrow);
     }
+    const bool follows_explicit_else = guard->follows_explicit_else;
+    guard->follows_explicit_else = false;
     if (c != '$' && is_identifier_part(c)) {
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
+        if (follows_explicit_else && streq(word, "if")) remember_guard_alternative((GuardLookahead *)lexer);
         if (streq(word, "else") && guard->ifs == 0)
             return guard_result(guard->shared_arrow && scan_else_follower(lexer) != ELSE_BODY);
         return scan_guard_word_token(guard, word) ? GUARD_MORE : GUARD_ABSENT;
@@ -1958,6 +1967,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     const uint32_t group_start = input->offset;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') {
+        guard->saw_arrow = true;
         if (guard->type != GUARD_TYPE_PARAMETERS && guard->type != GUARD_ANNOTATION_OR_PARAMETERS)
             return guard_result(guard->prefix != GUARD_INFIX_ARGUMENT);
         // After an ordinary else-if head, a cast claims its function-type arrow. In a guard-only
@@ -2091,6 +2101,7 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     guard->prefix = GUARD_EXPRESSION;
     guard->type = GUARD_NO_TYPE;
     guard->dollars = 0;
+    guard->follows_explicit_else = true;
     return true;
 }
 

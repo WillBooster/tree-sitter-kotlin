@@ -13,6 +13,10 @@ typedef struct {
     size_t capacity;
     uint32_t start;
     uint32_t end;
+    uint32_t *pending_alternatives;
+    size_t pending_capacity;
+    uint8_t *ordinary_alternatives;
+    size_t ordinary_capacity;
 } GuardCache;
 
 typedef struct {
@@ -20,9 +24,16 @@ typedef struct {
     TSLexer *source;
     GuardCache *cache;
     uint32_t offset;
+    size_t pending_count;
     bool replay;
     bool recording;
 } GuardLookahead;
+
+static void guard_cache_free(GuardCache *cache) {
+    ts_free(cache->characters);
+    ts_free(cache->pending_alternatives);
+    ts_free(cache->ordinary_alternatives);
+}
 
 static bool guard_lookahead_eof(const TSLexer *lexer) {
     const GuardLookahead *input = (const GuardLookahead *)lexer;
@@ -126,6 +137,46 @@ static bool guard_replay_group(GuardLookahead *input, uint32_t start, unsigned b
     if (character->after_group == 0 || character->brace_depth != brace_depth) return false;
     guard_replay_at(input, character->after_group);
     return true;
+}
+
+static bool known_ordinary_alternative(const GuardLookahead *input) {
+    const GuardCache *cache = input->cache;
+    if (!cache || cache->ordinary_capacity == 0) return false;
+    const uint32_t offset = input->replay ? input->offset : guard_source_offset(input->source);
+    return offset / 8 < cache->ordinary_capacity && (cache->ordinary_alternatives[offset / 8] >> (offset % 8)) & 1;
+}
+
+static void remember_guard_alternative(GuardLookahead *input) {
+    GuardCache *cache = input->cache;
+    if (!cache) return;
+    if (input->pending_count == cache->pending_capacity) {
+        const size_t capacity = cache->pending_capacity ? cache->pending_capacity * 2 : 16;
+        if (capacity <= cache->pending_capacity || capacity > SIZE_MAX / sizeof(uint32_t)) return;
+        uint32_t *positions = ts_realloc(cache->pending_alternatives, capacity * sizeof(uint32_t));
+        if (!positions) return;
+        cache->pending_alternatives = positions;
+        cache->pending_capacity = capacity;
+    }
+    const uint32_t offset = input->replay || input->recording ? input->offset : guard_source_offset(input->source);
+    cache->pending_alternatives[input->pending_count++] = offset;
+}
+
+static void commit_ordinary_alternatives(GuardLookahead *input) {
+    if (input->pending_count == 0) return;
+    GuardCache *cache = input->cache;
+    const size_t needed = cache->pending_alternatives[input->pending_count - 1] / 8 + 1;
+    if (needed > cache->ordinary_capacity) {
+        const size_t capacity = cache->ordinary_capacity * 2 > needed ? cache->ordinary_capacity * 2 : needed;
+        uint8_t *bits = ts_realloc(cache->ordinary_alternatives, capacity);
+        if (!bits) return;
+        memset(bits + cache->ordinary_capacity, 0, capacity - cache->ordinary_capacity);
+        cache->ordinary_alternatives = bits;
+        cache->ordinary_capacity = capacity;
+    }
+    for (size_t index = 0; index < input->pending_count; index++) {
+        const uint32_t offset = cache->pending_alternatives[index];
+        cache->ordinary_alternatives[offset / 8] |= (uint8_t)(1u << (offset % 8));
+    }
 }
 
 #endif
