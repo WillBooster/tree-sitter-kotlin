@@ -1938,6 +1938,7 @@ static GuardResult scan_guard_word(TSLexer *lexer, GuardScan *guard, bool contin
 static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if);
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard);
 static bool starts_guard_operand_after_line(int32_t c, int32_t next);
+static bool starts_guard_number(int32_t c, int32_t next);
 static void scan_guard_number_tail(TSLexer *lexer);
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head);
 static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c);
@@ -2050,14 +2051,15 @@ static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, boo
     const bool previous_operand = guard->completed_operand || guard->completed_body_operand;
     const bool postfix = previous_operand && (c == '!' || c == '+' || c == '-') && lexer->lookahead == c;
     if (postfix) advance(lexer);
-    if (is_digit(c)) scan_guard_number_tail(lexer);
+    const bool number = starts_guard_number(c, lexer->lookahead);
     const bool type_arguments = c == '<' && guard->type != GUARD_NO_TYPE;
     const bool nullable_type = c == '?' && guard->type == GUARD_TYPE && guard->completed_operand &&
                                lexer->lookahead != '.' && lexer->lookahead != ':';
     const bool type_operand = type_arguments || nullable_type;
     scan_guard_punctuation(lexer, guard, c);
+    if (number) scan_guard_number_tail(lexer);
     if (type_operand) guard->type = GUARD_TYPE;
-    const bool complete = type_operand || completed_guard_operand(c, initial_group, guard->control_head);
+    const bool complete = number || type_operand || completed_guard_operand(c, initial_group, guard->control_head);
     guard->completed_operand = complete || (postfix && guard->completed_operand);
     guard->completed_body_operand = complete || (postfix && guard->completed_body_operand);
     guard->control_head = false;
@@ -2079,8 +2081,12 @@ static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard) {
 }
 
 static bool starts_guard_operand_after_line(int32_t c, int32_t next) {
-    return is_digit(c) || c == '"' || c == '\'' || c == '`' || c == '(' ||
+    return starts_guard_number(c, next) || c == '"' || c == '\'' || c == '`' || c == '(' ||
            ((c == '+' || c == '-') && next != '=');
+}
+
+static bool starts_guard_number(int32_t c, int32_t next) {
+    return is_digit(c) || (c == '.' && is_digit(next));
 }
 
 static void scan_guard_number_tail(TSLexer *lexer) {
@@ -2088,7 +2094,7 @@ static void scan_guard_number_tail(TSLexer *lexer) {
 }
 
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head) {
-    return is_digit(c) || c == '"' || c == '\'' || c == '[' || c == '{' ||
+    return c == '"' || c == '\'' || c == '[' || c == '{' ||
            (c == '(' && !initial_group && !control_head);
 }
 
@@ -2158,7 +2164,7 @@ static ElseFollower scan_else_follower(TSLexer *lexer) {
 }
 
 static bool guard_only_punctuation(int32_t c, int32_t next) {
-    return c == '.' || c == '?' || c == '=' || c == '<' || c == '>' || c == '|' || c == '&' || c == '*' ||
+    return (c == '.' && !is_digit(next)) || c == '?' || c == '=' || c == '<' || c == '>' || c == '|' || c == '&' || c == '*' ||
            c == '%' || (c == '!' && next == '=');
 }
 
