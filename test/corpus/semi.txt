@@ -1599,8 +1599,9 @@ Calls after block-bodied accessors remain separate statements
 var first = 0
     set(value) { field = value }; get() { 1 }
 
+val current = 2
 var second = 0
-    get() { return field }; set(2) { 3 }
+    get() { return field }; set(current) { 3 }
 
 --------------------------------------------------------------------------------
 
@@ -1625,6 +1626,10 @@ var second = 0
   (property_declaration
     (variable_declaration
       (identifier))
+    (number_literal))
+  (property_declaration
+    (variable_declaration
+      (identifier))
     (number_literal)
     (getter
       (function_body
@@ -1635,7 +1640,7 @@ var second = 0
     (identifier)
     (value_arguments
       (value_argument
-        (number_literal)))
+        (identifier)))
     (annotated_lambda
       (lambda_literal
         (number_literal)))))
