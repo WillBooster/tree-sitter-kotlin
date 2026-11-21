@@ -2152,3 +2152,116 @@ fun f() {
           (value_arguments
             (value_argument
               (number_literal))))))))
+
+================================================================================
+Explicit semicolons before Kotlin else branches
+================================================================================
+
+fun sample(a: Boolean, b: Boolean, n: Int) {
+    if (a) f(); else g()
+    if (a) { f() }; /* before else */ else { g() }
+    if (a) if (b) f(); else g(); else h()
+    if (a) f(); elsewhere()
+    when (n) {
+        1 -> if (a) f(); else -> g()
+    }
+    when (n) {
+        1 -> if (a) f(); else if (b) -> g()
+        else -> h()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (function_value_parameters
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier)))
+      (parameter
+        (identifier)
+        (user_type
+          (identifier))))
+    (function_body
+      (block
+        (if_expression
+          (identifier)
+          (call_expression
+            (identifier)
+            (value_arguments))
+          (call_expression
+            (identifier)
+            (value_arguments)))
+        (if_expression
+          (identifier)
+          (block
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (block_comment)
+          (block
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (if_expression
+          (identifier)
+          (if_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (value_arguments))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (call_expression
+            (identifier)
+            (value_arguments)))
+        (if_expression
+          (identifier)
+          (call_expression
+            (identifier)
+            (value_arguments)))
+        (call_expression
+          (identifier)
+          (value_arguments))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))
+        (when_expression
+          (when_subject
+            (identifier))
+          (when_entry
+            (number_literal)
+            (if_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (value_arguments))))
+          (when_entry
+            (parenthesized_expression
+              (identifier))
+            (call_expression
+              (identifier)
+              (value_arguments)))
+          (when_entry
+            (call_expression
+              (identifier)
+              (value_arguments))))))))

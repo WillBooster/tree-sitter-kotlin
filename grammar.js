@@ -159,6 +159,7 @@ module.exports = grammar({
     sym('_getter_separator'),
     sym('_setter_separator'),
     sym('_accessor_parameters_position'),
+    sym('_semicolon_before_else'),
   ],
 
   inline: ($) => [$._statements, $._identifier, $._control_structure_body, $._non_function_type],
@@ -887,7 +888,7 @@ module.exports = grammar({
             ';',
             seq(
               optional(field('consequence', $._control_structure_body)),
-              optional(';'),
+              optional(alias(sym('_semicolon_before_else'), ';')),
               'else',
               choice(field('alternative', $._control_structure_body), ';')
             )
@@ -915,7 +916,7 @@ module.exports = grammar({
         sym('_close_braces')
       ),
 
-    // The scanner puts no separator before an `else` other than `else ->`, since it cannot tell whether an `if` at the
+    // The scanner puts no automatic separator before an `else` other than `else ->`, since it cannot tell whether an `if` at the
     // end of a statement body takes it. As in Kotlin, such an `if` takes it, `if_expression` being right-associative, and
     // otherwise the `else` starts the next entry, so a statement body needs no separator before an entry that starts so.
     _unseparated_when_entry: ($) => whenEntry($, whenEntryHead($), field('body', $.statement)),

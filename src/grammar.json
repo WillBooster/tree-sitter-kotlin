@@ -6330,7 +6330,12 @@
                     "type": "CHOICE",
                     "members": [
                       {
-                        "type": "STRING",
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "_semicolon_before_else"
+                        },
+                        "named": false,
                         "value": ";"
                       },
                       {
@@ -8974,6 +8979,10 @@
     {
       "type": "SYMBOL",
       "name": "_accessor_parameters_position"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_semicolon_before_else"
     }
   ],
   "inline": [

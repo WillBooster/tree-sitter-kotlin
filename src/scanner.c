@@ -51,6 +51,7 @@ enum TokenType {
     GETTER_SEPARATOR,
     SETTER_SEPARATOR,
     ACCESSOR_PARAMETERS_POSITION,
+    SEMICOLON_BEFORE_ELSE,
 };
 
 #define MAX_WORD_SIZE 16
@@ -991,7 +992,7 @@ static bool scan_import_end(TSLexer *lexer);
 
 static bool scan_member_annotation(TSLexer *lexer, bool skip_chars);
 static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separator);
-static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols);
+static bool scan_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, bool if_else, bool when_entry);
 
 static bool scan_else_arrow(TSLexer *lexer);
 
@@ -1184,7 +1185,8 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     bool can_separate_accessors = (valid_symbols[INITIAL_ACCESSOR_SEPARATOR] ||
                                    valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]) &&
                                   !error_recovery && !in_statements(scanner);
-    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors) {
+    bool can_separate_else = valid_symbols[SEMICOLON_BEFORE_ELSE] && !error_recovery;
+    if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || can_separate_else) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
         while (is_space(lexer->lookahead)) {
@@ -1200,10 +1202,11 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         }
     }
 
-    if ((valid_symbols[SEMI] || can_separate_accessors) && lexer->lookahead == ';') {
+    if ((valid_symbols[SEMI] || can_separate_accessors || can_separate_else) && lexer->lookahead == ';') {
         advance(lexer);
         lexer->mark_end(lexer);
-        if (can_separate_accessors && scan_accessor_after_separator(lexer, valid_symbols)) return true;
+        if ((can_separate_accessors || can_separate_else) &&
+            scan_after_semicolon(lexer, valid_symbols, can_separate_accessors, can_separate_else, in_entries(scanner))) return true;
         lexer->result_symbol = SEMI;
         return valid_symbols[SEMI];
     }
@@ -1836,35 +1839,58 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
-// code-gauge-allow functionCognitiveComplexity 25 -- each exit distinguishes a Kotlin separator or accessor prefix.
-static int accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
+// An else followed by an arrow, or by a guard, belongs to a when entry.
+static bool when_else_after_separator(TSLexer *lexer, bool when_entry) {
+    if (!when_entry) return false;
+    if (scan_else_arrow(lexer)) return true;
+    if (!scan_word(lexer, "if") || is_identifier_part(lexer->lookahead) || !skip_whitespace_and_comments(lexer, true))
+        return false;
+    if (lexer->lookahead != '(') return true;
+    skip(lexer);
+    if (!scan_bracket(lexer, '(', ')', 0, true, true) || !skip_whitespace_and_comments(lexer, true)) return false;
+    if (scan_else_arrow(lexer)) return true;
+    int32_t next = lexer->lookahead;
+    return next > 0 && next < 0x80 && strchr("&|*/%=<>?", (int)next) != NULL;
+}
+
+static int accessor_separator_token(TSLexer *lexer, const bool *valid_symbols, bool initial, bool setter) {
+    if (initial) return INITIAL_ACCESSOR_SEPARATOR;
+    int token = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
+    if (!valid_symbols[token] || !scan_accessor_shape(lexer, setter, true)) return -1;
+    return token;
+}
+
+// code-gauge-allow functionCognitiveComplexity 29 -- classifies the same lookahead for if branches and accessors without rescanning.
+static int token_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, bool if_else, bool when_entry) {
     // After a property semicolon, a newline before the next token ends the property. A newline inside a
     // block comment does not count, and an annotation on the same line may itself continue onto later lines.
-    bool initial = valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
+    bool initial = accessors && valid_symbols[INITIAL_ACCESSOR_SEPARATOR] &&
                    skip_whitespace_and_comments(lexer, false) &&
                    lexer->lookahead != '\n' && lexer->lookahead != '\r';
-    if (!initial && !valid_symbols[GETTER_SEPARATOR] && !valid_symbols[SETTER_SEPARATOR]) return -1;
+    accessors = initial || (accessors && (valid_symbols[GETTER_SEPARATOR] || valid_symbols[SETTER_SEPARATOR]));
+    if (!accessors && !if_else) return -1;
     while (skip_whitespace_and_comments(lexer, true)) {
         if (lexer->lookahead == '@') {
+            if (!accessors) return -1;
+            if_else = false;
             // Outside comments and literals, a semicolon ends an unfinished accessor annotation.
             if (!scan_annotation(lexer, true, true)) return -1;
             continue;
         }
         char word[MAX_WORD_SIZE] = {0};
         read_following_word(lexer, word);
-        if (streq(word, "get") || streq(word, "set")) {
-            if (initial) return INITIAL_ACCESSOR_SEPARATOR;
-            bool setter = streq(word, "set");
-            int token = setter ? SETTER_SEPARATOR : GETTER_SEPARATOR;
-            return valid_symbols[token] && scan_accessor_shape(lexer, setter, true) ? token : -1;
-        }
+        if (if_else && streq(word, "else")) return when_else_after_separator(lexer, when_entry) ? -1 : SEMICOLON_BEFORE_ELSE;
+        if (!accessors) return -1;
+        if_else = false;
+        if (streq(word, "get") || streq(word, "set"))
+            return accessor_separator_token(lexer, valid_symbols, initial, streq(word, "set"));
         if (!find_word(word, MODIFIER_WORDS, NULL) && !find_word(word, OTHER_MODIFIER_WORDS, NULL)) return -1;
     }
     return -1;
 }
 
-static bool scan_accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
-    int token = accessor_after_separator(lexer, valid_symbols);
+static bool scan_after_semicolon(TSLexer *lexer, const bool *valid_symbols, bool accessors, bool if_else, bool when_entry) {
+    int token = token_after_semicolon(lexer, valid_symbols, accessors, if_else, when_entry);
     if (token < 0) return false;
     lexer->result_symbol = (TSSymbol)token;
     return true;
