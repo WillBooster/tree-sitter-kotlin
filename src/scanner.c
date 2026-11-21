@@ -35,6 +35,7 @@ enum TokenType {
     OPEN_ENTRIES,
     OPEN_MEMBERS,
     CLOSE_BRACES,
+    CLOSE_CONTROL_BLOCK,
     TOP_LEVEL_STATEMENT_END,
     CONTEXT_END,
     KEYWORD_REFERENCE,
@@ -607,6 +608,8 @@ typedef struct {
     uint8_t newline_before_comment;
     // The literal before else has been read, but its zero-width separator has not.
     uint8_t after_else_semicolon;
+    // A completed control block looked ahead to another opening brace in a when entry.
+    bool brace_after_control_block;
     // Bit i tells whether the (i + 1)th enclosing frame from the outside holds statements. As in Kotlin, a property
     // directly in a statement list is a local one, which has no accessors, and a context list of types there is a call.
     uint8_t frames[MAX_FRAMES / 8];
@@ -687,9 +690,13 @@ unsigned tree_sitter_kotlin_external_scanner_serialize(void *payload, char *buff
     return serialize_full_scanner(scanner, buffer);
 }
 
+static uint8_t statement_flags(const Scanner *scanner) {
+    return (uint8_t)(scanner->newline_before_comment | (scanner->after_else_semicolon << 1) |
+                     (scanner->brace_after_control_block << 3));
+}
+
 static unsigned serialize_compact_scanner(const Scanner *scanner, char *buffer) {
-    uint8_t flags = (uint8_t)((scanner->after_short_template ? 1u : 0u) | (scanner->newline_before_comment ? 2u : 0u) |
-                             (scanner->after_else_semicolon << 2));
+    uint8_t flags = (uint8_t)((scanner->after_short_template ? 1u : 0u) | (statement_flags(scanner) << 1));
     unsigned bytes = frame_bytes(scanner->depth);
     buffer[0] = (char)scanner->depth;
     buffer[1] = (char)flags;
@@ -709,7 +716,7 @@ static unsigned serialize_full_scanner(const Scanner *scanner, char *buffer) {
     memcpy(buffer + size, &scanner->surplus_dollars, sizeof(uint32_t));
     size += sizeof(uint32_t);
     buffer[size++] = (char)scanner->after_short_template;
-    buffer[size++] = (char)(scanner->newline_before_comment | (scanner->after_else_semicolon << 1));
+    buffer[size++] = (char)statement_flags(scanner);
     if (bytes > 0) {
         memcpy(buffer + size, scanner->frames, bytes);
         size += bytes;
@@ -739,6 +746,12 @@ void tree_sitter_kotlin_external_scanner_deserialize(void *payload, const char *
     }
 }
 
+static void restore_statement_flags(Scanner *scanner, uint8_t flags) {
+    scanner->newline_before_comment = flags & 1u;
+    scanner->after_else_semicolon = (flags >> 1) & 3u;
+    scanner->brace_after_control_block = (flags >> 3) & 1u;
+}
+
 static bool deserialize_compact_scanner(Scanner *scanner, const char *buffer, unsigned length, unsigned old_bytes) {
     if (length < 2) {
         return false;
@@ -752,8 +765,7 @@ static bool deserialize_compact_scanner(Scanner *scanner, const char *buffer, un
     scanner->depth = depth;
     scanner->surplus_dollars = 0;
     scanner->after_short_template = flags & 1u;
-    scanner->newline_before_comment = (flags >> 1) & 1u;
-    scanner->after_else_semicolon = (flags >> 2) & 3u;
+    restore_statement_flags(scanner, flags >> 1);
     if (new_bytes > 0) {
         memcpy(scanner->frames, buffer + 2, new_bytes);
         memcpy(scanner->separated_members, buffer + 2 + new_bytes, new_bytes);
@@ -783,9 +795,7 @@ static bool deserialize_full_scanner(Scanner *scanner, const char *buffer, unsig
     memcpy(&scanner->surplus_dollars, buffer + size, sizeof(uint32_t));
     size += sizeof(uint32_t);
     scanner->after_short_template = (uint8_t)buffer[size++];
-    uint8_t flags = (uint8_t)buffer[size++];
-    scanner->newline_before_comment = flags & 1u;
-    scanner->after_else_semicolon = (flags >> 1) & 3u;
+    restore_statement_flags(scanner, (uint8_t)buffer[size++]);
     if (new_bytes > 0) {
         memcpy(scanner->frames, buffer + size, new_bytes);
         size += new_bytes;
@@ -806,6 +816,7 @@ static void reset_scanner(Scanner *scanner, unsigned old_bytes) {
     scanner->after_short_template = 0;
     scanner->newline_before_comment = 0;
     scanner->after_else_semicolon = 0;
+    scanner->brace_after_control_block = false;
     clear_frames(scanner, 0, old_bytes);
     scanner->length = 0;
 }
@@ -1067,6 +1078,8 @@ bool tree_sitter_kotlin_external_scanner_scan(void *payload, TSLexer *lexer, con
 static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bool predicting) {
     bool newline_before_comment = scanner->newline_before_comment;
     scanner->newline_before_comment = 0;
+    bool brace_after_control_block = scanner->brace_after_control_block;
+    scanner->brace_after_control_block = false;
     // During error recovery every token is valid, including string content and a semicolon, which never are
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
@@ -1076,6 +1089,11 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                                 valid_symbols[IF_ELSE_BOUNDARY] || valid_symbols[WHEN_AFTER_IF_BOUNDARY] ||
                                 valid_symbols[SHARED_WHEN_AFTER_IF_BOUNDARY]);
     if (after_else_semicolon) return scan_else_after_semicolon(scanner, lexer, valid_symbols);
+    if (!error_recovery && brace_after_control_block && valid_symbols[SEMI]) {
+        lexer->mark_end(lexer);
+        lexer->result_symbol = SEMI;
+        return true;
+    }
     if (!error_recovery && (valid_symbols[IMPORT_END] || valid_symbols[IMPORT_CONTINUE])) {
         lexer->mark_end(lexer);
         bool ends = !scan_whitespace_and_comments(lexer, true, false) || scan_import_end(lexer);
@@ -1111,7 +1129,7 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
         return true;
     }
     bool can_open = valid_symbols[OPEN_STATEMENTS] || valid_symbols[OPEN_ENTRIES] || valid_symbols[OPEN_MEMBERS];
-    if (!error_recovery && (can_open || valid_symbols[CLOSE_BRACES])) {
+    if (!error_recovery && (can_open || valid_symbols[CLOSE_BRACES] || valid_symbols[CLOSE_CONTROL_BLOCK])) {
         lexer->mark_end(lexer);
         if (can_open) {
             lexer->result_symbol = valid_symbols[OPEN_STATEMENTS] ? OPEN_STATEMENTS
@@ -1119,8 +1137,11 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                                                                   : OPEN_MEMBERS;
             push_frame(scanner, !valid_symbols[OPEN_MEMBERS], valid_symbols[OPEN_ENTRIES]);
         } else {
-            lexer->result_symbol = CLOSE_BRACES;
+            lexer->result_symbol = valid_symbols[CLOSE_CONTROL_BLOCK] ? CLOSE_CONTROL_BLOCK : CLOSE_BRACES;
             pop_frame(scanner);
+            if (lexer->result_symbol == CLOSE_CONTROL_BLOCK && (in_entries(scanner) || scanner->depth > MAX_FRAMES))
+                scanner->brace_after_control_block = scan_whitespace_and_comments(lexer, true, false) &&
+                                                     lexer->lookahead == '{';
         }
         return true;
     }
@@ -1914,6 +1935,8 @@ typedef struct {
     bool control_head;
     bool completed_operand;
     bool completed_body_operand;
+    bool completed_body_block;
+    bool expects_body_block;
     bool after_operand_line;
     bool return_value_optional;
     bool saw_type_arrow;
@@ -1944,7 +1967,7 @@ static bool has_guard_label_suffix(const char *word);
 static GuardResult scan_guard_label(TSLexer *lexer, GuardScan *guard);
 static GuardResult classify_guard_word(TSLexer *lexer, GuardScan *guard, const char *word, bool continues_if);
 static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard);
-static bool continues_guard_symbol_after_line(int32_t c, int32_t next);
+static bool continues_guard_symbol_after_line(const GuardScan *guard, int32_t c, int32_t next);
 static bool starts_guard_number(int32_t c, int32_t next);
 static void scan_guard_number_tail(TSLexer *lexer);
 static bool completed_guard_operand(int32_t c, bool initial_group, bool control_head);
@@ -2075,7 +2098,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     const size_t group_start = input->cursor;
     advance(lexer);
     if (c == '-' && lexer->lookahead == '>') return scan_guard_arrow(lexer, guard);
-    if (after_operand_line && !continues_guard_symbol_after_line(c, lexer->lookahead))
+    if (after_operand_line && !continues_guard_symbol_after_line(guard, c, lexer->lookahead))
         return guard_result(guard->shared_arrow);
     GuardGroupStatus group = initial_group ? guard_replay_group(input, group_start, guard->brace_depth) : GUARD_GROUP_UNKNOWN;
     if (group == GUARD_GROUP_UNKNOWN) group = scan_guard_delimiter(lexer, c, guard);
@@ -2086,6 +2109,7 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
     return GUARD_MORE;
 }
 
+// code-gauge-allow functionCognitiveComplexity 17 -- maintains guard and ordinary operand completion together.
 static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, bool initial_group) {
     const bool previous_operand = guard->completed_operand || guard->completed_body_operand;
     const bool postfix = previous_operand && (c == '!' || c == '+' || c == '-') && lexer->lookahead == c;
@@ -2101,6 +2125,8 @@ static void finish_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c, boo
     const bool complete = number || type_operand || completed_guard_operand(c, initial_group, guard->control_head);
     guard->completed_operand = complete || (postfix && guard->completed_operand);
     guard->completed_body_operand = complete || (postfix && guard->completed_body_operand);
+    guard->completed_body_block = c == '{' && guard->expects_body_block;
+    guard->expects_body_block = c == '(' && (initial_group || guard->control_head);
     guard->control_head = false;
 }
 
@@ -2120,12 +2146,13 @@ static GuardResult scan_guard_arrow(TSLexer *lexer, GuardScan *guard) {
 }
 
 // After a completed body, only punctuation that can extend it may cross the newline.
-static bool continues_guard_symbol_after_line(int32_t c, int32_t next) {
+static bool continues_guard_symbol_after_line(const GuardScan *guard, int32_t c, int32_t next) {
     switch (c) {
         case '.': return !is_digit(next);
         case ':': return next != ':';
         case '+': case '-': case '!': return next == '=';
-        case ',': case '[': case '{':
+        case '{': return !guard->completed_body_block;
+        case ',': case '[':
         case '?': case '=': case '<': case '>': case '|': case '&': case '*': case '%':
             return true;
         default: return false;
@@ -2150,6 +2177,8 @@ static bool scan_guard_word_token(GuardScan *guard, const char *word) {
     guard->dollars = 0;
     guard->when_head = streq(word, "when");
     guard->control_head = starts_guard_control_head(word);
+    guard->completed_body_block = false;
+    guard->expects_body_block = streq(word, "else") || streq(word, "try") || streq(word, "finally") || streq(word, "do");
     const GuardWord kind = guard_branch_word(&guard->branch, word, operator);
     guard->return_value_optional = streq(word, "return");
     const bool value_keyword = streq(word, "true") || streq(word, "false") || streq(word, "null") || streq(word, "this") ||
@@ -2289,7 +2318,7 @@ static GuardResult scan_guard_trivia(TSLexer *lexer, GuardScan *guard) {
         guard->crossed_line_after_body |= guard->after_operand_line;
     }
     if (!trivia) {
-        guard->return_value_optional = false;
+        guard->return_value_optional = guard->completed_body_block = guard->expects_body_block = false;
         guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
         if (before_guard_operand(guard->branch.prefix)) guard->branch.can_be_alternative = false;
         guard->branch.prefix = GUARD_EXPRESSION;
@@ -2316,7 +2345,8 @@ static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard) {
     guard->type = GUARD_NO_TYPE;
     guard->dollars = 0;
     guard->follows_explicit_else = true;
-    guard->return_value_optional = false;
+    guard->expects_body_block = true;
+    guard->completed_body_block = guard->return_value_optional = false;
     guard->completed_operand = guard->completed_body_operand = guard->after_operand_line = guard->control_head = false;
     return true;
 }

@@ -257,6 +257,10 @@ test.each([
   [2, 'n', '$$"text"'],
   [2, 'n', '$$"""text"""'],
   [3, '\n      @Mark (n)', '$$"text"'],
+  [3, '{ println(n) }', '{ println(2) }'],
+  [2, '{}', '{ println(2) }.hashCode()'],
+  [3, 'if (a) { println(n) } else { println(1) }', '{ println(2) }'],
+  [2, 'use()\n      { println(n) }', '3'],
   [3, 'items[0]!!', '!in 0..3'],
 ])('binds a shared else to the innermost of %i pending conditionals before %s and %s', (depth, body, condition) => {
   const source = `fun f(a: Boolean, c: Boolean, n: Any, items: List<Int?>) {
