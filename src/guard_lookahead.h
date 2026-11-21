@@ -4,7 +4,9 @@
 typedef enum {
     GUARD_GROUP_UNKNOWN,
     GUARD_GROUP_CLOSED,
-    GUARD_GROUP_UNTERMINATED
+    GUARD_GROUP_UNTERMINATED,
+    GUARD_GROUP_MISMATCHED,
+    GUARD_GROUP_UNRESOLVED
 } GuardGroupStatus;
 
 typedef struct {
@@ -12,7 +14,7 @@ typedef struct {
     uint32_t after_group;
     unsigned brace_depth;
     uint8_t width;
-    bool closed_group;
+    uint8_t group_status;
 } GuardCharacter;
 
 typedef struct {
@@ -130,18 +132,18 @@ static void guard_capture_start(GuardLookahead *input) {
     input->recording = true;
 }
 
-static void guard_capture_end(GuardLookahead *input, bool complete) {
+static void guard_capture_end(GuardLookahead *input, GuardGroupStatus status) {
     if (!input->recording) return;
-    if (complete || input->source->eof(input->source)) input->cache->end = input->offset;
+    if (status != GUARD_GROUP_UNRESOLVED) input->cache->end = input->offset;
     input->recording = false;
 }
 
-static void guard_capture_group(GuardLookahead *input, uint32_t start, unsigned brace_depth, bool closed) {
+static void guard_capture_group(GuardLookahead *input, uint32_t start, unsigned brace_depth, GuardGroupStatus status) {
     if (!input->recording) return;
     GuardCharacter *character = &input->cache->characters[start - input->cache->start];
     character->after_group = input->offset;
     character->brace_depth = brace_depth;
-    character->closed_group = closed;
+    character->group_status = (uint8_t)status;
 }
 
 static GuardGroupStatus guard_replay_group(GuardLookahead *input, uint32_t start, unsigned brace_depth) {
@@ -149,7 +151,7 @@ static GuardGroupStatus guard_replay_group(GuardLookahead *input, uint32_t start
     const GuardCharacter *character = &input->cache->characters[start - input->cache->start];
     if (character->after_group == 0 || character->brace_depth != brace_depth) return GUARD_GROUP_UNKNOWN;
     guard_replay_at(input, character->after_group);
-    return character->closed_group ? GUARD_GROUP_CLOSED : GUARD_GROUP_UNTERMINATED;
+    return (GuardGroupStatus)character->group_status;
 }
 
 static bool known_ordinary_alternative(const GuardLookahead *input) {

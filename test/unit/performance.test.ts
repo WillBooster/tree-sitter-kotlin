@@ -149,6 +149,8 @@ const ifChainCases = [
   ['with nested if branches in conditions', 150],
   ['with deeply nested conditional heads', 40],
   ['with unterminated nested conditional heads', 280],
+  ['with a mismatched bracket inside conditional heads', 60],
+  ['with a mismatched brace past the scanner frame limit', 60],
   ['with unary plus on conditional bodies', 40],
   ['with unary minus on conditional bodies', 40],
   ['with negation on conditional bodies', 40],
@@ -223,6 +225,10 @@ function unfinishedIfChain(depth: number, context: (typeof ifChainCases)[number]
   }
   if (context === 'with unterminated nested conditional heads')
     return `fun f(a: Boolean) { when (0) { 0 -> ${'if (a) true; else if ('.repeat(depth)}true`;
+  if (context === 'with a mismatched bracket inside conditional heads')
+    return `fun f(a: Boolean) { when (0) { 0 -> ${'if (a) true; else if ('.repeat(depth)}true ] + 0`;
+  if (context === 'with a mismatched brace past the scanner frame limit')
+    return `fun f(a: Boolean) { ${'if (a) {'.repeat(256)}${'if (a) true; else if ('.repeat(depth)}true } + 0`;
   if (context === 'with deeply nested conditional heads') {
     const prefix = 'if (a) true; else if ('.repeat(depth);
     const suffix = ') true else false'.repeat(depth);

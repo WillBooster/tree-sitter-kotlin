@@ -1921,7 +1921,7 @@ static void scan_guard_type_word(GuardScan *guard, const char *word, bool operat
 static bool before_guard_operand(GuardPrefix prefix);
 static bool scan_guard_else_after_semicolon(TSLexer *lexer, GuardScan *guard);
 static void scan_guard_trivia(TSLexer *lexer, GuardScan *guard);
-static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard);
+static GuardGroupStatus scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard);
 static bool guard_word_starts_body(const char *word);
 static bool guard_word_requires_operand(const char *word);
 
@@ -1994,10 +1994,10 @@ static GuardResult scan_guard_symbol(TSLexer *lexer, GuardScan *guard, int32_t c
         guard->type = GUARD_TYPE;
         return GUARD_MORE;
     }
-    const GuardGroupStatus group = initial_group ? guard_replay_group(input, group_start, guard->brace_depth) : GUARD_GROUP_UNKNOWN;
-    const bool closed = group == GUARD_GROUP_UNKNOWN ? scan_guard_delimiter(lexer, c, guard) : group == GUARD_GROUP_CLOSED;
-    if (initial_group) guard_capture_end(input, closed);
-    if (!closed) return guard_result(guard->shared_arrow || !at_eof(lexer));
+    GuardGroupStatus group = initial_group ? guard_replay_group(input, group_start, guard->brace_depth) : GUARD_GROUP_UNKNOWN;
+    if (group == GUARD_GROUP_UNKNOWN) group = scan_guard_delimiter(lexer, c, guard);
+    if (initial_group) guard_capture_end(input, group);
+    if (group != GUARD_GROUP_CLOSED) return guard_result(guard->shared_arrow || group != GUARD_GROUP_UNTERMINATED);
     scan_guard_punctuation(lexer, guard, c);
     return GUARD_MORE;
 }
@@ -2169,9 +2169,10 @@ typedef struct {
     GuardFrame initial[16];
     size_t count;
     size_t capacity;
+    bool mismatched;
 } GuardHead;
 
-static void cache_unterminated_guard_groups(GuardLookahead *input, const GuardHead *head);
+static GuardGroupStatus guard_group_status(TSLexer *lexer, const GuardHead *head, bool valid);
 static bool step_guard_group(TSLexer *lexer, GuardHead *head);
 static bool step_guard_literal(TSLexer *lexer, GuardHead *head);
 static bool push_guard_frame(GuardHead *head, GuardFrame frame);
@@ -2181,7 +2182,7 @@ static bool push_guard_quote(TSLexer *lexer, GuardHead *head, GuardFrame frame);
 static bool group_may_have_entries(int32_t opener, const GuardScan *guard);
 
 // code-gauge-allow functionNcss 36 -- the delimiter family and its explicit lexical stack share one scan.
-static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
+static GuardGroupStatus scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *guard) {
     int32_t end = 0;
     switch (c) {
         case '(': end = ')'; break;
@@ -2191,7 +2192,7 @@ static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *gua
         case '"': case '\'': case '`': end = c; break;
         default: break;
     }
-    if (!end) return true;
+    if (!end) return GUARD_GROUP_CLOSED;
     GuardHead head = {.capacity = 16};
     head.frames = head.initial;
     bool valid = end == c
@@ -2207,18 +2208,23 @@ static bool scan_guard_delimiter(TSLexer *lexer, int32_t c, const GuardScan *gua
     while (head.count > 0 && valid && !at_eof(lexer)) {
         valid = head.frames[head.count - 1].literal ? step_guard_literal(lexer, &head) : step_guard_group(lexer, &head);
     }
-    bool closed = valid && head.count == 0;
-    if (!closed) cache_unterminated_guard_groups((GuardLookahead *)lexer, &head);
+    const GuardGroupStatus status = guard_group_status(lexer, &head, valid);
     if (head.frames != head.initial) ts_free(head.frames);
-    return closed;
+    return status;
 }
 
-static void cache_unterminated_guard_groups(GuardLookahead *input, const GuardHead *head) {
-    if (!input->recording || !at_eof(&input->lexer)) return;
-    for (size_t index = 1; index < head->count; index++) {
-        const GuardFrame *frame = &head->frames[index];
-        if (frame->end == ')') guard_capture_group(input, frame->start_offset, frame->brace_depth, false);
+static GuardGroupStatus guard_group_status(TSLexer *lexer, const GuardHead *head, bool valid) {
+    if (valid && head->count == 0) return GUARD_GROUP_CLOSED;
+    const GuardGroupStatus status = at_eof(lexer) ? GUARD_GROUP_UNTERMINATED
+                                   : head->mismatched ? GUARD_GROUP_MISMATCHED : GUARD_GROUP_UNRESOLVED;
+    GuardLookahead *input = (GuardLookahead *)lexer;
+    if (input->recording && status != GUARD_GROUP_UNRESOLVED) {
+        for (size_t index = 1; index < head->count; index++) {
+            const GuardFrame *frame = &head->frames[index];
+            if (frame->end == ')') guard_capture_group(input, frame->start_offset, frame->brace_depth, status);
+        }
     }
+    return status;
 }
 
 static bool group_may_have_entries(int32_t opener, const GuardScan *guard) {
@@ -2255,7 +2261,7 @@ static bool step_guard_group(TSLexer *lexer, GuardHead *head) {
         return true;
     }
     if (c == group->end) {
-        if (c == ')' && head->count > 1) guard_capture_group(input, group->start_offset, group->brace_depth, true);
+        if (c == ')' && head->count > 1) guard_capture_group(input, group->start_offset, group->brace_depth, GUARD_GROUP_CLOSED);
         head->count--;
         return true;
     }
@@ -2283,7 +2289,7 @@ static bool step_guard_group_punctuation(TSLexer *lexer, GuardHead *head, int32_
         case '"': case '\'': case '`': return push_guard_quote(lexer, head, (GuardFrame){
             .end = c, .dollars = dollars, .can_have_entries = can_have_entries, .brace_depth = brace_depth,
         });
-        case ')': case ']': case '}': return false;
+        case ')': case ']': case '}': head->mismatched = true; return false;
         default: return true;
     }
 }
