@@ -47,6 +47,26 @@ test('preserves literal semicolon spans inside property initializers', () => {
   }
 });
 
+test.each([
+  'class C { fun f() = if (a) 1; else 2 }',
+  'interface C { fun f() = if (a) 1; /* note */ else 2 }',
+  'object C { fun f() = g(if (a) 1; else 2) }',
+  'class C { companion object { fun f() = if (a) 1; else 2 } }',
+  'class C { fun f(x: Int = if (a) 1; else 2) {} }',
+  'class C { constructor(x: Int = if (a) 1; else 2) {} }',
+])('finishes a pending else before checking member boundaries in %s', (source) => {
+  const tree = parser.parse(source)!;
+  try {
+    expect(tree.rootNode.hasError).toBe(false);
+    const [conditional] = tree.rootNode.descendantsOfType('if_expression');
+    expect(conditional?.childForFieldName('alternative')?.text).toBe('2');
+    const semicolon = conditional?.children.find((child) => child.type === ';');
+    expect(semicolon?.startIndex).toBe(source.indexOf(';'));
+  } finally {
+    tree.delete();
+  }
+});
+
 test('ends a when body at its semicolon before fallback trivia', () => {
   const body = 'if (a) while (a);';
   const source = `class C { fun f(a: Boolean, n: Int) {

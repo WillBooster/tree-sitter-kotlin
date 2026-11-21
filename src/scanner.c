@@ -1071,6 +1071,11 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
     // together otherwise. Scanning string content there would consume the rest of the input on each
     // recovery attempt, making recovery quadratic in the input length.
     bool error_recovery = valid_symbols[MULTILINE_STRING_CONTENT] && valid_symbols[SEMI];
+    bool after_else_semicolon = !error_recovery && scanner->after_else_semicolon &&
+                               (valid_symbols[SEMI] || valid_symbols[IF_ELSE_CONTINUATION] ||
+                                valid_symbols[IF_ELSE_BOUNDARY] || valid_symbols[WHEN_AFTER_IF_BOUNDARY] ||
+                                valid_symbols[SHARED_WHEN_AFTER_IF_BOUNDARY]);
+    if (after_else_semicolon) return scan_else_after_semicolon(scanner, lexer, valid_symbols);
     if (!error_recovery && (valid_symbols[IMPORT_END] || valid_symbols[IMPORT_CONTINUE])) {
         lexer->mark_end(lexer);
         bool ends = !scan_whitespace_and_comments(lexer, true, false) || scan_import_end(lexer);
@@ -1220,11 +1225,6 @@ static bool scan(Scanner *scanner, TSLexer *lexer, const bool *valid_symbols, bo
                                   !error_recovery && !in_statements(scanner);
     int before_else = !error_recovery && valid_symbols[EMPTY_BODY_SEMICOLON_BEFORE_ELSE] ? EMPTY_BODY_SEMICOLON_BEFORE_ELSE
                     : !error_recovery && valid_symbols[SEMICOLON_BEFORE_ELSE] ? SEMICOLON_BEFORE_ELSE : SEMI;
-    bool after_else_semicolon = !error_recovery && scanner->after_else_semicolon &&
-                               (valid_symbols[SEMI] || valid_symbols[IF_ELSE_CONTINUATION] ||
-                                valid_symbols[IF_ELSE_BOUNDARY] || valid_symbols[WHEN_AFTER_IF_BOUNDARY] ||
-                                valid_symbols[SHARED_WHEN_AFTER_IF_BOUNDARY]);
-    if (after_else_semicolon) return scan_else_after_semicolon(scanner, lexer, valid_symbols);
     if (valid_symbols[SEMI] || can_end_delegation || can_separate_accessors || before_else != SEMI) {
         // Both tokens are empty and end where the previous token does.
         lexer->mark_end(lexer);
