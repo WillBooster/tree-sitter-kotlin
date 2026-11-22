@@ -261,7 +261,7 @@ static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, un
 
 // Skips code up to the bracket that closes the one just skipped, past nested brackets, literals, and comments.
 // Returns false at the end of the input or when templates nest too deeply.
-// code-gauge-allow functionCognitiveComplexity 20 -- one loop over the bracket, comment, and literal cases it skips
+// code-gauge-allow functionCognitiveComplexity -- one loop over the bracket, comment, and literal cases it skips
 static bool scan_bracket(TSLexer *lexer, int32_t open, int32_t close, unsigned nesting, bool skip_chars,
                          bool stop_at_separator) {
     unsigned depth = 1;
@@ -302,7 +302,7 @@ static bool scan_literal_rest(TSLexer *lexer, int32_t quote, unsigned nesting, b
 }
 
 // Like `scan_literal_rest`, for a string whose interpolations start with `dollars` dollars.
-// code-gauge-allow functionCognitiveComplexity 27 -- one loop over a literal's quotes, escapes, and interpolations
+// code-gauge-allow functionCognitiveComplexity -- one loop over a literal's quotes, escapes, and interpolations
 static bool scan_string_rest(TSLexer *lexer, int32_t quote, unsigned dollars, unsigned nesting,
                              bool skip_chars, bool stop_at_separator) {
     bool raw = false;
@@ -1836,7 +1836,7 @@ static const char FOLLOWING_EXPRESSION_KEYWORDS[][MAX_WORD_SIZE] = {
 static int step_following_statement(TSLexer *lexer, bool *companion);
 static bool skip_member_annotations(TSLexer *lexer, bool skip_chars);
 static void read_following_word(TSLexer *lexer, char word[MAX_WORD_SIZE]);
-// code-gauge-allow functionCognitiveComplexity 25 -- each exit distinguishes a Kotlin separator or accessor prefix.
+// code-gauge-allow functionCognitiveComplexity -- each exit distinguishes a Kotlin separator or accessor prefix.
 static int accessor_after_separator(TSLexer *lexer, const bool *valid_symbols) {
     // After a property semicolon, a newline before the next token ends the property. A newline inside a
     // block comment does not count, and an annotation on the same line may itself continue onto later lines.
@@ -2087,7 +2087,7 @@ static bool scan_member_annotation(TSLexer *lexer, bool skip_chars) {
     return scan_annotation(lexer, skip_chars, false);
 }
 
-// code-gauge-allow functionCognitiveComplexity 29 -- keeps qualified annotation names and argument delimiters in one scan.
+// code-gauge-allow functionCognitiveComplexity -- keeps qualified annotation names and argument delimiters in one scan.
 static bool scan_annotation(TSLexer *lexer, bool skip_chars, bool stop_at_separator) {
     lexer->advance(lexer, skip_chars);
     for (;;) {
@@ -2137,7 +2137,7 @@ static bool scan_function_type_arguments(TSLexer *lexer, bool skip_chars) {
     return scan_type_arguments(lexer, skip_chars, false);
 }
 
-// code-gauge-allow functionCognitiveComplexity 20 -- tracks nested type arguments and their token boundaries together.
+// code-gauge-allow functionCognitiveComplexity -- tracks nested type arguments and their token boundaries together.
 static bool scan_type_arguments(TSLexer *lexer, bool skip_chars, bool stop_at_separator) {
     unsigned depth = 1;
     lexer->advance(lexer, skip_chars);
