@@ -9,12 +9,13 @@
       "groupName": "tree-sitter",
     },
     {
-      // The preset exempts @willbooster npm packages, including @willbooster/web-tree-sitter, from its release-age
-      // gate but not this crate, which is released from the same commit; without this rule the grouped update would
-      // bump the npm runtime a week before the crate.
-      "matchDatasources": ["crate"],
-      "matchPackageNames": ["willbooster-tree-sitter"],
-      "minimumReleaseAge": "0 days",
+      // Cargo's publish-age gate admits willbooster-tree-sitter only seven days after its release, so the npm runtime
+      // released from the same commit, which the preset otherwise exempts, waits as long to keep the grouped update in
+      // step. To adopt a release sooner, run `CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update -p
+      // willbooster-tree-sitter` and bump @willbooster/web-tree-sitter to the same version.
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["@willbooster/web-tree-sitter"],
+      "minimumReleaseAge": "7 days",
     },
   ],
 }
